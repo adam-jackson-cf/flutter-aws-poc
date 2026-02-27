@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from evals.aws_pipeline_runner import AwsPipelineRunner
+from evals.cloudwatch_publish import publish_eval_summary_metrics
 from evals.metrics import aggregate_case_metrics, lexical_cosine_similarity
 
 
@@ -30,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--aws-region", default=os.environ.get("AWS_REGION", ""))
     parser.add_argument("--poll-interval-seconds", type=float, default=2.0)
     parser.add_argument("--execution-timeout-seconds", type=int, default=900)
+    parser.add_argument("--publish-cloudwatch", action="store_true")
+    parser.add_argument("--cloudwatch-namespace", default="FlutterAgentCorePoc/Evals")
     return parser.parse_args()
 
 
@@ -230,6 +233,18 @@ def main() -> int:
     output_path = args.output or default_output
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    if args.publish_cloudwatch:
+        publish_eval_summary_metrics(
+            summaries=payload["results"],
+            namespace=args.cloudwatch_namespace,
+            run_id=run_id,
+            dataset=args.dataset,
+            scope=args.scope,
+            aws_region=args.aws_region,
+            aws_profile=args.aws_profile or None,
+        )
+        print(f"PUBLISHED_CLOUDWATCH_NAMESPACE={args.cloudwatch_namespace}")
 
     print(f"WROTE_EVAL={output_path}")
     if args.dry_run:
