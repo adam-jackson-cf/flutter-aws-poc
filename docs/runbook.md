@@ -38,6 +38,7 @@ If deploy fails on AgentCore runtime entrypoint validation, confirm runtime arti
 
 1. Install Python dependencies:
    - `python3 -m pip install -r requirements.txt`
+   - dataset rows must include `expected_tool.native` and `expected_tool.mcp`.
 2. Run both flows against golden set via deployed Step Functions pipeline:
    - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 10 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION"`
 3. For CI smoke without Bedrock generation:
@@ -46,6 +47,7 @@ If deploy fails on AgentCore runtime entrypoint validation, confirm runtime arti
    - append `--publish-cloudwatch` (optionally `--cloudwatch-namespace "<namespace>"`)
 5. Include LLM-as-judge diagnostics for agent behavior:
    - append `--enable-judge` (uses `BEDROCK_MODEL_ID` and `BEDROCK_REGION` by default)
+6. Live runs perform `sts:GetCallerIdentity` preflight automatically and fail fast on expired credentials.
 
 Default output path format (if `--output` is not supplied):
 
@@ -58,7 +60,7 @@ Run the state machine manually with a case payload:
 ```bash
 aws stepfunctions start-execution \
   --state-machine-arn "<STATE_MACHINE_ARN>" \
-  --input '{"flow":"mcp","request_text":"Need customer sentiment and status update for JRASERVER-79286 before escalation.","case_id":"manual_run_001"}'
+  --input '{"flow":"mcp","request_text":"Need customer sentiment and status update for JRASERVER-79286 before escalation.","case_id":"manual_run_001","expected_tool":"jira_get_issue_status_snapshot"}'
 ```
 
 ## AgentCore online evaluations
@@ -81,6 +83,7 @@ This keeps quality results in the AgentCore/CloudWatch evaluation surfaces while
 ## Evaluation interpretation
 
 - `tool_failure_rate`: key signal for MCP vs native reliability comparison.
+- `tool_match_rate`: selected tool alignment with per-case expected objective.
 - `tool_failure_ci95_low/high`: confidence interval for observed tool failure rate.
 - `mean_latency_ms`: orchestration overhead comparison.
 - `mean_response_similarity`: only meaningful in `--scope full`; route scope keeps this at zero.
@@ -96,7 +99,7 @@ This keeps quality results in the AgentCore/CloudWatch evaluation surfaces while
 
 ### Failure reason taxonomy
 
-- `selected_wrong_tool:<tool_name>`: LLM selected a non-primary MCP tool from the gateway catalog.
+- `selected_wrong_tool:<tool_name>`: LLM selected a tool that did not match the per-case expected tool objective.
 - `selected_unknown_tool:<tool_name>`: LLM returned a tool name not present in the current gateway catalog.
 - `mcp_catalog_error:<detail>` or `mcp_gateway_error:<detail>`: MCP `tools/list` failed.
 - `mcp_invocation_error:<detail>` or `mcp_tool_call_error:<detail>`: MCP `tools/call` failed.
