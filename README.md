@@ -1,18 +1,25 @@
 # Flutter AgentCore SOP PoC
 
-This repository contains a proof-of-concept that compares two agentic orchestration paths for the same Jira-backed support SOP:
+## Overview
+This repository validates whether an agent completes Jira-oriented support workflows more reliably when using a tool interface style it is more likely to be trained on.
 
-- `native`: agent selects and executes Jira API-style tools (native SDK/REST tropes).
-- `mcp`: agent selects and executes tools through AgentCore Gateway MCP.
+It compares two fully agentic routes, both using the same model:
+- `native`: agent selects and executes scoped Jira API-style tools.
+- `mcp`: agent selects and executes scoped tools through AgentCore Gateway MCP.
 
-It also includes AWS CDK infrastructure for:
+Validation focus:
+- route reliability and success outcomes (`tool_failure_rate`, `business_success_rate`)
+- tool-selection correctness (`tool_match_rate`) against per-case expected tools
+- latency impact
+- deterministic release truth vs LLM-as-judge diagnostics (`composite_reflection` and divergence signal)
 
-- AgentCore Runtime (code deployment)
-- AgentCore Gateway with Jira tool target
-- Step Functions automation pipeline with scheduled execution
+Alignment with Flutter architecture design:
+- parity of agent behavior across routes (same model, same task, different tool interface)
+- intent-scoped tool catalogs to reduce context bloat in both routes
+- deterministic KPI gates as release truth with platform-visible diagnostics (CloudWatch + AgentCore surfaces)
+- explicit failure taxonomy for operational review
 
-## Business journey flow
-
+### Business flow
 ```mermaid
 flowchart TD
     A["Support lead defines customer scenarios and success criteria"]
@@ -47,52 +54,54 @@ flowchart TD
     K -->|No| M
 ```
 
-## Quick start
+## Setup
+Prerequisites:
+- Python 3.12+
+- Node.js + npm
+- AWS CLI with a configured named profile
 
-1. Install Python dependencies:
-   - `python3 -m pip install -r requirements.txt`
-2. Install infra dependencies:
-   - `cd infra && npm install`
-3. Load project AWS context:
-   - start from `.envrc.example` for local environment values
-   - `direnv allow` (uses `.envrc` with sandbox profile + Bedrock inference profile)
-   - ensure `MCP_GATEWAY_URL` and `STATE_MACHINE_ARN` are set for live runs
-4. Run synthesis:
-   - `cd infra && npm run cdk:synth`
-5. Run a dry-run evaluation through the deployed Step Functions pipeline:
-   - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 5 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --dry-run`
-6. Run statistically meaningful live route evaluation and publish deterministic + judge/composite metrics to CloudWatch:
-   - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 10 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --publish-cloudwatch`
-7. Include LLM-as-judge diagnostics in the same run:
-   - add `--enable-judge` (defaults to `BEDROCK_MODEL_ID`, typically `eu.amazon.nova-lite-v1:0`).
-8. Create/update a CloudWatch dashboard for one run:
-   - `./scripts/create-cloudwatch-dashboard.sh --run-id 20260227T220000Z --region "$AWS_REGION"`
+Environment setup:
+- use [.envrc.example](/Users/adamjackson/Projects/flutter-aws-poc/.envrc.example) as the template for local environment values
+- run `direnv allow` if you use `direnv`
 
-## AgentCore online evaluations setup
+Bootstrap command (installs dependencies and runs synth):
+```bash
+./scripts/bootstrap-repo.sh
+```
 
-Create or update an AgentCore online evaluation config:
+Infrastructure deployment:
+```bash
+./scripts/bootstrap-repo.sh --deploy-infra
+```
 
+Notes:
+- live evals require `MCP_GATEWAY_URL` and `STATE_MACHINE_ARN`
+- non-dry-run evals perform AWS identity preflight (`sts:GetCallerIdentity`)
+- dataset rows must include `expected_tool.native` and `expected_tool.mcp`
+
+## Commands / Actions
+Bootstrap and infra:
+- `./scripts/bootstrap-repo.sh`
+- `./scripts/bootstrap-repo.sh --deploy-infra`
+- `npm --prefix infra run cdk:diff`
+
+Evaluations:
+- Dry run: `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 5 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --dry-run`
+- Live + CloudWatch: `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 10 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --publish-cloudwatch`
+- Live + judge: append `--enable-judge`
+
+Dashboard:
+- Create/update dashboard for a run: `./scripts/create-cloudwatch-dashboard.sh --run-id 20260227T220000Z --region "$AWS_REGION"`
+
+AgentCore online eval config:
 - `python3 scripts/configure-agentcore-online-eval.py --name flutter-sop-poc-online-eval --role-arn "<EVAL_EXECUTION_ROLE_ARN>" --log-group "/aws/bedrock-agentcore/runtimes/flutterSopPocRuntime" --service-name bedrock-agentcore --evaluator-id "<EVALUATOR_ID_1>" --evaluator-id "<EVALUATOR_ID_2>" --aws-region "$AWS_REGION"`
 
-## Direct runtime usage
+Direct runtime checks:
+- Native dry-run: `python3 -m runtime.sop_agent.main --flow native --input-file samples/case_001.json --dry-run`
+- MCP dry-run: `python3 -m runtime.sop_agent.main --flow mcp --input-file samples/case_001.json --dry-run`
 
-- Native flow:
-  - `python3 -m runtime.sop_agent.main --flow native --input-file samples/case_001.json --dry-run`
-- MCP flow:
-  - `python3 -m runtime.sop_agent.main --flow mcp --input-file samples/case_001.json --dry-run`
+Manual pipeline invocation:
+- `aws stepfunctions start-execution --state-machine-arn "<STATE_MACHINE_ARN>" --input '{"flow":"mcp","request_text":"Need customer sentiment and status update for JRASERVER-79286 before escalation.","case_id":"manual_run_001","expected_tool":"jira_get_issue_status_snapshot"}'`
 
-## Notes
-
-- The dataset uses publicly accessible Jira issues from `jira.atlassian.com`.
-- Each dataset row must include `expected_tool` with per-flow values: `{"native":"...","mcp":"..."}`.
-- Non-dry-run mode requires Bedrock inference profile access for agent tool selection and generation (`eu.amazon.nova-lite-v1:0` by default).
-- Non-dry-run mode performs an AWS auth preflight via `sts:GetCallerIdentity` before running evaluations.
-- Both routes use the same model by default via `BEDROCK_MODEL_ID` (`eu.amazon.nova-lite-v1:0` unless overridden).
-- MCP route uses intent-scoped tool bindings before selection to reduce catalog/context bloat.
-- MCP flow requires a reachable, deployed AgentCore Gateway URL in `MCP_GATEWAY_URL`.
-- If `--output` is omitted, eval results are written to `reports/runs/<RUN_ID>/eval/eval-<flow>-<scope>.json`.
-- If `--publish-cloudwatch` is enabled, deterministic, judge, and composite reflection metrics are emitted to CloudWatch namespace `FlutterAgentCorePoc/Evals` (or `--cloudwatch-namespace` override).
-- Dashboard script uses the same dimensions (`RunId`, `Flow`, `Scope`, `Dataset`) and lays out native-vs-MCP reliability, judge diagnostics, and composite reflection in one view.
-- If `--enable-judge` is enabled, per-case LLM-as-judge scores are added plus `composite_reflection` (deterministic gate + judge diagnostic + divergence flag).
-- Deterministic summary now includes `tool_match_rate` against per-case expected tools.
-- Eval output includes `failure_reasons`; payload-shape failures now appear as `mcp_missing_issue_payload` (runtime) or `mcp_gateway_missing_issue_payload` (Lambda pipeline stage).
+CloudWatch metric namespace:
+- `FlutterAgentCorePoc/Evals` (dimensions: `RunId`, `Flow`, `Scope`, `Dataset`)
