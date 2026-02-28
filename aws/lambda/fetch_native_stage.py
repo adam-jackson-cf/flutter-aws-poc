@@ -3,6 +3,8 @@ import time
 from typing import Any, Dict, List
 
 from common import (
+    ToolSelectionRequest,
+    ToolSelectorConfig,
     append_stage_metric,
     build_failure_issue,
     fetch_jira_issue,
@@ -124,14 +126,18 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         )
 
     selection = select_tool_with_model(
-        request_text=intake["request_text"],
-        issue_key=issue_key,
-        tools=scoped_tools,
-        model_id=model_id,
-        region=region,
-        default_tool=expected_tool,
-        dry_run=bool(event.get("dry_run", False)),
-        selector_name="native_api_selector",
+        selection=ToolSelectionRequest(
+            request_text=intake["request_text"],
+            issue_key=issue_key,
+            tools=scoped_tools,
+            default_tool=expected_tool,
+            selector_name="native_api_selector",
+        ),
+        config=ToolSelectorConfig(
+            model_id=model_id,
+            region=region,
+            dry_run=bool(event.get("dry_run", False)),
+        ),
     )
     selected_tool = selection["selected_tool"]
 

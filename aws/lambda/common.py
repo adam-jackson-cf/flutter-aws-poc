@@ -3,6 +3,7 @@ import os
 import re
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from urllib.error import HTTPError, URLError
@@ -315,31 +316,38 @@ def _tool_prompt_lines(tools: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def select_tool_with_model(
-    request_text: str,
-    issue_key: str,
-    tools: List[Dict[str, Any]],
-    model_id: str,
-    region: str,
-    default_tool: str,
-    dry_run: bool = False,
-    selector_name: str = "agent_selector",
-) -> Dict[str, Any]:
-    if dry_run:
-        return {"selected_tool": default_tool, "reason": "dry_run"}
+@dataclass(frozen=True)
+class ToolSelectionRequest:
+    request_text: str
+    issue_key: str
+    tools: List[Dict[str, Any]]
+    default_tool: str
+    selector_name: str = "agent_selector"
+
+
+@dataclass(frozen=True)
+class ToolSelectorConfig:
+    model_id: str
+    region: str
+    dry_run: bool = False
+
+
+def select_tool_with_model(selection: ToolSelectionRequest, config: ToolSelectorConfig) -> Dict[str, Any]:
+    if config.dry_run:
+        return {"selected_tool": selection.default_tool, "reason": "dry_run"}
 
     prompt = (
         "You are a reasoning-scope orchestration agent.\n"
         "The tool catalog is pre-filtered by capability bindings and task scope.\n"
-        f"Selector: {selector_name}\n"
-        f"Request: {request_text}\n"
-        f"Issue key: {issue_key}\n"
+        f"Selector: {selection.selector_name}\n"
+        f"Request: {selection.request_text}\n"
+        f"Issue key: {selection.issue_key}\n"
         "Choose exactly one tool name from the provided list.\n"
         "Return strict JSON only: {\"tool\":\"<name>\",\"reason\":\"<short reason>\"}.\n"
         "Scoped tool list:\n"
-        f"{_tool_prompt_lines(tools)}"
+        f"{_tool_prompt_lines(selection.tools)}"
     )
-    raw = _call_bedrock(model_id=model_id, prompt=prompt, region=region)
+    raw = _call_bedrock(model_id=config.model_id, prompt=prompt, region=config.region)
     parsed = _extract_json_object(raw)
     return {
         "selected_tool": str(parsed.get("tool", "")),
@@ -347,24 +355,17 @@ def select_tool_with_model(
     }
 
 
-def select_mcp_tool(
-    request_text: str,
-    issue_key: str,
-    tools: List[Dict[str, Any]],
-    expected_tool: str,
-    model_id: str,
-    region: str,
-    dry_run: bool = False,
-) -> Dict[str, Any]:
-    return select_tool_with_model(
-        request_text=request_text,
-        issue_key=issue_key,
-        tools=tools,
-        model_id=model_id,
-        region=region,
-        default_tool=expected_tool,
-        dry_run=dry_run,
+def select_mcp_tool(selection: ToolSelectionRequest, config: ToolSelectorConfig) -> Dict[str, Any]:
+    mcp_selection = ToolSelectionRequest(
+        request_text=selection.request_text,
+        issue_key=selection.issue_key,
+        tools=selection.tools,
+        default_tool=selection.default_tool,
         selector_name="mcp_gateway_selector",
+    )
+    return select_tool_with_model(
+        selection=mcp_selection,
+        config=config,
     )
 
 

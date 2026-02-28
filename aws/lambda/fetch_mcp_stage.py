@@ -2,6 +2,8 @@ import time
 from typing import Any, Dict
 
 from common import (
+    ToolSelectionRequest,
+    ToolSelectorConfig,
     append_stage_metric,
     build_failure_issue,
     build_gateway_tool_args,
@@ -67,13 +69,17 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             },
         )
     selection = select_mcp_tool(
-        request_text=intake["request_text"],
-        issue_key=intake["issue_key"],
-        tools=tools,
-        expected_tool=expected_tool,
-        model_id=model_id,
-        region=region,
-        dry_run=bool(event.get("dry_run", False)),
+        selection=ToolSelectionRequest(
+            request_text=intake["request_text"],
+            issue_key=intake["issue_key"],
+            tools=tools,
+            default_tool=expected_tool,
+        ),
+        config=ToolSelectorConfig(
+            model_id=model_id,
+            region=region,
+            dry_run=bool(event.get("dry_run", False)),
+        ),
     )
 
     selected_tool = selection["selected_tool"]
