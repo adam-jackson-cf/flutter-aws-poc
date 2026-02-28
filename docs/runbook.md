@@ -44,6 +44,8 @@ If deploy fails on AgentCore runtime entrypoint validation, confirm runtime arti
    - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow native --scope route --iterations 1 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --dry-run`
 4. Publish deterministic summary metrics to CloudWatch:
    - append `--publish-cloudwatch` (optionally `--cloudwatch-namespace "<namespace>"`)
+5. Include LLM-as-judge diagnostics for agent behavior:
+   - append `--enable-judge` (uses `BEDROCK_MODEL_ID` and `BEDROCK_REGION` by default)
 
 Default output path format (if `--output` is not supplied):
 
@@ -83,6 +85,14 @@ This keeps quality results in the AgentCore/CloudWatch evaluation surfaces while
 - `mean_latency_ms`: orchestration overhead comparison.
 - `mean_response_similarity`: only meaningful in `--scope full`; route scope keeps this at zero.
 - `failure_reasons`: frequency map of normalized failure reason strings.
+- `judge_summary`: diagnostic LLM-as-judge scoring of agent behavior.
+- `composite_reflection`: fused view that prevents misleading interpretation when judge and deterministic metrics diverge.
+
+### Composite reflection policy
+
+- `deterministic_release_score` is authoritative for release gate decisions.
+- `judge_diagnostic_score` is advisory/diagnostic for platform visibility.
+- `divergence_flag=true` indicates potential false impression risk; treat as review-required even if one score is high.
 
 ### Failure reason taxonomy
 
