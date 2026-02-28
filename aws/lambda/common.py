@@ -38,6 +38,16 @@ MCP_TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
     ],
 }
 
+TOOL_COMPLETENESS_FIELDS_BY_OPERATION: Dict[str, List[str]] = {
+    "get_issue_by_key": ["key", "summary", "status"],
+    "get_issue_status_snapshot": ["key", "status", "updated"],
+    "get_issue_priority_context": ["key", "priority"],
+    "get_issue_labels": ["key", "labels"],
+    "get_issue_project_key": ["key", "project_key"],
+    "get_issue_update_timestamp": ["key", "updated"],
+    "get_issue_risk_flags": ["key"],
+}
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -237,6 +247,36 @@ def strip_gateway_tool_prefix(tool_name: str) -> str:
     if "__" not in tool_name:
         return tool_name
     return re.split(r"__+", tool_name, maxsplit=1)[1]
+
+
+def canonical_tool_operation(tool_name: str) -> str:
+    name = strip_gateway_tool_prefix(tool_name).strip()
+    if name.startswith("jira_api_"):
+        return name[len("jira_api_") :]
+    if name.startswith("jira_"):
+        return name[len("jira_") :]
+    return name
+
+
+def issue_payload_complete_for_tool(tool_result: Dict[str, Any], tool_name: str) -> bool:
+    if not isinstance(tool_result, dict):
+        return False
+
+    operation = canonical_tool_operation(tool_name)
+    required_fields = TOOL_COMPLETENESS_FIELDS_BY_OPERATION.get(operation, ["key"])
+    for field in required_fields:
+        value = tool_result.get(field)
+        if field == "labels":
+            if not isinstance(value, list):
+                return False
+            continue
+
+        text = str(value).strip()
+        if not text:
+            return False
+        if field == "status" and text.lower() in {"unknown", "none"}:
+            return False
+    return True
 
 
 def scoped_tool_suffixes_for_intent(intent: str) -> List[str]:

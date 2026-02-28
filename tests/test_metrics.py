@@ -20,6 +20,7 @@ def test_aggregate_metrics() -> None:
             "metrics": {
                 "intent_match": True,
                 "issue_key_match": True,
+                "tool_match": True,
                 "tool_failure": False,
                 "latency_ms": 120.0,
                 "response_similarity": 0.9,
@@ -29,6 +30,7 @@ def test_aggregate_metrics() -> None:
             "metrics": {
                 "intent_match": False,
                 "issue_key_match": True,
+                "tool_match": False,
                 "tool_failure": True,
                 "latency_ms": 180.0,
                 "response_similarity": 0.4,
@@ -38,6 +40,7 @@ def test_aggregate_metrics() -> None:
     summary = aggregate_case_metrics(rows)
     assert summary["total_cases"] == 2
     assert summary["intent_accuracy"] == 0.5
+    assert summary["tool_match_rate"] == 0.5
     assert summary["tool_failure_rate"] == 0.5
 
 
@@ -47,6 +50,7 @@ def test_judge_aggregation_and_reflection() -> None:
             "metrics": {
                 "intent_match": True,
                 "issue_key_match": True,
+                "tool_match": True,
                 "tool_failure": False,
                 "issue_payload_complete": True,
                 "business_success": True,
@@ -65,6 +69,7 @@ def test_judge_aggregation_and_reflection() -> None:
             "metrics": {
                 "intent_match": True,
                 "issue_key_match": True,
+                "tool_match": True,
                 "tool_failure": False,
                 "issue_payload_complete": True,
                 "business_success": True,

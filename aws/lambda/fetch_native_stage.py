@@ -6,13 +6,11 @@ from common import (
     append_stage_metric,
     build_failure_issue,
     fetch_jira_issue,
+    issue_payload_complete_for_tool,
     selected_model_id,
     selected_region,
     select_tool_with_model,
 )
-
-
-EXPECTED_TOOL = "jira_api_get_issue_by_key"
 
 NATIVE_TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
     "bug_triage": [
@@ -89,11 +87,41 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     intake = event["intake"]
     issue_key = intake["issue_key"]
     intent = str(intake.get("intent", "general_triage"))
+    expected_tool = str(event.get("expected_tool", "")).strip()
+    if not expected_tool:
+        event["native_selection"] = {"selected_tool": "", "reason": "expected_tool_missing"}
+        event["tool_path"] = "native_agent"
+        event["native_scope"] = {"intent": intent, "scoped_tool_count": 0}
+        event["tool_failure"] = True
+        event["tool_result"] = build_failure_issue(issue_key, "expected_tool_missing")
+        return append_stage_metric(
+            event,
+            "fetch_native",
+            started,
+            {"issue_key": issue_key, "selected_tool": "", "tool_failure": True, "scoped_tool_count": 0},
+        )
     jira_base_url = os.environ.get("JIRA_BASE_URL", "https://jira.atlassian.com")
     model_id = selected_model_id(event)
     region = selected_region(event)
     scoped_tools = _native_tool_catalog(intent)
     tool_map = {str(tool["name"]): tool for tool in scoped_tools}
+    if expected_tool not in tool_map:
+        event["native_selection"] = {"selected_tool": "", "reason": f"expected_tool_not_in_scope:{expected_tool}"}
+        event["tool_path"] = "native_agent"
+        event["native_scope"] = {"intent": intent, "scoped_tool_count": len(scoped_tools)}
+        event["tool_failure"] = True
+        event["tool_result"] = build_failure_issue(issue_key, f"expected_tool_not_in_scope:{expected_tool}")
+        return append_stage_metric(
+            event,
+            "fetch_native",
+            started,
+            {
+                "issue_key": issue_key,
+                "selected_tool": "",
+                "tool_failure": True,
+                "scoped_tool_count": len(scoped_tools),
+            },
+        )
 
     selection = select_tool_with_model(
         request_text=intake["request_text"],
@@ -101,7 +129,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         tools=scoped_tools,
         model_id=model_id,
         region=region,
-        default_tool=EXPECTED_TOOL,
+        default_tool=expected_tool,
         dry_run=bool(event.get("dry_run", False)),
         selector_name="native_api_selector",
     )
@@ -137,10 +165,10 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             {"issue_key": issue_key, "selected_tool": selected_tool, "tool_failure": True, "scoped_tool_count": len(scoped_tools)},
         )
 
-    if selected_tool != EXPECTED_TOOL:
+    if selected_tool != expected_tool:
         event["tool_failure"] = True
         event["tool_result"] = build_failure_issue(issue_key, f"selected_wrong_tool:{selected_tool}")
-    elif not isinstance(native_payload, dict) or not native_payload.get("key"):
+    elif not issue_payload_complete_for_tool(native_payload, expected_tool):
         event["tool_failure"] = True
         event["tool_result"] = build_failure_issue(issue_key, "native_missing_issue_payload")
     else:

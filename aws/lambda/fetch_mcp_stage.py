@@ -8,6 +8,7 @@ from common import (
     call_gateway_tool,
     extract_gateway_tool_payload,
     find_expected_gateway_tool,
+    issue_payload_complete_for_tool,
     list_gateway_tools,
     scope_gateway_tools_by_intent,
     selected_gateway_url,
@@ -18,13 +19,28 @@ from common import (
 )
 
 
-EXPECTED_TOOL = "jira_get_issue_by_key"
-
-
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     started = time.time()
     intake = event["intake"]
     intent = str(intake.get("intent", "general_triage"))
+    expected_tool_unprefixed = str(event.get("expected_tool", "")).strip()
+    if not expected_tool_unprefixed:
+        event["mcp_selection"] = {"selected_tool": "", "reason": "expected_tool_missing"}
+        event["tool_path"] = "mcp_gateway"
+        event["tool_failure"] = True
+        event["tool_result"] = build_failure_issue(intake["issue_key"], "expected_tool_missing")
+        return append_stage_metric(
+            event,
+            "fetch_mcp",
+            started,
+            {
+                "issue_key": intake["issue_key"],
+                "selected_tool": "",
+                "tool_failure": True,
+                "catalog_tool_count": 0,
+                "scoped_tool_count": 0,
+            },
+        )
 
     model_id = selected_model_id(event)
     region = selected_region(event)
@@ -32,7 +48,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     try:
         all_tools = list_gateway_tools(gateway_url=gateway_url, region=region)
         tools = scope_gateway_tools_by_intent(all_tools, intent)
-        expected_tool = find_expected_gateway_tool(tools)
+        expected_tool = find_expected_gateway_tool(tools, unprefixed_tool_name=expected_tool_unprefixed)
     except Exception as exc:  # noqa: BLE001 - failure should be scored, not crash the pipeline
         event["mcp_selection"] = {"selected_tool": "", "reason": f"mcp_gateway_error:{exc}"}
         event["tool_path"] = "mcp_gateway"
@@ -115,12 +131,12 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             },
         )
 
-    if strip_gateway_tool_prefix(selected_tool) != EXPECTED_TOOL:
+    if strip_gateway_tool_prefix(selected_tool) != expected_tool_unprefixed:
         event["tool_failure"] = True
         event["tool_result"] = build_failure_issue(intake["issue_key"], f"selected_wrong_tool:{selected_tool}")
     else:
         issue = tool_payload.get("result", tool_payload)
-        if not isinstance(issue, dict) or not issue.get("key"):
+        if not issue_payload_complete_for_tool(issue, expected_tool_unprefixed):
             event["tool_failure"] = True
             event["tool_result"] = build_failure_issue(intake["issue_key"], "mcp_gateway_missing_issue_payload")
         else:

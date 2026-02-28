@@ -22,6 +22,45 @@ from evals.metrics import (
     lexical_cosine_similarity,
 )
 
+REQUIRED_CASE_KEYS = {
+    "case_id",
+    "request_text",
+    "expected_intent",
+    "expected_issue_key",
+    "expected_response_anchor",
+    "expected_tool",
+}
+
+EXPECTED_TOOLS_BY_FLOW = {
+    "native": {
+        "jira_api_get_issue_by_key",
+        "jira_api_get_issue_status_snapshot",
+        "jira_api_get_issue_priority_context",
+        "jira_api_get_issue_labels",
+        "jira_api_get_issue_project_key",
+        "jira_api_get_issue_update_timestamp",
+    },
+    "mcp": {
+        "jira_get_issue_by_key",
+        "jira_get_issue_status_snapshot",
+        "jira_get_issue_priority_context",
+        "jira_get_issue_labels",
+        "jira_get_issue_project_key",
+        "jira_get_issue_update_timestamp",
+        "jira_get_issue_risk_flags",
+    },
+}
+
+TOOL_COMPLETENESS_FIELDS_BY_OPERATION = {
+    "get_issue_by_key": ["key", "summary", "status"],
+    "get_issue_status_snapshot": ["key", "status", "updated"],
+    "get_issue_priority_context": ["key", "priority"],
+    "get_issue_labels": ["key", "labels"],
+    "get_issue_project_key": ["key", "project_key"],
+    "get_issue_update_timestamp": ["key", "updated"],
+    "get_issue_risk_flags": ["key"],
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run SOP evaluation through deployed AWS pipeline")
@@ -56,12 +95,73 @@ def sanitize_run_id(run_id: str) -> str:
 
 def load_dataset(path: str) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
+    for index, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), start=1):
         line = line.strip()
         if not line:
             continue
-        rows.append(json.loads(line))
+        parsed = json.loads(line)
+        if not isinstance(parsed, dict):
+            raise ValueError(f"dataset row {index} must be an object")
+
+        missing = REQUIRED_CASE_KEYS.difference(parsed.keys())
+        if missing:
+            raise ValueError(f"dataset row {index} missing required keys: {sorted(missing)}")
+
+        expected_tool = parsed.get("expected_tool")
+        if not isinstance(expected_tool, dict):
+            raise ValueError(f"dataset row {index} expected_tool must be an object with native/mcp")
+
+        for flow in ("native", "mcp"):
+            selected = str(expected_tool.get(flow, "")).strip()
+            if not selected:
+                raise ValueError(f"dataset row {index} expected_tool.{flow} is required")
+            if selected not in EXPECTED_TOOLS_BY_FLOW[flow]:
+                raise ValueError(f"dataset row {index} expected_tool.{flow} is not supported: {selected}")
+        rows.append(parsed)
     return rows
+
+
+def _strip_gateway_tool_prefix(tool_name: str) -> str:
+    if "__" not in tool_name:
+        return tool_name
+    return re.split(r"__+", tool_name, maxsplit=1)[1]
+
+
+def _canonical_tool_operation(tool_name: str) -> str:
+    name = _strip_gateway_tool_prefix(tool_name).strip()
+    if name.startswith("jira_api_"):
+        return name[len("jira_api_") :]
+    if name.startswith("jira_"):
+        return name[len("jira_") :]
+    return name
+
+
+def _issue_payload_complete_for_tool(tool_result: Dict[str, Any], tool_name: str) -> bool:
+    if not isinstance(tool_result, dict):
+        return False
+
+    operation = _canonical_tool_operation(tool_name)
+    required_fields = TOOL_COMPLETENESS_FIELDS_BY_OPERATION.get(operation, ["key"])
+    for field in required_fields:
+        value = tool_result.get(field)
+        if field == "labels":
+            if not isinstance(value, list):
+                return False
+            continue
+
+        text = str(value).strip()
+        if not text:
+            return False
+        if field == "status" and text.lower() in {"unknown", "none"}:
+            return False
+    return True
+
+
+def expected_tool_for_flow(case: Dict[str, Any], flow: str) -> str:
+    selected = str(case["expected_tool"][flow]).strip()
+    if flow == "mcp":
+        selected = _strip_gateway_tool_prefix(selected)
+    return selected
 
 
 def _case_result_from_payload(
@@ -84,25 +184,22 @@ def _case_result_from_payload(
         generated = str(generated_response.get("customer_response", ""))
         similarity = lexical_cosine_similarity(generated, case["expected_response_anchor"])
 
+    expected_tool = expected_tool_for_flow(case, flow)
     failure_reason = str(tool_result.get("failure_reason", ""))
-    issue_payload_complete = bool(str(tool_result.get("summary", "")).strip()) and str(tool_result.get("status", "")).strip().lower() not in {
-        "",
-        "unknown",
-        "none",
-    }
+    issue_payload_complete = _issue_payload_complete_for_tool(tool_result, expected_tool)
     tool_failure = bool(run_payload.get("tool_failure", run_metrics.get("tool_failure", False)))
 
     intent_actual = str(intake.get("intent", ""))
     issue_key_actual = str(tool_result.get("key", ""))
     intent_match = intent_actual == case["expected_intent"]
     issue_key_match = issue_key_actual == case["expected_issue_key"]
-    business_success = bool((not tool_failure) and issue_payload_complete and intent_match and issue_key_match)
-
     selected_tool = "jira_get_issue_by_key"
     if flow == "mcp":
         selected_tool = str(run_payload.get("mcp_selection", {}).get("selected_tool", ""))
     elif flow == "native":
         selected_tool = str(run_payload.get("native_selection", {}).get("selected_tool", ""))
+    tool_match = _canonical_tool_operation(selected_tool) == _canonical_tool_operation(expected_tool)
+    business_success = bool((not tool_failure) and issue_payload_complete and intent_match and issue_key_match and tool_match)
 
     total_latency_ms = float(run_metrics.get("total_latency_ms", 0.0) or 0.0)
     if total_latency_ms <= 0:
@@ -116,6 +213,7 @@ def _case_result_from_payload(
         "expected": {
             "intent": case["expected_intent"],
             "issue_key": case["expected_issue_key"],
+            "tool": expected_tool,
             "response_anchor": case["expected_response_anchor"],
         },
         "actual": {
@@ -131,6 +229,7 @@ def _case_result_from_payload(
             "intent_match": intent_match,
             "issue_key_match": issue_key_match,
             "tool_failure": tool_failure,
+            "tool_match": tool_match,
             "issue_payload_complete": issue_payload_complete,
             "business_success": business_success,
             "failure_reason": failure_reason,
@@ -158,6 +257,7 @@ def evaluate_flow(
                 flow=flow,
                 request_text=case["request_text"],
                 case_id=case_id,
+                expected_tool=expected_tool_for_flow(case, flow),
                 dry_run=dry_run,
             )
             results.append(
@@ -217,6 +317,15 @@ def main() -> int:
         poll_interval_seconds=args.poll_interval_seconds,
         execution_timeout_seconds=args.execution_timeout_seconds,
     )
+    aws_identity: Dict[str, str] = {}
+    if not args.dry_run:
+        try:
+            aws_identity = runner.preflight_identity()
+        except Exception as exc:  # noqa: BLE001 - this is a preflight for clearer operator feedback
+            raise RuntimeError("aws_auth_preflight_failed:refresh_credentials_and_retry") from exc
+        if not aws_identity.get("account") or not aws_identity.get("arn"):
+            raise RuntimeError("aws_auth_preflight_incomplete_identity")
+
     judge = BedrockJudge(model_id=args.judge_model_id, region=args.judge_region) if args.enable_judge else None
 
     run_at = datetime.now(timezone.utc).isoformat()
@@ -229,6 +338,7 @@ def main() -> int:
         "iterations": args.iterations,
         "state_machine_arn": args.state_machine_arn,
         "aws_region": args.aws_region,
+        "aws_identity": aws_identity,
         "judge": {
             "enabled": bool(args.enable_judge),
             "model_id": args.judge_model_id if args.enable_judge else "",

@@ -51,6 +51,7 @@ def aggregate_case_metrics(case_results: List[Dict]) -> Dict[str, float]:
             "total_cases": 0,
             "intent_accuracy": 0.0,
             "issue_key_accuracy": 0.0,
+            "tool_match_rate": 0.0,
             "tool_failure_rate": 0.0,
             "tool_failure_ci95_low": 0.0,
             "tool_failure_ci95_high": 0.0,
@@ -64,6 +65,7 @@ def aggregate_case_metrics(case_results: List[Dict]) -> Dict[str, float]:
 
     intent_hits = 0
     issue_hits = 0
+    tool_match_hits = 0
     tool_failures = 0
     issue_payload_complete_hits = 0
     business_success_hits = 0
@@ -77,6 +79,8 @@ def aggregate_case_metrics(case_results: List[Dict]) -> Dict[str, float]:
             intent_hits += 1
         if case["metrics"]["issue_key_match"]:
             issue_hits += 1
+        if case["metrics"].get("tool_match", False):
+            tool_match_hits += 1
         if case["metrics"]["tool_failure"]:
             tool_failures += 1
         if case["metrics"].get("issue_payload_complete", False):
@@ -98,6 +102,7 @@ def aggregate_case_metrics(case_results: List[Dict]) -> Dict[str, float]:
         "total_cases": total,
         "intent_accuracy": intent_hits / total,
         "issue_key_accuracy": issue_hits / total,
+        "tool_match_rate": tool_match_hits / total,
         "tool_failure_rate": tool_failures / total,
         "tool_failure_ci95_low": tool_failure_ci["low"],
         "tool_failure_ci95_high": tool_failure_ci["high"],
@@ -152,10 +157,11 @@ def aggregate_judge_metrics(case_results: List[Dict[str, Any]]) -> Dict[str, Any
 def deterministic_release_score(summary: Dict[str, float]) -> float:
     # Deterministic gate remains authoritative for release decisions.
     score = (
-        0.45 * float(summary.get("business_success_rate", 0.0))
-        + 0.25 * (1.0 - float(summary.get("tool_failure_rate", 0.0)))
+        0.35 * float(summary.get("business_success_rate", 0.0))
+        + 0.20 * (1.0 - float(summary.get("tool_failure_rate", 0.0)))
         + 0.15 * float(summary.get("intent_accuracy", 0.0))
         + 0.15 * float(summary.get("issue_key_accuracy", 0.0))
+        + 0.15 * float(summary.get("tool_match_rate", 0.0))
     )
     return max(0.0, min(1.0, score))
 

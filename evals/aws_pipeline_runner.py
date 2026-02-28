@@ -51,14 +51,24 @@ class AwsPipelineRunner:
         self._execution_timeout_seconds = execution_timeout_seconds
         self._sfn = session.client("stepfunctions")
         self._s3 = session.client("s3")
+        self._sts = session.client("sts")
 
-    def run_case(self, flow: str, request_text: str, case_id: str, dry_run: bool) -> PipelineRunResult:
+    def preflight_identity(self) -> Dict[str, str]:
+        response = self._sts.get_caller_identity()
+        return {
+            "account": str(response.get("Account", "")),
+            "arn": str(response.get("Arn", "")),
+            "user_id": str(response.get("UserId", "")),
+        }
+
+    def run_case(self, flow: str, request_text: str, case_id: str, expected_tool: str, dry_run: bool) -> PipelineRunResult:
         started = time.time()
         execution_name = self._build_execution_name(flow=flow, case_id=case_id)
         execution_input = {
             "flow": flow,
             "request_text": request_text,
             "case_id": case_id,
+            "expected_tool": expected_tool,
             "dry_run": dry_run,
         }
         started_response = self._sfn.start_execution(

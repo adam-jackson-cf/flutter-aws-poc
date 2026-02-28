@@ -36,6 +36,8 @@ def publish_eval_summary_metrics(
         summary = row["summary"]
         if not isinstance(summary, dict):
             raise ValueError("summary must be a dict")
+        judge_summary = row.get("judge_summary")
+        composite_reflection = row.get("composite_reflection")
 
         dimensions = [
             {"Name": "RunId", "Value": run_id},
@@ -48,6 +50,7 @@ def publish_eval_summary_metrics(
             [
                 {"MetricName": "IntentAccuracy", "Value": float(summary["intent_accuracy"]), "Dimensions": dimensions},
                 {"MetricName": "IssueKeyAccuracy", "Value": float(summary["issue_key_accuracy"]), "Dimensions": dimensions},
+                {"MetricName": "ToolMatchRate", "Value": float(summary["tool_match_rate"]), "Dimensions": dimensions},
                 {"MetricName": "ToolFailureRate", "Value": float(summary["tool_failure_rate"]), "Dimensions": dimensions},
                 {"MetricName": "BusinessSuccessRate", "Value": float(summary["business_success_rate"]), "Dimensions": dimensions},
                 {"MetricName": "IssuePayloadCompletenessRate", "Value": float(summary["issue_payload_completeness_rate"]), "Dimensions": dimensions},
@@ -69,6 +72,72 @@ def publish_eval_summary_metrics(
                 {"MetricName": "ToolFailureCi95High", "Value": float(summary["tool_failure_ci95_high"]), "Dimensions": dimensions},
             ]
         )
+
+        if isinstance(judge_summary, dict) and int(judge_summary.get("evaluated_cases", 0)) > 0:
+            metric_data.extend(
+                [
+                    {"MetricName": "JudgeCoverageRate", "Value": float(judge_summary["coverage_rate"]), "Dimensions": dimensions},
+                    {"MetricName": "JudgeMeanToolChoiceScore", "Value": float(judge_summary["mean_tool_choice_score"]), "Dimensions": dimensions},
+                    {
+                        "MetricName": "JudgeMeanExecutionReliabilityScore",
+                        "Value": float(judge_summary["mean_execution_reliability_score"]),
+                        "Dimensions": dimensions,
+                    },
+                    {
+                        "MetricName": "JudgeMeanResponseQualityScore",
+                        "Value": float(judge_summary["mean_response_quality_score"]),
+                        "Dimensions": dimensions,
+                    },
+                    {"MetricName": "JudgeMeanOverallScore", "Value": float(judge_summary["mean_overall_score"]), "Dimensions": dimensions},
+                    {"MetricName": "JudgePassRate", "Value": float(judge_summary["pass_rate"]), "Dimensions": dimensions},
+                ]
+            )
+
+        if isinstance(composite_reflection, dict):
+            metric_data.extend(
+                [
+                    {
+                        "MetricName": "DeterministicReleaseScore",
+                        "Value": float(composite_reflection["deterministic_release_score"]),
+                        "Dimensions": dimensions,
+                    },
+                    {
+                        "MetricName": "OverallReflectionScore",
+                        "Value": float(composite_reflection["overall_reflection_score"]),
+                        "Dimensions": dimensions,
+                    },
+                    {
+                        "MetricName": "ReleaseGatePass",
+                        "Value": 1.0 if bool(composite_reflection["release_gate_pass"]) else 0.0,
+                        "Dimensions": dimensions,
+                    },
+                    {
+                        "MetricName": "DivergenceFlag",
+                        "Value": 1.0 if bool(composite_reflection["divergence_flag"]) else 0.0,
+                        "Dimensions": dimensions,
+                    },
+                ]
+            )
+
+            judge_diagnostic_score = composite_reflection.get("judge_diagnostic_score")
+            if judge_diagnostic_score is not None:
+                metric_data.append(
+                    {
+                        "MetricName": "JudgeDiagnosticScore",
+                        "Value": float(judge_diagnostic_score),
+                        "Dimensions": dimensions,
+                    }
+                )
+
+            divergence = composite_reflection.get("divergence")
+            if divergence is not None:
+                metric_data.append(
+                    {
+                        "MetricName": "ScoreDivergence",
+                        "Value": float(divergence),
+                        "Dimensions": dimensions,
+                    }
+                )
 
     for batch in _chunk(metric_data, 20):
         cloudwatch.put_metric_data(Namespace=namespace, MetricData=batch)
