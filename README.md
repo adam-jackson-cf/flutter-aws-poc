@@ -65,6 +65,8 @@ flowchart TD
    - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 10 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --publish-cloudwatch`
 7. Include LLM-as-judge diagnostics in the same run:
    - add `--enable-judge` (defaults to `BEDROCK_MODEL_ID`, typically `eu.amazon.nova-lite-v1:0`).
+8. Create/update a CloudWatch dashboard for one run:
+   - `./scripts/create-cloudwatch-dashboard.sh --run-id 20260227T220000Z --region "$AWS_REGION"`
 
 ## AgentCore online evaluations setup
 
@@ -90,6 +92,7 @@ Create or update an AgentCore online evaluation config:
 - MCP flow requires a reachable, deployed AgentCore Gateway URL in `MCP_GATEWAY_URL`.
 - If `--output` is omitted, eval results are written to `reports/runs/<RUN_ID>/eval/eval-<flow>-<scope>.json`.
 - If `--publish-cloudwatch` is enabled, deterministic, judge, and composite reflection metrics are emitted to CloudWatch namespace `FlutterAgentCorePoc/Evals` (or `--cloudwatch-namespace` override).
+- Dashboard script uses the same dimensions (`RunId`, `Flow`, `Scope`, `Dataset`) and lays out native-vs-MCP reliability, judge diagnostics, and composite reflection in one view.
 - If `--enable-judge` is enabled, per-case LLM-as-judge scores are added plus `composite_reflection` (deterministic gate + judge diagnostic + divergence flag).
 - Deterministic summary now includes `tool_match_rate` against per-case expected tools.
 - Eval output includes `failure_reasons`; payload-shape failures now appear as `mcp_missing_issue_payload` (runtime) or `mcp_gateway_missing_issue_payload` (Lambda pipeline stage).

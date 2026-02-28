@@ -48,6 +48,8 @@ If deploy fails on AgentCore runtime entrypoint validation, confirm runtime arti
 5. Include LLM-as-judge diagnostics for agent behavior:
    - append `--enable-judge` (uses `BEDROCK_MODEL_ID` and `BEDROCK_REGION` by default)
 6. Live runs perform `sts:GetCallerIdentity` preflight automatically and fail fast on expired credentials.
+7. Create/update a dashboard for the run:
+   - `./scripts/create-cloudwatch-dashboard.sh --run-id 20260227T220000Z --region "$AWS_REGION"`
 
 Default output path format (if `--output` is not supplied):
 
@@ -79,6 +81,18 @@ python3 scripts/configure-agentcore-online-eval.py \
 ```
 
 This keeps quality results in the AgentCore/CloudWatch evaluation surfaces while deterministic KPIs remain in `evals/run_eval.py` output and CloudWatch custom metrics.
+
+## CloudWatch dashboard
+
+- Script: `scripts/create-cloudwatch-dashboard.sh`
+- Required input: `--run-id <RUN_ID>`
+- Optional: `--dashboard-name`, `--namespace`, `--dataset`, `--scope`, `--region`, `--profile`
+- The script performs `sts:GetCallerIdentity` preflight and then calls `cloudwatch put-dashboard`.
+- Widgets are grouped into:
+  - reliability + tool match
+  - latency
+  - judge diagnostics
+  - composite reflection and release gate
 
 ## Evaluation interpretation
 
