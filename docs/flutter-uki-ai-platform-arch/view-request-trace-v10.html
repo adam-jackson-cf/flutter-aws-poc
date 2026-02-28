@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Request Trace · UKI Enterprise AI Platform · v9</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#0F1117; --surface:#181C27; --surface2:#1E2333;
+    --text-primary:#F0F4FF; --text-secondary:#9BA5BE; --text-dim:#4A5270;
+    --border:rgba(255,255,255,0.07); --border-faint:rgba(255,255,255,0.04);
+    --fs: 1.15;
+  }
+  body {
+    font-family:'Inter',sans-serif;
+    background:var(--bg);
+    color:var(--text-primary);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:48px 40px 110px;
+  }
+
+  /* ── PAGE HEADER ── */
+  .page-header { text-align:center; margin-bottom:52px; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); letter-spacing:3px; text-transform:uppercase; color:var(--text-dim); margin-bottom:10px; }
+  .page-title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; letter-spacing:-.5px; }
+  .page-title-accent { background:linear-gradient(90deg,#60A5FA,#A78BFA); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .page-subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; line-height:1.55; max-width:720px; margin-left:auto; margin-right:auto; }
+  .badge { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 10px; border-radius:20px; background:var(--surface); margin-top:14px; }
+
+  /* ── CANVAS ── */
+  .canvas { width: 100%; }
+
+  /* ── LOOP NOTE ── */
+  .loop-note {
+    display:flex; align-items:flex-start; gap:12px; margin-top:24px;
+    padding:10px 16px; background:rgba(96,165,250,.05);
+    border:1px solid rgba(96,165,250,.18); border-radius:8px;
+  }
+  .loop-icon { font-size:calc(15px * var(--fs)); flex-shrink:0; padding-top:1px; }
+  .loop-text { font-family:'JetBrains Mono',monospace; font-size:calc(10.5px * var(--fs)); color:rgba(96,165,250,.75); line-height:1.5; }
+
+  /* ── NODE ROW ── */
+  .node-row {
+    display:grid;
+    grid-template-columns: 1fr 56px 1fr 56px 1fr 56px 1fr 56px 1fr;
+    align-items:center;
+    margin-bottom:12px;
+  }
+  .node-col { display:flex; flex-direction:column; align-items:center; gap:8px; }
+
+  /* ── DETAIL ROW ── */
+  .detail-row {
+    display:grid;
+    grid-template-columns: 1fr 56px 1fr 56px 1fr 56px 1fr 56px 1fr;
+    align-items:stretch;
+  }
+  .detail-spacer {}
+
+  /* ── NODE ── */
+  .node-wrap { display:flex; flex-direction:column; align-items:center; gap:7px; flex-shrink:0; }
+  .stop-node {
+    width:54px; height:54px; border-radius:50%;
+    border:2px solid var(--stop-color); background:var(--stop-bg);
+    display:flex; align-items:center; justify-content:center;
+    font-size:calc(20px * var(--fs)); position:relative; z-index:1;
+    box-shadow:0 0 20px var(--stop-glow); flex-shrink:0;
+  }
+  .stop-number {
+    position:absolute; top:-7px; right:-7px;
+    width:19px; height:19px; border-radius:50%;
+    background:var(--stop-color); color:#0F1117;
+    font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .stop-label    { font-family:'Syne',sans-serif; font-size:calc(14px * var(--fs)); font-weight:700; color:var(--stop-color); text-align:center; line-height:1.2; }
+  .stop-sublabel { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-secondary); text-align:center; letter-spacing:.4px; }
+
+
+  /* ── ARROW BETWEEN COLS ── */
+  .arrow-between { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; flex-shrink:0; padding:0 4px; }
+  .arrow-line {
+    width:50px; height:2px;
+    background:linear-gradient(90deg, var(--from-color), var(--to-color));
+    opacity:.4; position:relative;
+  }
+  .arrow-line::after {
+    content:''; position:absolute; right:-5px; top:50%; transform:translateY(-50%);
+    border-left:7px solid var(--to-color);
+    border-top:4px solid transparent; border-bottom:4px solid transparent; opacity:.65;
+  }
+  .arrow-token { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-secondary); text-align:center; white-space:nowrap; letter-spacing:.3px; line-height:1.4; max-width:80px; }
+
+  /* ── DETAIL CARD ── */
+  .detail-card {
+    width:100%; flex:1; background:var(--surface);
+    border:1px solid var(--border); border-top:2.5px solid var(--stop-color);
+    border-radius:10px; padding:14px 15px;
+    display:flex; flex-direction:column; gap:9px;
+    animation:fadeUp .35s ease both;
+  }
+  .detail-row > .detail-card:nth-child(1) { animation-delay:.04s; }
+  .detail-row > .detail-card:nth-child(3) { animation-delay:.10s; }
+  .detail-row > .detail-card:nth-child(5) { animation-delay:.16s; }
+  .detail-row > .detail-card:nth-child(7) { animation-delay:.22s; }
+  .detail-row > .detail-card:nth-child(9) { animation-delay:.28s; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+  .detail-title { font-family:'Syne',sans-serif; font-size:calc(12.5px * var(--fs)); font-weight:700; color:var(--stop-color); line-height:1.2; }
+
+  .detail-points { list-style:none; display:flex; flex-direction:column; gap:4px; }
+  .detail-points li { font-size:calc(11px * var(--fs)); color:var(--text-secondary); line-height:1.45; padding-left:12px; position:relative; }
+  .detail-points li::before { content:'·'; position:absolute; left:3px; color:var(--stop-color); opacity:.55; }
+  .detail-points li strong { color:var(--text-primary); font-weight:500; }
+
+  /* section labels and dividers inside a card */
+  .card-section-label { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; opacity:.7; margin-top:2px; }
+  .card-section-divider { height:1px; background:var(--border); margin:6px 0; }
+
+  /* ── TOKEN / STATE BOX ── */
+  .token-box {
+    background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07);
+    border-left:2px solid var(--stop-color); border-radius:5px;
+    padding:6px 10px; margin-top:auto;
+  }
+  .token-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-bottom:3px; }
+  .token-value { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--stop-color); opacity:.85; line-height:1.5; }
+
+  /* ── FOOTER ── */
+  .footer-note {
+    margin-top:48px; border-top:1px solid var(--border); padding-top:14px;
+    width:100%; max-width:1280px;
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim);
+  }
+  .footer-tags { display:flex; gap:6px; flex-wrap:wrap; }
+  .footer-tag { font-size:calc(9.5px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 9px; border-radius:20px; background:var(--surface); }
+
+  /* ── SIZE PICKER ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.3); white-space:nowrap; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── LEGEND STRIP ── */
+  .legend-strip {
+    position:fixed; bottom:0; left:0; right:0; z-index:900;
+    background:rgba(15,17,23,0.97);
+    border-top:1px solid rgba(255,255,255,0.09);
+    backdrop-filter:blur(12px);
+    transition:transform .25s ease;
+    box-shadow: 0 -4px 24px rgba(0,0,0,.4);
+  }
+  .legend-strip.legend-collapsed { transform:translateY(calc(100% - 28px)); }
+  .legend-inner {
+    display:grid;
+    grid-template-columns: max-content 1fr;
+    row-gap:4px;
+    padding:7px 52px 7px 20px; max-width:1400px; margin:0 auto;
+  }
+  .legend-row { display:contents; }
+  .legend-group-label {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:2px;
+    text-transform:uppercase; color:var(--text-dim); white-space:nowrap;
+    padding-right:16px; align-self:center;
+  }
+  .legend-items {
+    display:flex; align-items:center; gap:8px;
+  }
+  .legend-item {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; color:var(--text-secondary); white-space:nowrap;
+    cursor:default;
+  }
+  .legend-item-label { font-size:11px; color:var(--text-secondary); }
+  .legend-pill {
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700;
+    padding:2px 7px; border-radius:3px; flex-shrink:0;
+    position:relative; cursor:default;
+  }
+  /* tooltip */
+  .legend-pill[data-tip]::after {
+    content: attr(data-tip);
+    position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%);
+    background:#1E2333; border:1px solid rgba(255,255,255,.12);
+    color:var(--text-secondary); font-size:10px; font-weight:400;
+    font-family:'Inter',sans-serif; letter-spacing:0;
+    white-space:nowrap; padding:5px 10px; border-radius:6px;
+    pointer-events:none; opacity:0; transition:opacity .15s;
+    box-shadow:0 4px 16px rgba(0,0,0,.5);
+  }
+  .legend-pill[data-tip]:hover::after { opacity:1; }
+  .legend-pill.r0  { background:rgba(52,211,153,.12);  color:#34D399; border:1px solid rgba(52,211,153,.25); }
+  .legend-pill.r1  { background:rgba(250,204,21,.10);  color:#FACC15; border:1px solid rgba(250,204,21,.22); }
+  .legend-pill.r2  { background:rgba(251,146,60,.10);  color:#FB923C; border:1px solid rgba(251,146,60,.22); }
+  .legend-pill.r3  { background:rgba(248,113,113,.10); color:#F87171; border:1px solid rgba(248,113,113,.22); }
+  .legend-pill.inv { background:rgba(103,232,249,.08); color:#67E8F9; border:1px solid rgba(103,232,249,.2); }
+  .legend-close {
+    position:absolute; top:0; right:16px;
+    background:none; border:none; cursor:pointer;
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
+    padding:6px 8px; line-height:1;
+    display:flex; align-items:center; gap:4px;
+    transition:color .15s;
+  }
+  .legend-close:hover { color:var(--text-secondary); }
+  .legend-close-icon { display:inline-block; transition:transform .25s ease; font-size:13px; }
+  .legend-strip.legend-collapsed .legend-close-icon { transform:rotate(180deg); }
+  .legend-strip.legend-collapsed .legend-close::before {
+    content:'Reference'; font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s" onclick="setSize(0.85)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.15)">M</button>
+  <button class="sz-btn" id="sz-l" onclick="setSize(1.3)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.5)">XL</button>
+</div>
+<script>
+var sizes={0.85:'sz-s',1.15:'sz-m',1.3:'sz-l',1.5:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.15);
+</script>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="eyebrow">UKI Enterprise AI Platform · Capability Operations</div>
+  <div class="page-title">Request <span class="page-title-accent">Trace</span></div>
+  <div class="page-subtitle">What happens on every Execution of a Published Capability Definition. Five stops — mandatory on every call regardless of Risk Tier. Agent Runtime (stop 3) orchestrates the Reasoning scope ReAct loop; stop 4 may execute multiple times before inference.</div>
+</div>
+
+<div class="canvas">
+
+  <div class="node-row">
+
+    <div class="node-col">
+      <div class="node-wrap">
+        <div class="stop-node" style="--stop-color:#60A5FA;--stop-bg:rgba(96,165,250,.1);--stop-glow:rgba(96,165,250,.2)">🌐<span class="stop-number">1</span></div>
+        <div class="stop-label" style="color:#60A5FA">LLM Gateway</div>
+        <div class="stop-sublabel">L3 · entry / cost tag</div>
+      </div>
+    </div>
+
+    <div class="arrow-between">
+      <div class="arrow-line" style="--from-color:#60A5FA;--to-color:#F87171"></div>
+      <div class="arrow-token">Tagged<br>prompt</div>
+    </div>
+
+    <div class="node-col">
+      <div class="node-wrap">
+        <div class="stop-node" style="--stop-color:#F87171;--stop-bg:rgba(248,113,113,.1);--stop-glow:rgba(248,113,113,.15)">🛡️<span class="stop-number">2</span></div>
+        <div class="stop-label" style="color:#F87171">Guardrails Service</div>
+        <div class="stop-sublabel">L3 · input + output wrap</div>
+      </div>
+    </div>
+
+    <div class="arrow-between">
+      <div class="arrow-line" style="--from-color:#F87171;--to-color:#34D399"></div>
+      <div class="arrow-token">Clean<br>prompt</div>
+    </div>
+
+    <div class="node-col">
+      <div class="node-wrap">
+        <div class="stop-node" style="--stop-color:#34D399;--stop-bg:rgba(52,211,153,.1);--stop-glow:rgba(52,211,153,.15)">⚙️<span class="stop-number">3</span></div>
+        <div class="stop-label" style="color:#34D399">Agent Runtime</div>
+        <div class="stop-sublabel">L3 · AgentCore · ReAct loop</div>
+      </div>
+    </div>
+
+    <div class="arrow-between">
+      <div class="arrow-line" style="--from-color:#34D399;--to-color:#A78BFA"></div>
+      <div class="arrow-token">RAG / tool<br>call</div>
+    </div>
+
+    <div class="node-col">
+      <div class="node-wrap">
+        <div class="stop-node" style="--stop-color:#A78BFA;--stop-bg:rgba(167,139,250,.1);--stop-glow:rgba(167,139,250,.15)">🔍<span class="stop-number">4</span></div>
+        <div class="stop-label" style="color:#A78BFA">Context &amp; Tools</div>
+        <div class="stop-sublabel">L3 RAG · L3 MCP</div>
+      </div>
+    </div>
+
+    <div class="arrow-between">
+      <div class="arrow-line" style="--from-color:#A78BFA;--to-color:#FACC15"></div>
+      <div class="arrow-token">Assembled<br>context</div>
+    </div>
+
+    <div class="node-col">
+      <div class="node-wrap">
+        <div class="stop-node" style="--stop-color:#FACC15;--stop-bg:rgba(250,204,21,.1);--stop-glow:rgba(250,204,21,.15)">🤖<span class="stop-number">5</span></div>
+        <div class="stop-label" style="color:#FACC15">LLM Inference</div>
+        <div class="stop-sublabel">External · LiteLLM routed</div>
+      </div>
+    </div>
+
+  </div><!-- /node-row -->
+
+  <!-- ── DETAIL CARDS ── -->
+  <div class="detail-row">
+
+    <!-- STOP 1 -->
+    <div class="detail-card" style="--stop-color:#60A5FA">
+      <div class="detail-title">LLM Gateway — mandatory entry point</div>
+      <ul class="detail-points">
+        <li><strong>Non-bypassable</strong> — all model calls route through LiteLLM; SCP denies direct provider API calls from L4</li>
+        <li><strong>LiteLLM routes</strong> to configured provider — Bedrock, Azure OpenAI, or Gemini — based on tenant config and model permissions</li>
+        <li><strong>Tenant quota</strong> checked — burst and sustained rate limits; circuit breaker state read</li>
+        <li>Request <strong>tagged</strong>: tenant_id, brand, agent_id, session_id — cost record opened; prompt cache checked</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Request at this point</div>
+        <div class="token-value">Tagged · quota checked<br>Cache checked · cost record opened</div>
+      </div>
+    </div>
+
+    <div class="detail-spacer"></div>
+
+    <!-- STOP 2 -->
+    <div class="detail-card" style="--stop-color:#F87171">
+      <div class="detail-title">Guardrails Service — enforces Safety Envelope</div>
+      <div class="card-section-label" style="color:#F87171">— INPUT —</div>
+      <ul class="detail-points">
+        <li>Enforces the <strong>Safety Envelope</strong> version locked to this Capability Definition at publish (I6) — permitted content scope, PII handling, denied topics</li>
+        <li><strong>PII detection</strong> — names, NI, bank details redacted or blocked before the prompt reaches the model; never logged in plaintext</li>
+        <li><strong>Prompt injection / jailbreak</strong> patterns scanned — Bedrock Guardrails native detection</li>
+        <li><strong>Denied topics</strong> per tenant config — RG triggers, jurisdiction content; blocked inputs return 400 + trace ID</li>
+      </ul>
+      <div class="card-section-divider"></div>
+      <div class="card-section-label" style="color:#F87171">— OUTPUT —</div>
+      <ul class="detail-points">
+        <li><strong>DLP scan</strong> — no credentials, keys, or PII in response. Coverage varies by provider: Bedrock Guardrails native; LiteLLM callback guardrails for Azure OpenAI and Gemini routes</li>
+        <li>Response <strong>streamed with citations</strong>; modifications logged as-modified in Audit Record</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Audit Record written here (I5)</div>
+        <div class="token-value">SHA-256 · Safety Envelope version · guardrail traces<br>All MCP calls · cost · Risk Tier in effect<br>R0/R1: fail-open · R2/R3: fail-closed · R3: write-ahead</div>
+      </div>
+    </div>
+
+    <div class="detail-spacer"></div>
+
+    <!-- STOP 3 -->
+    <div class="detail-card" style="--stop-color:#34D399">
+      <div class="detail-title">Agent Runtime (AgentCore) — Reasoning scope</div>
+      <ul class="detail-points">
+        <li>Loads <strong>Published Capability Definition</strong> from Capability Registry — immutable system prompt, tool bindings, Safety Envelope version, Execution Model, Risk Tier</li>
+        <li><strong>ReAct loop</strong> — LLM reasons over the request, selects whether to retrieve context (RAG) or call a tool (MCP), observes the result, and repeats until ready to respond</li>
+        <li>ABAC session tags (tenant_id, brand, permission_scopes) from <strong>Okta → IAM Identity Center → STS session</strong> propagate to all downstream calls — agent cannot override</li>
+        <li>Credentials injected at runtime by <strong>Secrets Manager</strong> — never present in the agent definition or environment variables</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Available to the loop</div>
+        <div class="token-value">capability_id · version · Safety Envelope<br>ABAC Identity Context · injected secrets</div>
+      </div>
+    </div>
+
+    <div class="detail-spacer"></div>
+
+    <!-- STOP 4 -->
+    <div class="detail-card" style="--stop-color:#A78BFA">
+      <div class="detail-title">Context &amp; Tools — two distinct paths</div>
+      <div class="card-section-label" style="color:#A78BFA">— RAG Services · L3 —</div>
+      <ul class="detail-points">
+        <li>tenant_id filter <strong>injected by platform</strong> at query time — cross-tenant retrieval structurally impossible</li>
+        <li><strong>Hybrid kNN + BM25</strong> against Bedrock KB, reranked; chunks carry source URI and data classification label</li>
+        <li>Retrieves from <strong>pre-ingested knowledge</strong> — documents synced by background ingestion pipelines, not fetched live</li>
+      </ul>
+      <div class="card-section-divider"></div>
+      <div class="card-section-label" style="color:#FB923C">— Operational Connectors · L3 —</div>
+      <ul class="detail-points">
+        <li><strong>Live REST / GraphQL / MCP calls</strong> at execution time — Jira, Confluence, GitHub, ServiceNow and other internal systems. Result returned in ReAct loop, nothing persisted</li>
+        <li><strong>RFC 8693 token exchange</strong> — IAM session traded for scoped OAuth token per target system; TTL 15 min, never reused, user identity does not reach the external system</li>
+        <li>All calls transit via <strong>AWS PrivateLink</strong> — no public internet egress from agents</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Assembled context</div>
+        <div class="token-value">RAG chunks · citations · ACL-filtered<br>Tool results · scoped tokens consumed<br>User identity not forwarded</div>
+      </div>
+    </div>
+
+    <div class="detail-spacer"></div>
+
+    <!-- STOP 5 -->
+    <div class="detail-card" style="--stop-color:#FACC15">
+      <div class="detail-title">LLM Inference — LiteLLM routed</div>
+      <ul class="detail-points">
+        <li>Assembled context — system prompt, RAG chunks, tool results — submitted via <strong>LiteLLM to selected provider</strong> (Bedrock, Azure OpenAI, or Gemini) with streaming</li>
+        <li><strong>Provider selected at runtime</strong> by LiteLLM — tenant permitted model list, availability, and cost policy determine routing. Provider is a runtime variable, not a deployment decision</li>
+        <li>Where Bedrock: per-tenant <strong>guardrail_id</strong> and cross-region inference profile applied. Where Azure OpenAI or Gemini: <strong>LiteLLM callback guardrails</strong> apply — coverage equivalence is a pending design point</li>
+        <li>Token cost attributed to <strong>tenant / agent / session</strong> — circuit breaker updated; hard stop enforced at budget limit</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Response path</div>
+        <div class="token-value">Streamed response → stop 2 output eval<br>→ citations attached → caller</div>
+      </div>
+    </div>
+
+  </div><!-- /detail-row -->
+
+  <!-- LOOP NOTE -->
+  <div class="loop-note">
+    <div class="loop-icon">🔄</div>
+    <div class="loop-text">Guardrails Service (stop 2) enforces the Safety Envelope (I6) on input before stop 3 and on output after stop 5, closing the Audit Record (I5). The Audit Record semantics vary by Risk Tier — fail-open for R0/R1, fail-closed for R2/R3, write-ahead before state-changing tool calls at R3. Agent Runtime (stop 3) orchestrates the Reasoning scope ReAct loop — the Identity Context (I3) propagates through every tool call at stop 4.</div>
+  </div>
+
+  <!-- ── NODE STRIP ── -->
+
+
+</div><!-- /canvas -->
+
+<!-- ── LEGEND STRIP ── -->
+<div class="legend-strip" id="legend-strip">
+  <div class="legend-inner">
+    <div class="legend-row">
+      <span class="legend-group-label">Risk Tiers</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill r0" data-tip="Informational — read-only, no customer data">R0</span><span class="legend-item-label">Informational</span></span>
+        <span class="legend-item"><span class="legend-pill r1" data-tip="Operational Write — internal systems, no customer PII">R1</span><span class="legend-item-label">Operational Write</span></span>
+        <span class="legend-item"><span class="legend-pill r2" data-tip="Customer-adjacent — customer data in scope">R2</span><span class="legend-item-label">Customer-adjacent</span></span>
+        <span class="legend-item"><span class="legend-pill r3" data-tip="Regulated / Financial — compliance-grade, write-ahead audit">R3</span><span class="legend-item-label">Regulated / Financial</span></span>
+      </div>
+    </div>
+    <div class="legend-row">
+      <span class="legend-group-label">Invariants cited</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Identity Context propagates to every downstream call — cannot be stripped or spoofed">I3</span><span class="legend-item-label">Identity Context propagation</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Audit Record written synchronously on every Execution — fail-open R0/R1, fail-closed R2/R3, write-ahead R3">I5</span><span class="legend-item-label">Audit Record — every Execution</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Safety Envelope immutable on publish — no runtime override possible (I6)">I6</span><span class="legend-item-label">Safety Envelope immutable on publish</span></span>
+      </div>
+    </div>
+  </div>
+  <button class="legend-close" onclick="document.getElementById('legend-strip').classList.toggle('legend-collapsed')" title="Toggle legend">
+    <span class="legend-close-icon">⌃</span>
+  </button>
+</div>
+
+<!-- FOOTER -->
+<div class="footer-note">
+  <span>UKI Enterprise AI Platform · Request Trace · v10 · INTERNAL</span>
+  <div class="footer-tags">
+    <span class="footer-tag">LiteLLM</span>
+    <span class="footer-tag">AgentCore</span>
+    <span class="footer-tag">RFC 8693</span>
+    <span class="footer-tag">S3 Object Lock</span>
+    <span class="footer-tag">ReAct</span>
+    <span class="footer-tag">PrivateLink</span>
+  </div>
+</div>
+
+</body>
+</html>

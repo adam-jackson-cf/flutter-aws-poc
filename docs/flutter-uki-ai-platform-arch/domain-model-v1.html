@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UKI Enterprise AI Platform · Domain Model</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0F1117;
+    --surface:  #181C27;
+    --surface2: #1E2333;
+
+    --text-primary:   #F0F4FF;
+    --text-secondary: #9BA5BE;
+    --text-dim:       #4A5270;
+    --border:         rgba(255,255,255,0.07);
+    --border-faint:   rgba(255,255,255,0.04);
+
+    /* entity accent colours */
+    --e-capdef:   #34D399;
+    --e-exec:     #60A5FA;
+    --e-safety:   #FB923C;
+    --e-risk:     #F87171;
+    --e-execm:    #67E8F9;
+    --e-identity: #A78BFA;
+    --e-audit:    #FACC15;
+    --e-workflow: #C084FC;
+    --e-inv:      #F87171;
+
+    --fs: 1.15;
+  }
+
+  body { font-family:'Inter',sans-serif; background:var(--bg); min-height:100vh; display:flex; justify-content:center; align-items:flex-start; padding:32px 32px 80px; }
+  .canvas { width:100%; max-width:1400px; }
+
+  /* ── HEADER ── */
+  .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:36px; padding-right:180px; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); color:var(--text-dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+  .title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; color:var(--text-primary); letter-spacing:-0.5px; line-height:1; }
+  .title-accent { background:linear-gradient(90deg,#60A5FA,#A78BFA); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; }
+  .badge { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:4px 10px; border-radius:20px; background:var(--surface); white-space:nowrap; }
+
+  /* ── SECTION HEADERS ── */
+  .section { margin-bottom:40px; }
+  .section-eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); letter-spacing:2.5px; text-transform:uppercase; color:var(--text-dim); padding:3px 10px; border:1px solid var(--border); border-radius:20px; background:var(--surface); display:inline-block; margin-bottom:12px; }
+  .section-title { font-family:'Syne',sans-serif; font-size:calc(18px * var(--fs)); font-weight:700; color:var(--text-primary); margin-bottom:6px; }
+  .section-desc { font-size:calc(11px * var(--fs)); color:var(--text-secondary); line-height:1.6; max-width:780px; margin-bottom:20px; }
+
+  /* ── ENTITY DIAGRAM — TWO ZONES ── */
+  .dm-diagram { display:grid; grid-template-columns:1fr 72px 1fr; gap:0; align-items:start; margin-bottom:8px; }
+
+  .dm-zone { border-radius:14px; padding:16px 18px; }
+  .dm-zone-dt { background:rgba(52,211,153,.025); border:1px solid rgba(52,211,153,.2); }
+  .dm-zone-rt { background:rgba(96,165,250,.025);  border:1px solid rgba(96,165,250,.2); }
+  .dm-zone-header { margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,.06); }
+  .dm-zone-label { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); font-weight:600; letter-spacing:2px; text-transform:uppercase; }
+  .dm-zone-dt .dm-zone-label { color:var(--e-capdef); opacity:.7; }
+  .dm-zone-rt .dm-zone-label { color:var(--e-exec); opacity:.7; }
+  .dm-zone-note { font-size:calc(9px * var(--fs)); color:var(--text-dim); margin-top:3px; line-height:1.4; }
+
+  /* ── ENTITY CARD ── */
+  .dm-entity { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:8px; }
+  .dm-entity:last-child { margin-bottom:0; }
+  .dm-entity-accent { display:block; height:2px; border-radius:2px; margin-bottom:9px; }
+  .dm-entity-tag { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; padding:2px 8px; border-radius:3px; width:fit-content; margin-bottom:6px; }
+  .dm-entity-name { font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:700; margin-bottom:5px; line-height:1.2; }
+  .dm-entity-desc { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.55; }
+
+  /* entity colour application */
+  .e-capdef .dm-entity-accent   { background:var(--e-capdef); }
+  .e-exec   .dm-entity-accent   { background:var(--e-exec); }
+  .e-safety .dm-entity-accent   { background:var(--e-safety); }
+  .e-risk   .dm-entity-accent   { background:var(--e-risk); }
+  .e-execm  .dm-entity-accent   { background:var(--e-execm); }
+  .e-identity .dm-entity-accent { background:var(--e-identity); }
+  .e-audit  .dm-entity-accent   { background:var(--e-audit); }
+  .e-workflow .dm-entity-accent { background:var(--e-workflow); }
+
+  .e-capdef .dm-entity-name   { color:var(--e-capdef); }
+  .e-exec   .dm-entity-name   { color:var(--e-exec); }
+  .e-safety .dm-entity-name   { color:var(--e-safety); }
+  .e-risk   .dm-entity-name   { color:var(--e-risk); }
+  .e-execm  .dm-entity-name   { color:var(--e-execm); }
+  .e-identity .dm-entity-name { color:var(--e-identity); }
+  .e-audit  .dm-entity-name   { color:var(--e-audit); }
+  .e-workflow .dm-entity-name { color:var(--e-workflow); }
+
+  .e-capdef .dm-entity-tag { background:rgba(52,211,153,.12);  color:var(--e-capdef);   border:1px solid rgba(52,211,153,.2); }
+  .e-exec   .dm-entity-tag { background:rgba(96,165,250,.12);  color:var(--e-exec);     border:1px solid rgba(96,165,250,.2); }
+
+  /* ── CAPABILITY DEFINITION FIELDS ── */
+  .dm-fields { display:flex; flex-wrap:wrap; gap:4px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,.05); }
+  .dm-field { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); padding:3px 10px; border-radius:5px; background:var(--surface2); border:1px solid rgba(52,211,153,.15); display:flex; align-items:center; gap:6px; }
+  .dm-field-name { color:var(--text-primary); font-weight:500; }
+  .dm-field-desc { color:var(--text-secondary); font-size:calc(8px * var(--fs)); }
+  .dm-field-gov { border-color:rgba(248,113,113,.28); background:rgba(248,113,113,.05); }
+  .dm-field-gov .dm-field-name { color:#FCA5A5; }
+
+  /* ── SUB-ENTITY GRID ── */
+  .dm-sub-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:8px; }
+  .dm-sub-grid .dm-entity { margin-bottom:0; }
+
+  /* ── TRANSITION COLUMN ── */
+  .dm-transition { display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:60px; gap:8px; }
+  .dm-trans-line { width:1px; height:32px; background:linear-gradient(180deg,rgba(52,211,153,.5),rgba(96,165,250,.5)); }
+  .dm-trans-arrow { font-size:calc(18px * var(--fs)); color:var(--text-dim); line-height:1; }
+  .dm-trans-label { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); text-align:center; line-height:1.3; }
+  .dm-trans-note { font-size:calc(8.5px * var(--fs)); color:var(--text-dim); text-align:center; line-height:1.4; max-width:62px; opacity:.7; }
+
+  /* ── INVARIANTS ── */
+  .inv-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .invariant { background:rgba(248,113,113,.04); border:1px solid rgba(248,113,113,.15); border-radius:10px; padding:12px 14px; display:flex; gap:12px; align-items:flex-start; }
+  .inv-num { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); font-weight:700; color:var(--e-inv); flex-shrink:0; opacity:.85; line-height:1.2; }
+  .inv-body {}
+  .inv-title { font-family:'Syne',sans-serif; font-size:calc(11px * var(--fs)); font-weight:700; color:var(--text-primary); margin-bottom:4px; }
+  .inv-text { font-size:calc(9.5px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+  .inv-text strong { color:var(--text-primary); font-weight:500; }
+  .inv-enforcement { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:var(--e-inv); opacity:.6; margin-top:5px; }
+
+  /* ── RISK TIER MATRIX ── */
+  .risk-matrix { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .risk-tier { border-radius:12px; padding:14px 16px; border:1px solid; }
+  .risk-r0 { background:rgba(52,211,153,.03);  border-color:rgba(52,211,153,.2); }
+  .risk-r1 { background:rgba(250,204,21,.03);  border-color:rgba(250,204,21,.2); }
+  .risk-r2 { background:rgba(251,146,60,.03);  border-color:rgba(251,146,60,.2); }
+  .risk-r3 { background:rgba(248,113,113,.04); border-color:rgba(248,113,113,.25); }
+  .risk-tier-badge { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700; padding:3px 10px; border-radius:4px; width:fit-content; margin-bottom:8px; }
+  .risk-r0 .risk-tier-badge { background:rgba(52,211,153,.15);  color:#34D399; }
+  .risk-r1 .risk-tier-badge { background:rgba(250,204,21,.15);  color:#FACC15; }
+  .risk-r2 .risk-tier-badge { background:rgba(251,146,60,.15);  color:#FB923C; }
+  .risk-r3 .risk-tier-badge { background:rgba(248,113,113,.15); color:#F87171; }
+  .risk-tier-name { font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:700; color:var(--text-primary); margin-bottom:6px; }
+  .risk-tier-def { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.55; margin-bottom:12px; }
+  .risk-props { display:flex; flex-direction:column; gap:4px; }
+  .risk-prop { display:flex; flex-direction:column; gap:1px; }
+  .risk-prop-label { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim); }
+  .risk-prop-value { font-size:calc(9.5px * var(--fs)); color:var(--text-secondary); line-height:1.4; }
+  .risk-prop-value.alert { color:#F87171; }
+  .risk-prop-value.ok    { color:#34D399; }
+  .risk-structural-note { font-size:calc(9px * var(--fs)); color:var(--text-dim); line-height:1.5; margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,.05); font-style:italic; }
+
+  /* ── EXECUTION MODEL ── */
+  .execm-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .execm-scope { border-radius:12px; padding:14px 16px; border:1px solid; }
+  .execm-reasoning { background:rgba(52,211,153,.03);  border-color:rgba(52,211,153,.2); }
+  .execm-coord     { background:rgba(192,132,252,.03); border-color:rgba(192,132,252,.2); }
+  .execm-process   { background:rgba(103,232,249,.03); border-color:rgba(103,232,249,.2); }
+  .execm-badge { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700; padding:3px 10px; border-radius:4px; width:fit-content; margin-bottom:8px; }
+  .execm-reasoning .execm-badge { background:rgba(52,211,153,.15);  color:#34D399; }
+  .execm-coord     .execm-badge { background:rgba(192,132,252,.15); color:#C084FC; }
+  .execm-process   .execm-badge { background:rgba(103,232,249,.15); color:#67E8F9; }
+  .execm-name { font-family:'Syne',sans-serif; font-size:calc(14px * var(--fs)); font-weight:700; color:var(--text-primary); margin-bottom:6px; }
+  .execm-desc { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.55; margin-bottom:10px; }
+  .execm-impl { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); color:var(--text-dim); line-height:1.6; }
+  .execm-impl strong { color:var(--text-secondary); font-weight:500; }
+  .execm-mandatory { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); padding:2px 8px; border-radius:3px; margin-top:8px; }
+  .execm-reasoning .execm-mandatory { background:rgba(52,211,153,.12); color:#34D399; border:1px solid rgba(52,211,153,.2); }
+  .execm-coord     .execm-mandatory { background:rgba(192,132,252,.1);  color:#C084FC; border:1px solid rgba(192,132,252,.2); }
+  .execm-process   .execm-mandatory { background:rgba(103,232,249,.1);  color:#67E8F9; border:1px solid rgba(103,232,249,.2); }
+
+  /* ── SIZE PICKER ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.3); white-space:nowrap; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── DIVIDER ── */
+  .section-divider { height:1px; background:var(--border); margin:36px 0; }
+
+  /* ── FOOTER ── */
+  .footer { margin-top:40px; padding-top:14px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .footer-note { font-size:calc(10px * var(--fs)); color:var(--text-dim); font-family:'JetBrains Mono',monospace; }
+  .footer-link { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:rgba(96,165,250,.5); text-decoration:none; }
+  .footer-link:hover { color:rgba(96,165,250,.8); }
+
+  /* ── ANIMATIONS ── */
+  .section { opacity:0; transform:translateY(10px); animation:up .35s ease forwards; }
+  .section:nth-child(1){ animation-delay:.04s; }
+  .section:nth-child(2){ animation-delay:.10s; }
+  .section:nth-child(3){ animation-delay:.17s; }
+  .section:nth-child(4){ animation-delay:.24s; }
+  .section:nth-child(5){ animation-delay:.30s; }
+  @keyframes up { to { opacity:1; transform:translateY(0); } }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s"  onclick="setSize(0.85)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.15)">M</button>
+  <button class="sz-btn" id="sz-l"  onclick="setSize(1.3)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.5)">XL</button>
+</div>
+<script>
+var sizes={0.85:'sz-s',1.15:'sz-m',1.3:'sz-l',1.5:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.15);
+</script>
+
+<div class="canvas">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <div class="eyebrow">UKI Enterprise AI Platform · Domain Model</div>
+      <div class="title">Platform <span class="title-accent">Domain Model</span></div>
+      <div class="subtitle">Core entities · Invariants · Risk Tiers · Execution Model scopes</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       1. CORE ENTITIES
+       ═══════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-eyebrow">Core Entities</div>
+    <div class="section-title">The Ubiquitous Language</div>
+    <div class="section-desc">Eight entities that every layer of the platform implements. Components are answers to the questions these entities define. When a component's purpose is unclear, the answer is found here.</div>
+
+    <div class="dm-diagram">
+
+      <!-- DESIGN-TIME ZONE -->
+      <div class="dm-zone dm-zone-dt">
+        <div class="dm-zone-header">
+          <div class="dm-zone-label">Design-time</div>
+          <div class="dm-zone-note">what teams produce · what the Registry governs</div>
+        </div>
+
+        <div class="dm-entity e-capdef">
+          <span class="dm-entity-accent"></span>
+          <div class="dm-entity-tag">Central Artefact</div>
+          <div class="dm-entity-name">Capability Definition</div>
+          <div class="dm-entity-desc">The immutable, versioned specification of an AI capability. Every authoring path — IDE, Langflow, Guided Assembly, Workflow Studio — produces exactly one. Once Published, no field changes; a new version is created. All governance is a function of this artefact. The Registry stores and enforces it. The Execution is a runtime instance of it.</div>
+          <div class="dm-fields">
+            <div class="dm-field"><span class="dm-field-name">System Prompt</span><span class="dm-field-desc">versioned · immutable on publish</span></div>
+            <div class="dm-field"><span class="dm-field-name">Tool Bindings</span><span class="dm-field-desc">schema-validated · ABAC-filtered</span></div>
+            <div class="dm-field"><span class="dm-field-name">RAG Source</span><span class="dm-field-desc">KB ARN + tenant filter</span></div>
+            <div class="dm-field"><span class="dm-field-name">Model Selection</span><span class="dm-field-desc">per-tenant permitted list</span></div>
+            <div class="dm-field"><span class="dm-field-name">Lifecycle State</span><span class="dm-field-desc">Draft → Review → Published → Deprecated</span></div>
+            <div class="dm-field dm-field-gov"><span class="dm-field-name">Safety Envelope</span><span class="dm-field-desc">versioned · evaluated at publish · I2 / I6</span></div>
+            <div class="dm-field dm-field-gov"><span class="dm-field-name">Risk Tier</span><span class="dm-field-desc">R0–R3 · declared · drives governance · I2 / I4</span></div>
+            <div class="dm-field dm-field-gov"><span class="dm-field-name">Execution Model</span><span class="dm-field-desc">Reasoning · Coordination · Process — declared scopes</span></div>
+          </div>
+        </div>
+
+        <div class="dm-sub-grid">
+          <div class="dm-entity e-safety">
+            <span class="dm-entity-accent"></span>
+            <div class="dm-entity-name">Safety Envelope</div>
+            <div class="dm-entity-desc">Versioned, provider-agnostic policy attached to a Capability Definition. Declares permitted content scope, PII handling posture, prompt injection controls, output constraints. Evaluated at publish time and immutable on the published version. The Guardrails Service is its runtime enforcement mechanism — the Envelope is the declared intent, Guardrails is the mechanism. A wrong Guardrails configuration is a platform fault; a wrong Safety Envelope is a governance failure.</div>
+          </div>
+          <div class="dm-entity e-risk">
+            <span class="dm-entity-accent"></span>
+            <div class="dm-entity-name">Risk Tier</div>
+            <div class="dm-entity-desc">Classification of what a Capability is permitted to affect. Declared at definition time, validated by the Registry at publish. Drives proportionality across the entire governance stack: evaluation rigour, HITL threshold, audit retention period, Workflow Contract requirement, fail-open vs fail-closed audit semantics. R0 is structurally enforced — the Registry inspects Tool Bindings. R1–R3 are declared by the team and validated through evaluation.</div>
+          </div>
+          <div class="dm-entity e-execm">
+            <span class="dm-entity-accent"></span>
+            <div class="dm-entity-name">Execution Model</div>
+            <div class="dm-entity-desc">A declared field on the Capability Definition — not an implementation choice made at build time and hidden in code. Three composable scopes: <strong style="color:#34D399">Reasoning</strong> (always present, platform standard), <strong style="color:#C084FC">Coordination</strong> (how this Capability delegates to others), <strong style="color:#67E8F9">Process</strong> (durable execution across invocations — mandatory for R2/R3). The Registry can reason about execution model because it's declared, not inferred.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PUBLISH TRANSITION -->
+      <div class="dm-transition">
+        <div class="dm-trans-line"></div>
+        <div class="dm-trans-arrow">→</div>
+        <div class="dm-trans-label">publish</div>
+        <div class="dm-trans-note">Registry validates I1–I6 before state transition</div>
+      </div>
+
+      <!-- RUNTIME ZONE -->
+      <div class="dm-zone dm-zone-rt">
+        <div class="dm-zone-header">
+          <div class="dm-zone-label">Runtime</div>
+          <div class="dm-zone-note">what the platform produces · what the platform is accountable for</div>
+        </div>
+
+        <div class="dm-entity e-exec">
+          <span class="dm-entity-accent"></span>
+          <div class="dm-entity-tag">Runtime Instance</div>
+          <div class="dm-entity-name">Execution</div>
+          <div class="dm-entity-desc">A runtime instance of a Published Capability Definition processing a single request. Traces exactly to one Definition version, one Identity Context, and produces one Audit Record. Cannot exist without all three. R2/R3 Executions additionally trace to a Workflow Contract. An Execution is the atomic unit of platform accountability — every governance claim the platform makes is ultimately a claim about what happened in an Execution.</div>
+        </div>
+
+        <div class="dm-sub-grid">
+          <div class="dm-entity e-identity">
+            <span class="dm-entity-accent"></span>
+            <div class="dm-entity-name">Identity Context</div>
+            <div class="dm-entity-desc">The propagated security principal for an Execution. Established once at session start via OIDC → IAM session tags (tenant_id, brand, role, use-case). Immutable for the full duration of the Execution — raw user credentials stop at the Lambda Authorizer. Every tool invocation, ABAC decision, and audit record is a function of it. For delegated Executions (Capability calling Capability), subject identity stays stable; delegation claims (acting_as_capability_id, invocation_chain) are added.</div>
+          </div>
+          <div class="dm-entity e-audit">
+            <span class="dm-entity-accent"></span>
+            <div class="dm-entity-name">Audit Record</div>
+            <div class="dm-entity-desc">The immutable output of every Execution. Contains: Identity Context, Capability Definition version, Safety Envelope version in effect, Risk Tier in effect, all MCP tool calls and results, guardrail input/output traces, token counts, cost attribution. Written synchronously — not best-effort logging. Failure to write is a platform fault, not a degraded state. Retention period driven by Risk Tier. R0/R1 fail-open on audit pipeline outage. R2/R3 fail-closed — no state-changing tool calls without audit commit.</div>
+          </div>
+          <div class="dm-entity e-workflow">
+            <span class="dm-entity-accent"></span>
+            <div class="dm-entity-name">Workflow Contract</div>
+            <div class="dm-entity-desc">A formal specification required for all R2/R3 Capability Definitions. The Registry rejects R2/R3 publication without one — this is invariant I4, not a convention. Defines: correlation ID standard, idempotency requirements, compensation semantics for partial execution, ABAC enforcement at each step boundary, replay guarantees. May be versioned and owned independently by a compliance or process design function, then referenced by Capability Definitions.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════════════════════════════════════════════
+       2. PLATFORM INVARIANTS
+       ═══════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-eyebrow">Invariants</div>
+    <div class="section-title">What Must Hold Unconditionally</div>
+    <div class="section-desc">Six rules enforced by the platform, not aspirationally observed. They are what make governance provable rather than claimed. Each maps to a specific enforcement point in the architecture.</div>
+
+    <div class="inv-grid">
+      <div class="invariant">
+        <div class="inv-num">I1</div>
+        <div class="inv-body">
+          <div class="inv-title">No Execution without a Published Definition</div>
+          <div class="inv-text">Draft or Review-state Capability Definitions cannot execute in production. The Agent Runtime checks lifecycle state before accepting an invocation request.</div>
+          <div class="inv-enforcement">Enforced by: Agent Runtime · Capability Registry</div>
+        </div>
+      </div>
+      <div class="invariant">
+        <div class="inv-num">I2</div>
+        <div class="inv-body">
+          <div class="inv-title">No publish without Safety Envelope and Risk Tier</div>
+          <div class="inv-text">A Capability Definition cannot transition to Published without a validated <strong>Safety Envelope</strong> and a declared <strong>Risk Tier</strong>. The Registry rejects the state transition.</div>
+          <div class="inv-enforcement">Enforced by: Capability Registry publish API</div>
+        </div>
+      </div>
+      <div class="invariant">
+        <div class="inv-num">I3</div>
+        <div class="inv-body">
+          <div class="inv-title">No tool invocation outside Identity Context</div>
+          <div class="inv-text">Every tool call must occur within the scope of the <strong>Identity Context</strong> established at session start. RFC 8693 token exchange enforces this at every MCP boundary.</div>
+          <div class="inv-enforcement">Enforced by: MCP Tool Gateway · RFC 8693</div>
+        </div>
+      </div>
+      <div class="invariant">
+        <div class="inv-num">I4</div>
+        <div class="inv-body">
+          <div class="inv-title">R2/R3 requires a Workflow Contract</div>
+          <div class="inv-text">Every R2 or R3 Capability Definition must declare a <strong>Workflow Contract</strong>. The Registry rejects publication without one. R0/R1 are exempt.</div>
+          <div class="inv-enforcement">Enforced by: Capability Registry publish API</div>
+        </div>
+      </div>
+      <div class="invariant">
+        <div class="inv-num">I5</div>
+        <div class="inv-body">
+          <div class="inv-title">Every Execution produces an Audit Record</div>
+          <div class="inv-text">The <strong>Audit Record</strong> is synchronous to the Execution — not best-effort background logging. R2/R3: write-ahead before state-changing tool calls. R0/R1: fail-open with alerting.</div>
+          <div class="inv-enforcement">Enforced by: Audit &amp; Compliance service</div>
+        </div>
+      </div>
+      <div class="invariant">
+        <div class="inv-num">I6</div>
+        <div class="inv-body">
+          <div class="inv-title">Safety Envelope is immutable on publish</div>
+          <div class="inv-text">The <strong>Safety Envelope</strong> is evaluated at publish time and cannot be modified on a published version. Guardrails enforce it at runtime but cannot change it. Changes require a new version.</div>
+          <div class="inv-enforcement">Enforced by: Capability Registry · Guardrails Service</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════════════════════════════════════════════
+       3. RISK TIER MATRIX
+       ═══════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-eyebrow">Risk Tier</div>
+    <div class="section-title">Governance Proportionality</div>
+    <div class="section-desc">Risk Tier is the governance driver. Every control in the platform — evaluation rigour, HITL threshold, audit retention, Workflow Contract requirement, fail-open vs fail-closed — is derived from the Risk Tier declared in the Capability Definition. The tier must be declared by the authoring team and is validated, not inferred.</div>
+
+    <div class="risk-matrix">
+
+      <div class="risk-tier risk-r0">
+        <div class="risk-tier-badge">R0</div>
+        <div class="risk-tier-name">Read-Only</div>
+        <div class="risk-tier-def">No write tool bindings. Retrieves from approved knowledge sources and returns a response. Cannot write state anywhere regardless of domain.</div>
+        <div class="risk-props">
+          <div class="risk-prop"><span class="risk-prop-label">Write permissions</span><span class="risk-prop-value ok">None — structurally enforced</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Workflow Contract</span><span class="risk-prop-value ok">Not required</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">HITL threshold</span><span class="risk-prop-value ok">Not required</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Audit retention</span><span class="risk-prop-value">Standard</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Audit pipeline outage</span><span class="risk-prop-value ok">Fail-open with alerting</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Evaluation gate</span><span class="risk-prop-value">Functional quality</span></div>
+        </div>
+        <div class="risk-structural-note">R0 is the only tier structurally enforced — the Registry inspects Tool Bindings at publish and rejects any write-capable binding. A team cannot accidentally publish an R0 Capability that writes state.</div>
+      </div>
+
+      <div class="risk-tier risk-r1">
+        <div class="risk-tier-badge">R1</div>
+        <div class="risk-tier-name">Operational Write</div>
+        <div class="risk-tier-def">Writes to internal operational systems only. Subject of every write must be non-customer. Target system must carry no regulatory reporting obligation.</div>
+        <div class="risk-props">
+          <div class="risk-prop"><span class="risk-prop-label">Write permissions</span><span class="risk-prop-value">Internal operational only</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Workflow Contract</span><span class="risk-prop-value ok">Not required</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">HITL threshold</span><span class="risk-prop-value">Optional · team-defined</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Audit retention</span><span class="risk-prop-value">Standard</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Audit pipeline outage</span><span class="risk-prop-value ok">Fail-open with alerting</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Evaluation gate</span><span class="risk-prop-value">Functional + scope confirmation</span></div>
+        </div>
+        <div class="risk-structural-note">R1 is declared, not structurally enforced. The evaluation gate must include explicit confirmation that no customer data is in scope — misclassification of R2 work as R1 should be a deliberate act, not an oversight.</div>
+      </div>
+
+      <div class="risk-tier risk-r2">
+        <div class="risk-tier-badge">R2</div>
+        <div class="risk-tier-name">Customer-Adjacent</div>
+        <div class="risk-tier-def">Writes to systems where the subject is a customer or data carries regulatory significance — account preferences, communication opt-outs, KYC flags, CRM state, RG monitoring inputs.</div>
+        <div class="risk-props">
+          <div class="risk-prop"><span class="risk-prop-label">Write permissions</span><span class="risk-prop-value">Customer-adjacent systems</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Workflow Contract</span><span class="risk-prop-value alert">Mandatory — I4</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">HITL threshold</span><span class="risk-prop-value alert">Required · threshold defined</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Audit retention</span><span class="risk-prop-value">Extended</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Audit pipeline outage</span><span class="risk-prop-value alert">Fail-closed</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Evaluation gate</span><span class="risk-prop-value">Extended suite required</span></div>
+        </div>
+        <div class="risk-structural-note">The R1→R2 boundary is the critical classification decision. Test: if this write is wrong, could a customer be harmed or a regulator ask questions? If yes, R2 minimum.</div>
+      </div>
+
+      <div class="risk-tier risk-r3">
+        <div class="risk-tier-badge">R3</div>
+        <div class="risk-tier-name">Regulated</div>
+        <div class="risk-tier-def">Writes to systems with a direct regulatory obligation — Responsible Gambling interventions, AML flags, financial transactions, regulatory disclosures. Wrong writes are reportable events.</div>
+        <div class="risk-props">
+          <div class="risk-prop"><span class="risk-prop-label">Write permissions</span><span class="risk-prop-value">Regulated systems only</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Workflow Contract</span><span class="risk-prop-value alert">Mandatory + compensation — I4</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">HITL threshold</span><span class="risk-prop-value alert">Mandatory · cannot be waived</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Audit retention</span><span class="risk-prop-value alert">Maximum · S3 Object Lock</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Audit pipeline outage</span><span class="risk-prop-value alert">Fail-closed · write-ahead</span></div>
+          <div class="risk-prop"><span class="risk-prop-label">Evaluation gate</span><span class="risk-prop-value alert">Maximum rigour</span></div>
+        </div>
+        <div class="risk-structural-note">R3 audit is write-ahead — the Audit Record is committed before any state-changing tool call executes. A failed audit write at R3 halts execution. No exception path.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════════════════════════════════════════════
+       4. EXECUTION MODEL
+       ═══════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-eyebrow">Execution Model</div>
+    <div class="section-title">Declared Scopes, Not a Framework Pick-list</div>
+    <div class="section-desc">The Execution Model is a declared field on the Capability Definition — visible to the Registry, reasoned about by governance. Three composable scopes, not three alternative frameworks. A Capability declares which scopes apply; the platform enforces the governance consequences of that declaration.</div>
+
+    <div class="execm-grid">
+
+      <div class="execm-scope execm-reasoning">
+        <div class="execm-badge">Reasoning</div>
+        <div class="execm-name">Reasoning</div>
+        <div class="execm-desc">The agent's internal ReAct loop — perceive, reason, act, observe, repeat. Every Capability uses this scope. Scoped to a single agent invocation processing a single request. The fundamental execution unit.</div>
+        <div class="execm-impl"><strong>Implementation:</strong> AWS Strands — LLM-driven tool selection and invocation. Platform standard. Not configurable away.</div>
+        <div class="execm-mandatory">Always present · platform standard</div>
+      </div>
+
+      <div class="execm-scope execm-coord">
+        <div class="execm-badge">Coordination</div>
+        <div class="execm-name">Coordination</div>
+        <div class="execm-desc">How this Capability delegates work to other Capabilities. Scoped beyond the single agent to a topology of agents. Optional — declare only when the Capability genuinely orchestrates others. Two patterns available.</div>
+        <div class="execm-impl"><strong>LLM-driven:</strong> Strands agent-as-tool — the orchestrator LLM decides dynamically which specialist to call.<br><strong>Graph-driven:</strong> LangGraph — deterministic or conditional topology defined explicitly in code.</div>
+        <div class="execm-mandatory">Optional · declare when orchestrating other Capabilities</div>
+      </div>
+
+      <div class="execm-scope execm-process">
+        <div class="execm-badge">Process</div>
+        <div class="execm-name">Process</div>
+        <div class="execm-desc">Durable execution spanning multiple agent invocations. Scoped beyond a session. Mandatory for R2/R3 — any Capability touching regulated or customer-adjacent state must be able to prove ordered, compensatable, auditable execution across invocations.</div>
+        <div class="execm-impl"><strong>Implementation:</strong> AWS Step Functions — durable state machines with defined retry, timeout, parallel, and compensation semantics. Correlation ID and idempotency enforced at the state machine level.</div>
+        <div class="execm-mandatory">Mandatory for R2/R3 · optional otherwise</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-note">Domain model is the ubiquitous language — components are answers to the questions it defines</div>
+    <a class="footer-link" href="architecture-overview-v8.html">← architecture overview</a>
+  </div>
+
+</div>
+</body>
+</html>

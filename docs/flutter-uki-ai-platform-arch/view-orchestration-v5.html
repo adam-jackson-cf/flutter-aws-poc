@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent Orchestration Patterns · UKI Enterprise AI Platform · v5</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#0F1117; --surface:#181C27; --surface2:#1E2333;
+    --text-primary:#F0F4FF; --text-secondary:#9BA5BE; --text-dim:#4A5270;
+    --border:rgba(255,255,255,0.07); --border-faint:rgba(255,255,255,0.04);
+    --scope-reasoning: #34D399;
+    --scope-coord:     #C084FC;
+    --scope-process:   #67E8F9;
+    --r0: #34D399; --r1: #FACC15; --r2: #FB923C; --r3: #F87171;
+    --fs: 1.15;
+  }
+  body {
+    font-family:'Inter',sans-serif; background:var(--bg); color:var(--text-primary);
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    padding:32px 32px 110px;
+  }
+
+  /* ── TOOLBAR ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.3); white-space:nowrap; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── PAGE HEADER ── */
+  .page-header { text-align:center; margin-bottom:36px; width:100%; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); letter-spacing:3px; text-transform:uppercase; color:var(--text-dim); margin-bottom:10px; }
+  .page-title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; letter-spacing:-.5px; }
+  .page-title-accent { background:linear-gradient(90deg,#60A5FA,#34D399); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .page-subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; line-height:1.5; max-width:780px; margin-left:auto; margin-right:auto; }
+  .badge { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 10px; border-radius:20px; background:var(--surface); margin-top:14px; }
+
+  /* ── EXECUTION MODEL SELECTOR STRIP ── */
+  .scope-selector {
+    width:100%; display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:32px;
+  }
+  .scope-card {
+    border-radius:12px; padding:14px 16px; border:1px solid;
+    display:flex; flex-direction:column; gap:6px;
+  }
+  .scope-reasoning { background:rgba(52,211,153,.03);  border-color:rgba(52,211,153,.22); }
+  .scope-coord     { background:rgba(192,132,252,.03); border-color:rgba(192,132,252,.22); }
+  .scope-process   { background:rgba(103,232,249,.03); border-color:rgba(103,232,249,.22); }
+  .scope-badge { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); font-weight:700; padding:3px 10px; border-radius:4px; width:fit-content; }
+  .scope-reasoning .scope-badge { background:rgba(52,211,153,.15);  color:var(--scope-reasoning); }
+  .scope-coord     .scope-badge { background:rgba(192,132,252,.15); color:var(--scope-coord); }
+  .scope-process   .scope-badge { background:rgba(103,232,249,.15); color:var(--scope-process); }
+  .scope-name { font-family:'Syne',sans-serif; font-size:calc(14px * var(--fs)); font-weight:700; color:var(--text-primary); }
+  .scope-desc { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.55; }
+  .scope-when { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); margin-top:4px; }
+  .scope-reasoning .scope-when { color:var(--scope-reasoning); opacity:.7; }
+  .scope-coord     .scope-when { color:var(--scope-coord); opacity:.7; }
+  .scope-process   .scope-when { color:var(--scope-process); opacity:.7; }
+  /* risk tier applicability pills on scope cards */
+  .scope-risk-row { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
+  .rt-pill { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); padding:2px 7px; border-radius:3px; border:1px solid; }
+  .rt-r0  { background:rgba(52,211,153,.1);  color:var(--r0); border-color:rgba(52,211,153,.2); }
+  .rt-r1  { background:rgba(250,204,21,.1);  color:var(--r1); border-color:rgba(250,204,21,.2); }
+  .rt-r2  { background:rgba(251,146,60,.1);  color:var(--r2); border-color:rgba(251,146,60,.2); }
+  .rt-r3  { background:rgba(248,113,113,.1); color:var(--r3); border-color:rgba(248,113,113,.2); }
+  .rt-pill-dim { opacity:.3; }
+
+  /* ── FLOW WRAPPER ── */
+  .flow { width:100%; margin-bottom:20px; }
+
+  /* ── FLOW HEADER ── */
+  .flow-header { display:flex; align-items:center; gap:14px; margin-bottom:12px; flex-wrap:wrap; }
+  .flow-badge { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); letter-spacing:2px; text-transform:uppercase; padding:4px 12px; border-radius:20px; border:1px solid; white-space:nowrap; flex-shrink:0; }
+  .flow-title { font-family:'Syne',sans-serif; font-size:calc(18px * var(--fs)); font-weight:700; }
+  .flow-timing { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim); margin-left:auto; flex-shrink:0; padding:4px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; letter-spacing:.5px; }
+  /* scope chips on flow header */
+  .flow-scopes { display:flex; gap:4px; flex-wrap:wrap; }
+  .flow-scope { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); font-weight:700; padding:2px 8px; border-radius:3px; border:1px solid; }
+  .fs-reasoning { background:rgba(52,211,153,.1); color:var(--scope-reasoning); border-color:rgba(52,211,153,.22); }
+  .fs-coord     { background:rgba(192,132,252,.1); color:var(--scope-coord); border-color:rgba(192,132,252,.22); }
+  .fs-process   { background:rgba(103,232,249,.1); color:var(--scope-process); border-color:rgba(103,232,249,.22); }
+  /* risk tier tag on flow */
+  .flow-risk { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); padding:2px 9px; border-radius:3px; border:1px solid; }
+  .flow-risk-r01 { background:rgba(52,211,153,.08); color:var(--r0); border-color:rgba(52,211,153,.2); }
+  .flow-risk-r23 { background:rgba(248,113,113,.08); color:var(--r3); border-color:rgba(248,113,113,.2); }
+
+  /* ── PATTERN NOTE ── */
+  .pattern-note { display:flex; align-items:flex-start; gap:10px; margin-bottom:14px; padding:10px 16px; border:1px solid; border-radius:8px; }
+  .pattern-icon { font-size:calc(14px * var(--fs)); flex-shrink:0; margin-top:1px; }
+  .pattern-text { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); line-height:1.5; }
+
+  /* ── NODE ROW ── */
+  .node-row { display:grid; grid-template-columns:1fr 56px 1fr 56px 1fr 56px 1fr 56px 1fr; align-items:center; margin-bottom:10px; }
+  .node-row-4 { grid-template-columns:1fr 56px 1fr 56px 1fr 56px 1fr; }
+  .node-row-3 { grid-template-columns:1fr 56px 1fr 56px 1fr; }
+  .node-col { display:flex; flex-direction:column; align-items:center; gap:7px; }
+
+  /* ── NODES ── */
+  .stop-node { width:54px; height:54px; border-radius:50%; border:2px solid var(--stop-color); background:var(--stop-bg); display:flex; align-items:center; justify-content:center; font-size:calc(20px * var(--fs)); position:relative; box-shadow:0 0 20px var(--stop-glow); flex-shrink:0; }
+  .stop-number { position:absolute; top:-7px; right:-7px; width:19px; height:19px; border-radius:50%; background:var(--stop-color); color:#0F1117; font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .stop-label { font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:700; color:var(--stop-color); text-align:center; line-height:1.2; }
+  .stop-sublabel { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-secondary); text-align:center; letter-spacing:.5px; }
+  /* scope indicator beneath a node */
+  .stop-scope { font-family:'JetBrains Mono',monospace; font-size:calc(7px * var(--fs)); font-weight:700; padding:1px 6px; border-radius:3px; border:1px solid; text-align:center; }
+  .ss-r { background:rgba(52,211,153,.1); color:var(--scope-reasoning); border-color:rgba(52,211,153,.2); }
+  .ss-c { background:rgba(192,132,252,.1); color:var(--scope-coord); border-color:rgba(192,132,252,.2); }
+  .ss-p { background:rgba(103,232,249,.1); color:var(--scope-process); border-color:rgba(103,232,249,.2); }
+
+  /* ── ARROWS ── */
+  .arrow-col { display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .arrow-line { width:100%; height:2px; background:linear-gradient(90deg,var(--from-color),var(--to-color)); opacity:.4; position:relative; }
+  .arrow-line::after { content:''; position:absolute; right:-5px; top:50%; transform:translateY(-50%); border-left:7px solid var(--to-color); border-top:4px solid transparent; border-bottom:4px solid transparent; opacity:.65; }
+  .arrow-token { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-secondary); text-align:center; white-space:nowrap; letter-spacing:.3px; line-height:1.4; }
+
+  /* ── DETAIL ROW ── */
+  .detail-row { display:grid; grid-template-columns:1fr 56px 1fr 56px 1fr 56px 1fr 56px 1fr; align-items:stretch; }
+  .detail-row-4 { grid-template-columns:1fr 56px 1fr 56px 1fr 56px 1fr; }
+  .detail-row-3 { grid-template-columns:1fr 56px 1fr 56px 1fr; }
+  .detail-spacer {}
+  .detail-card { background:var(--surface); border:1px solid var(--border); border-top:2.5px solid var(--stop-color); border-radius:10px; padding:calc(12px * var(--fs)) calc(14px * var(--fs)); display:flex; flex-direction:column; gap:8px; animation:fadeUp .35s ease both; }
+  .detail-title { font-family:'Syne',sans-serif; font-size:calc(11.5px * var(--fs)); font-weight:700; color:var(--stop-color); line-height:1.2; }
+  .detail-points { list-style:none; display:flex; flex-direction:column; gap:4px; }
+  .detail-points li { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); line-height:1.45; padding-left:12px; position:relative; }
+  .detail-points li::before { content:'·'; position:absolute; left:3px; color:var(--stop-color); opacity:.55; }
+  .detail-points li strong { color:var(--text-primary); font-weight:500; }
+
+  /* ── TOKEN BOX ── */
+  .token-box { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-left:2px solid var(--stop-color); border-radius:5px; padding:6px 10px; margin-top:auto; }
+  .token-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-bottom:3px; }
+  .token-value { font-family:'JetBrains Mono',monospace; font-size:calc(9.5px * var(--fs)); color:var(--stop-color); opacity:.85; line-height:1.5; }
+
+  /* ── PLATFORM INVARIANTS CALLOUT (inline in flow) ── */
+  .inv-callout {
+    width:100%; margin:8px 0 14px; padding:10px 16px;
+    background:rgba(248,113,113,.04); border:1px solid rgba(248,113,113,.14);
+    border-radius:8px; display:flex; gap:16px; flex-wrap:wrap;
+  }
+  .inv-callout-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:2px; text-transform:uppercase; color:#F87171; opacity:.7; flex-shrink:0; padding-top:2px; }
+  .inv-callout-items { display:flex; gap:8px; flex-wrap:wrap; }
+  .inv-item { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); padding:2px 9px; border-radius:4px; background:rgba(248,113,113,.06); border:1px solid rgba(248,113,113,.15); color:var(--text-secondary); }
+  .inv-item strong { color:#FCA5A5; font-weight:500; }
+
+  /* ── WORKFLOW CONTRACT CALLOUT ── */
+  .wfc-callout {
+    width:100%; margin:8px 0 14px; padding:10px 16px;
+    background:rgba(192,132,252,.04); border:1px solid rgba(192,132,252,.2);
+    border-radius:8px; display:flex; gap:16px; align-items:flex-start;
+  }
+  .wfc-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:2px; text-transform:uppercase; color:#C084FC; opacity:.7; flex-shrink:0; padding-top:2px; white-space:nowrap; }
+  .wfc-text { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+  .wfc-text strong { color:#C084FC; font-weight:500; }
+
+  /* ── DIVIDER ── */
+  .flow-divider { width:100%; margin:36px 0; display:flex; align-items:center; gap:20px; }
+  .divider-line { flex:1; height:1px; background:var(--border); }
+  .divider-content { background:var(--surface); border:1px solid rgba(96,165,250,.2); border-radius:10px; padding:14px 24px; text-align:center; flex-shrink:0; max-width:820px; }
+  .divider-heading { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); margin-bottom:5px; }
+  .divider-text { font-size:calc(12px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+  .divider-text em { font-style:normal; color:var(--text-primary); }
+
+  /* ── COMPARISON TABLE ── */
+  .comparison-section { width:100%; margin-top:20px; }
+  .comparison-table { width:100%; border-collapse:collapse; background:var(--surface); border-radius:10px; overflow:hidden; border:1px solid var(--border); }
+  .comparison-table th { font-family:'Syne',sans-serif; font-size:calc(11.5px * var(--fs)); font-weight:700; text-align:left; padding:14px 16px; background:var(--surface2); border-bottom:1px solid var(--border); }
+  .comparison-table td { font-size:calc(11px * var(--fs)); padding:12px 16px; border-bottom:1px solid var(--border-faint); color:var(--text-secondary); vertical-align:top; line-height:1.45; }
+  .comparison-table tr:last-child td { border-bottom:none; }
+  .comparison-table tr:hover td { background:rgba(255,255,255,.018); }
+  .comparison-table td:first-child { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-primary); font-weight:500; }
+  .check { color:#34D399; }
+  .warn  { color:#FACC15; }
+  .cross { color:#F87171; }
+  /* platform-enforced marker */
+  .platform-cell { color:var(--text-dim); font-size:calc(9.5px * var(--fs)); }
+  .platform-inv { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); color:#F87171; opacity:.6; }
+
+  /* ── FOOTER ── */
+  .footer-note { margin-top:48px; border-top:1px solid var(--border); padding-top:14px; width:100%; display:flex; justify-content:space-between; align-items:center; font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim); }
+  .footer-tags { display:flex; gap:6px; flex-wrap:wrap; }
+  .footer-tag { font-size:calc(9.5px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 9px; border-radius:20px; background:var(--surface); }
+
+  @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+  /* ── LEGEND STRIP ── */
+  .legend-strip {
+    position:fixed; bottom:0; left:0; right:0; z-index:900;
+    background:rgba(15,17,23,0.97);
+    border-top:1px solid rgba(255,255,255,0.09);
+    backdrop-filter:blur(12px);
+    transition:transform .25s ease;
+    box-shadow:0 -4px 24px rgba(0,0,0,.4);
+  }
+  .legend-strip.legend-collapsed { transform:translateY(calc(100% - 28px)); }
+  .legend-inner {
+    display:grid;
+    grid-template-columns: max-content 1fr;
+    row-gap:4px;
+    padding:7px 52px 7px 20px; max-width:1400px; margin:0 auto;
+  }
+  .legend-row { display:contents; }
+  .legend-group-label {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:2px;
+    text-transform:uppercase; color:var(--text-dim); white-space:nowrap;
+    padding-right:16px; align-self:center;
+  }
+  .legend-items { display:flex; align-items:center; gap:8px; }
+  .legend-item {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; color:var(--text-secondary); white-space:nowrap; cursor:default;
+  }
+  .legend-item-label { font-size:11px; color:var(--text-secondary); }
+  .legend-pill {
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700;
+    padding:2px 7px; border-radius:3px; flex-shrink:0;
+    position:relative; cursor:default;
+  }
+  .legend-pill[data-tip]::after {
+    content:attr(data-tip);
+    position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%);
+    background:#1E2333; border:1px solid rgba(255,255,255,.12);
+    color:var(--text-secondary); font-size:10px; font-weight:400;
+    font-family:'Inter',sans-serif; letter-spacing:0;
+    white-space:nowrap; padding:5px 10px; border-radius:6px;
+    pointer-events:none; opacity:0; transition:opacity .15s;
+    box-shadow:0 4px 16px rgba(0,0,0,.5);
+  }
+  .legend-pill[data-tip]:hover::after { opacity:1; }
+  .legend-pill.r0  { background:rgba(52,211,153,.12);  color:#34D399; border:1px solid rgba(52,211,153,.25); }
+  .legend-pill.r1  { background:rgba(250,204,21,.10);  color:#FACC15; border:1px solid rgba(250,204,21,.22); }
+  .legend-pill.r2  { background:rgba(251,146,60,.10);  color:#FB923C; border:1px solid rgba(251,146,60,.22); }
+  .legend-pill.r3  { background:rgba(248,113,113,.10); color:#F87171; border:1px solid rgba(248,113,113,.22); }
+  .legend-pill.inv { background:rgba(103,232,249,.08); color:#67E8F9; border:1px solid rgba(103,232,249,.2); }
+  .legend-close {
+    position:absolute; top:0; right:16px;
+    background:none; border:none; cursor:pointer;
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
+    padding:6px 8px; line-height:1; display:flex; align-items:center; gap:4px;
+    transition:color .15s;
+  }
+  .legend-close:hover { color:var(--text-secondary); }
+  .legend-close-icon { display:inline-block; transition:transform .25s ease; font-size:13px; }
+  .legend-strip.legend-collapsed .legend-close-icon { transform:rotate(180deg); }
+  .legend-strip.legend-collapsed .legend-close::before {
+    content:'Reference'; font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s" onclick="setSize(0.85)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.15)">M</button>
+  <button class="sz-btn" id="sz-l" onclick="setSize(1.3)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.5)">XL</button>
+</div>
+<script>
+var sizes={0.85:'sz-s',1.15:'sz-m',1.3:'sz-l',1.5:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.15);
+</script>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="eyebrow">UKI Enterprise AI Platform · Architecture Patterns</div>
+  <div class="page-title">Multi-Agent <span class="page-title-accent">Orchestration Patterns</span></div>
+  <div class="page-subtitle">Three Execution Model scope combinations — which pattern applies is determined by the declared Execution Model and Risk Tier in the Capability Definition, not by implementation preference</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     EXECUTION MODEL SCOPE SELECTOR
+     ═══════════════════════════════════════════ -->
+<div class="scope-selector">
+  <div class="scope-card scope-reasoning">
+    <div class="scope-badge">Reasoning</div>
+    <div class="scope-name">Reasoning</div>
+    <div class="scope-desc">The agent's ReAct loop — perceive, reason, act, observe, repeat. Present in every Capability. The platform standard. Hosted by AgentCore.</div>
+    <div class="scope-when">Always present · platform standard</div>
+    <div class="scope-risk-row">
+      <span class="rt-pill rt-r0">R0</span>
+      <span class="rt-pill rt-r1">R1</span>
+      <span class="rt-pill rt-r2">R2</span>
+      <span class="rt-pill rt-r3">R3</span>
+    </div>
+  </div>
+  <div class="scope-card scope-coord">
+    <div class="scope-badge">Coordination</div>
+    <div class="scope-name">Coordination</div>
+    <div class="scope-desc">How this Capability delegates to other Capabilities. LLM-driven (agents-as-tools) or graph-driven (LangGraph). Declare only when genuinely orchestrating others.</div>
+    <div class="scope-when">Optional · declare when orchestrating</div>
+    <div class="scope-risk-row">
+      <span class="rt-pill rt-r0 rt-pill-dim">R0</span>
+      <span class="rt-pill rt-r1">R1</span>
+      <span class="rt-pill rt-r2">R2</span>
+      <span class="rt-pill rt-r3">R3</span>
+    </div>
+  </div>
+  <div class="scope-card scope-process">
+    <div class="scope-badge">Process</div>
+    <div class="scope-name">Process</div>
+    <div class="scope-desc">Durable execution spanning multiple invocations. Provides correlation, idempotency, compensation, ordered step execution. Mandatory for R2/R3 — the Registry rejects publication without it.</div>
+    <div class="scope-when">Mandatory R2/R3 · optional otherwise</div>
+    <div class="scope-risk-row">
+      <span class="rt-pill rt-r0 rt-pill-dim">R0</span>
+      <span class="rt-pill rt-r1 rt-pill-dim">R1</span>
+      <span class="rt-pill rt-r2">R2</span>
+      <span class="rt-pill rt-r3">R3</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     PATTERN 1: REASONING ONLY
+     ═══════════════════════════════════════════ -->
+<div class="flow">
+  <div class="flow-header">
+    <span class="flow-badge" style="color:#60A5FA;border-color:rgba(96,165,250,.3);background:rgba(96,165,250,.06)">Pattern 1</span>
+    <div class="flow-title">Single Agent — <span style="color:#60A5FA">Reasoning Only</span></div>
+    <div class="flow-scopes">
+      <span class="flow-scope fs-reasoning">Reasoning</span>
+    </div>
+    <span class="flow-risk flow-risk-r01">R0 / R1</span>
+    <div class="flow-timing">Session-scoped · Low latency · Simple</div>
+  </div>
+  <div class="pattern-note" style="background:rgba(96,165,250,.05);border-color:rgba(96,165,250,.18);">
+    <span class="pattern-icon">🧠</span>
+    <span class="pattern-text" style="color:rgba(96,165,250,.7);">A single Capability running a bounded Reasoning scope. One Strands agent hosted in AgentCore — perceives the request, reasons over available tools, acts. Scoped to a session. No delegation to other Capabilities, no durable process state. Typical for R0 retrieval and R1 operational write Capabilities.</span>
+  </div>
+
+  <!-- Platform invariants in effect -->
+  <div class="inv-callout">
+    <div class="inv-callout-label">Invariants in effect</div>
+    <div class="inv-callout-items">
+      <div class="inv-item"><strong>I1</strong> Published Definition required</div>
+      <div class="inv-item"><strong>I2</strong> Safety Envelope + Risk Tier validated at publish</div>
+      <div class="inv-item"><strong>I3</strong> Identity Context at every tool call</div>
+      <div class="inv-item"><strong>I5</strong> Audit Record written synchronously</div>
+      <div class="inv-item"><strong>I6</strong> Safety Envelope immutable on publish</div>
+    </div>
+  </div>
+
+  <!-- NODE ROW -->
+  <div class="node-row node-row-3">
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#60A5FA;--stop-bg:rgba(96,165,250,.1);--stop-glow:rgba(96,165,250,.2)">👤<span class="stop-number">1</span></div>
+      <div class="stop-label" style="color:#60A5FA">User Request</div>
+      <div class="stop-sublabel">Session · Identity Context</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#60A5FA;--to-color:#34D399"></div>
+      <div class="arrow-token">AgentCore<br>invocation</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#34D399;--stop-bg:rgba(52,211,153,.1);--stop-glow:rgba(52,211,153,.15)">⚙️<span class="stop-number">2</span></div>
+      <div class="stop-label" style="color:#34D399">Agent Runtime</div>
+      <div class="stop-sublabel">AgentCore · Strands ReAct</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#34D399;--to-color:#FACC15"></div>
+      <div class="arrow-token">Audit Record<br>+ response</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#FACC15;--stop-bg:rgba(250,204,21,.1);--stop-glow:rgba(250,204,21,.15)">📋<span class="stop-number">3</span></div>
+      <div class="stop-label" style="color:#FACC15">Audit &amp; Response</div>
+      <div class="stop-sublabel">Synchronous · I5</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+  </div>
+
+  <!-- DETAIL ROW -->
+  <div class="detail-row detail-row-3">
+    <div class="detail-card" style="--stop-color:#60A5FA">
+      <div class="detail-title">Session Entry</div>
+      <ul class="detail-points">
+        <li>Request arrives via Chat UI, Slack, or API Client</li>
+        <li><strong>Identity Context</strong> established — Okta → IAM session tags (tenant_id, brand, role)</li>
+        <li>AgentCore resolves <strong>Published Capability Definition</strong> from Registry (I1)</li>
+        <li><strong>Safety Envelope</strong> and <strong>Risk Tier</strong> loaded from Definition version</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Identity Context</div>
+        <div class="token-value">tenant_id: pp-001 · brand: paddy-power<br>role: agent-user · scope: read-only<br>capability_id: faq-assistant-v3</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#34D399">
+      <div class="detail-title">AgentCore · Strands ReAct</div>
+      <ul class="detail-points">
+        <li>Agent reasons over request using <strong>system prompt from Capability Definition</strong></li>
+        <li>Tool calls routed via <strong>MCP Tool Gateway</strong> — ABAC-filtered, RFC 8693 scoped (I3)</li>
+        <li><strong>Guardrails enforces Safety Envelope</strong> on all LLM input/output — non-bypassable (I6)</li>
+        <li><strong>LLM Gateway</strong> routes to permitted model per Capability Definition</li>
+        <li>R0: no write tool bindings permitted — Registry validated this at publish</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Agent config (from Capability Definition)</div>
+        <div class="token-value">system_prompt: [immutable version ref]<br>tools: [rag_search, doc_reader]<br>model: claude-sonnet-4 · risk_tier: R0</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#FACC15">
+      <div class="detail-title">Audit Record (I5)</div>
+      <ul class="detail-points">
+        <li>Written <strong>synchronously</strong> — not background logging</li>
+        <li>Contains: Identity Context, Definition version, Safety Envelope version, all tool calls + results, guardrail traces, token counts, cost</li>
+        <li><strong>R0/R1: fail-open</strong> on audit pipeline outage — execution continues with alerting</li>
+        <li>Retention period: standard (R0/R1)</li>
+        <li>SHA-256 hashed against Registry version entry</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Audit Record</div>
+        <div class="token-value">execution_id: exec-uuid<br>definition_version: v3 · risk_tier: R0<br>tools_called: [rag_search × 2]</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- DIVIDER -->
+<div class="flow-divider">
+  <div class="divider-line"></div>
+  <div class="divider-content">
+    <div class="divider-heading">Adding Coordination scope</div>
+    <div class="divider-text">When a Capability needs to delegate to <em>other Capabilities</em> — not just call tools — declare the <em>Coordination scope</em>. The LLM decides which specialist to invoke (agents-as-tools) or a graph defines the topology (LangGraph). Still session-scoped. No durable state.</div>
+  </div>
+  <div class="divider-line"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     PATTERN 2: REASONING + COORDINATION
+     ═══════════════════════════════════════════ -->
+<div class="flow">
+  <div class="flow-header">
+    <span class="flow-badge" style="color:#C084FC;border-color:rgba(192,132,252,.3);background:rgba(192,132,252,.06)">Pattern 2</span>
+    <div class="flow-title">Orchestrator + Specialists — <span style="color:#C084FC">Reasoning + Coordination</span></div>
+    <div class="flow-scopes">
+      <span class="flow-scope fs-reasoning">Reasoning</span>
+      <span class="flow-scope fs-coord">Coordination</span>
+    </div>
+    <span class="flow-risk flow-risk-r01">R0 / R1 typical</span>
+    <div class="flow-timing">Dynamic delegation · Session-scoped</div>
+  </div>
+  <div class="pattern-note" style="background:rgba(192,132,252,.05);border-color:rgba(192,132,252,.18);">
+    <span class="pattern-icon">🎯</span>
+    <span class="pattern-text" style="color:rgba(192,132,252,.7);">An orchestrator Capability delegates to specialist Capabilities via agents-as-tools. The LLM decides dynamically which specialist to invoke and in what order. Each specialist is itself a Reasoning-scope Capability with its own Published Definition, Safety Envelope, and Risk Tier. All are hosted in AgentCore.</span>
+  </div>
+
+  <!-- Platform invariants -->
+  <div class="inv-callout">
+    <div class="inv-callout-label">Invariants in effect</div>
+    <div class="inv-callout-items">
+      <div class="inv-item"><strong>I1</strong> Published Definition required for orchestrator AND each specialist</div>
+      <div class="inv-item"><strong>I2</strong> Safety Envelope + Risk Tier validated per Capability</div>
+      <div class="inv-item"><strong>I3</strong> Identity Context propagates across all delegations — acting_as_capability_id added</div>
+      <div class="inv-item"><strong>I5</strong> Audit Record per Execution — orchestrator + each specialist invocation</div>
+    </div>
+  </div>
+
+  <!-- NODE ROW -->
+  <div class="node-row">
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#60A5FA;--stop-bg:rgba(96,165,250,.1);--stop-glow:rgba(96,165,250,.2)">👤<span class="stop-number">1</span></div>
+      <div class="stop-label" style="color:#60A5FA">User Request</div>
+      <div class="stop-sublabel">Identity Context set</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#60A5FA;--to-color:#C084FC"></div>
+      <div class="arrow-token">AgentCore<br>invoke</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#C084FC;--stop-bg:rgba(192,132,252,.1);--stop-glow:rgba(192,132,252,.15)">🎯<span class="stop-number">2</span></div>
+      <div class="stop-label" style="color:#C084FC">Orchestrator</div>
+      <div class="stop-sublabel">AgentCore · Strands</div>
+      <span class="stop-scope ss-c">Coordination</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#C084FC;--to-color:#A78BFA"></div>
+      <div class="arrow-token">@tool call<br>dynamic</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#A78BFA;--stop-bg:rgba(167,139,250,.1);--stop-glow:rgba(167,139,250,.15)">🔍<span class="stop-number">3a</span></div>
+      <div class="stop-label" style="color:#A78BFA">Specialist A</div>
+      <div class="stop-sublabel">AgentCore · own Definition</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#A78BFA;--to-color:#FB923C"></div>
+      <div class="arrow-token">Result ↩<br>next @tool</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#FB923C;--stop-bg:rgba(251,146,60,.1);--stop-glow:rgba(251,146,60,.15)">⚖️<span class="stop-number">3b</span></div>
+      <div class="stop-label" style="color:#FB923C">Specialist B</div>
+      <div class="stop-sublabel">AgentCore · own Definition</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#FB923C;--to-color:#F87171"></div>
+      <div class="arrow-token">Synthesised<br>response</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#F87171;--stop-bg:rgba(248,113,113,.1);--stop-glow:rgba(248,113,113,.15)">💬<span class="stop-number">4</span></div>
+      <div class="stop-label" style="color:#F87171">Response</div>
+      <div class="stop-sublabel">Orchestrator synthesis</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+  </div>
+
+  <!-- DETAIL ROW -->
+  <div class="detail-row">
+    <div class="detail-card" style="--stop-color:#60A5FA">
+      <div class="detail-title">Session Entry</div>
+      <ul class="detail-points">
+        <li><strong>Identity Context</strong> established for the session</li>
+        <li>AgentCore resolves <strong>orchestrator Capability Definition</strong></li>
+        <li>Orchestrator's Risk Tier governs — if R2, orchestrator needs a Workflow Contract even if specialists are R0/R1</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Example request</div>
+        <div class="token-value">"Analyse the regulatory implications<br>of our new product in Irish market"</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#C084FC">
+      <div class="detail-title">Orchestrator Agent</div>
+      <ul class="detail-points">
+        <li>Strands agent with <strong>specialist Capabilities wrapped as @tool functions</strong></li>
+        <li>LLM <strong>reasons dynamically</strong> about which specialists to call and when</li>
+        <li>May call specialists <strong>sequentially or iteratively</strong> depending on intermediate results</li>
+        <li>Coordination scope declared in Capability Definition — Registry-visible</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Orchestrator config</div>
+        <div class="token-value">execution_model: [Reasoning, Coordination]<br>tools: [@research_specialist,<br>  @compliance_specialist]</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#A78BFA">
+      <div class="detail-title">Specialist Capabilities</div>
+      <ul class="detail-points">
+        <li>Each specialist is a <strong>separate Published Capability Definition</strong> with its own Safety Envelope and Risk Tier</li>
+        <li>Wrapped as <strong>@tool def specialist(query: str) → str</strong></li>
+        <li>Invoked only if <strong>orchestrator LLM decides it's needed</strong></li>
+        <li>Has its own MCP tool bindings validated independently by Registry</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Specialist definition</div>
+        <div class="token-value">@tool<br>def research_specialist(q: str) → str:<br>  return str(research_agent(q))</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#FB923C">
+      <div class="detail-title">Identity Propagation (I3)</div>
+      <ul class="detail-points">
+        <li>Identity Context <strong>propagates across all delegations</strong> — subject identity stays stable</li>
+        <li><strong>acting_as_capability_id</strong> and invocation_chain added for delegation audit trail</li>
+        <li>Each specialist's tool calls are <strong>ABAC-gated against the same session tags</strong></li>
+        <li>RFC 8693 token exchange scopes per MCP boundary — no cross-tenant access possible</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Delegation context</div>
+        <div class="token-value">subject: user@brand · tenant_id: pp-001<br>acting_as: research-specialist-v2<br>invocation_chain: [orchestrator-v1]</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#F87171">
+      <div class="detail-title">Observability</div>
+      <ul class="detail-points">
+        <li><strong>Langfuse</strong>: nested trace tree — orchestrator span → specialist spans → tool call spans</li>
+        <li><strong>Audit Record</strong> per Execution (orchestrator + each specialist invocation) — all written synchronously (I5)</li>
+        <li>LiteLLM callback fires for all LLM calls across orchestrator and all specialists</li>
+        <li>Cost attributed per Capability Definition — full spend visibility per tenant</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Trace structure</div>
+        <div class="token-value">trace: orchestrator-exec-uuid<br> └ span: research-specialist<br>    └ span: tool:rag_search</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- DIVIDER -->
+<div class="flow-divider">
+  <div class="divider-line"></div>
+  <div class="divider-content">
+    <div class="divider-heading">When Process scope is required</div>
+    <div class="divider-text">Any Capability declared R2 or R3 <em>must</em> declare the Process scope and provide a Workflow Contract. The Registry will reject publication without it (I4). Process scope adds <em>durable execution, Workflow Contract enforcement, and fail-closed audit semantics</em> — not optional for regulated or customer-adjacent writes.</div>
+  </div>
+  <div class="divider-line"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     PATTERN 3: REASONING + COORDINATION + PROCESS (R2/R3)
+     ═══════════════════════════════════════════ -->
+<div class="flow">
+  <div class="flow-header">
+    <span class="flow-badge" style="color:#67E8F9;border-color:rgba(103,232,249,.3);background:rgba(103,232,249,.06)">Pattern 3 ⭐</span>
+    <div class="flow-title">Durable Workflow — <span style="color:#67E8F9">Reasoning + Coordination + Process</span></div>
+    <div class="flow-scopes">
+      <span class="flow-scope fs-reasoning">Reasoning</span>
+      <span class="flow-scope fs-coord">Coordination</span>
+      <span class="flow-scope fs-process">Process</span>
+    </div>
+    <span class="flow-risk flow-risk-r23">R2 / R3</span>
+    <div class="flow-timing">Mandatory R2/R3 · Durable · Compensatable</div>
+  </div>
+  <div class="pattern-note" style="background:rgba(103,232,249,.04);border-color:rgba(103,232,249,.2);">
+    <span class="pattern-icon">⭐</span>
+    <span class="pattern-text" style="color:rgba(103,232,249,.7);">Step Functions implements the Workflow Contract — deterministic outer structure with durable state, compensation, and fail-closed audit. AgentCore-hosted Strands agents provide dynamic Reasoning within each step, with Coordination scope available within steps. Mandatory for any Capability that writes customer-adjacent or regulated state.</span>
+  </div>
+
+  <!-- Workflow Contract callout -->
+  <div class="wfc-callout">
+    <div class="wfc-label">Workflow Contract (I4)</div>
+    <div class="wfc-text">This pattern requires a <strong>Workflow Contract</strong> declared in the Capability Definition. The Contract defines: correlation ID standard, idempotency requirements, compensation semantics for partial execution, ABAC enforcement at each Step Functions task boundary, replay guarantees. Registry rejects R2/R3 publication without it. Workflow Contract may be authored independently by compliance/process design function via Workflow Studio and referenced by the Capability Definition.</div>
+  </div>
+
+  <!-- Platform invariants -->
+  <div class="inv-callout">
+    <div class="inv-callout-label">Invariants in effect</div>
+    <div class="inv-callout-items">
+      <div class="inv-item"><strong>I1</strong> Published Definition required</div>
+      <div class="inv-item"><strong>I2</strong> Safety Envelope + Risk Tier validated at publish</div>
+      <div class="inv-item"><strong>I3</strong> Identity Context propagates through Step Functions input to every Lambda/AgentCore task</div>
+      <div class="inv-item"><strong>I4</strong> Workflow Contract declared and validated — R2/R3 mandatory</div>
+      <div class="inv-item"><strong>I5</strong> Audit Record write-ahead — committed before state-changing tool calls at R3. R2: fail-closed on pipeline outage.</div>
+      <div class="inv-item"><strong>I6</strong> Safety Envelope immutable — Guardrails enforces in each AgentCore task</div>
+    </div>
+  </div>
+
+  <!-- NODE ROW -->
+  <div class="node-row">
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#67E8F9;--stop-bg:rgba(103,232,249,.1);--stop-glow:rgba(103,232,249,.2)">🎛️<span class="stop-number">1</span></div>
+      <div class="stop-label" style="color:#67E8F9">Step Functions</div>
+      <div class="stop-sublabel">Workflow Contract</div>
+      <span class="stop-scope ss-p">Process</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#67E8F9;--to-color:#34D399"></div>
+      <div class="arrow-token">Task state<br>invokes</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#34D399;--stop-bg:rgba(52,211,153,.1);--stop-glow:rgba(52,211,153,.15)">⚙️<span class="stop-number">2</span></div>
+      <div class="stop-label" style="color:#34D399">AgentCore Task</div>
+      <div class="stop-sublabel">Strands · dynamic reasoning</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#34D399;--to-color:#FACC15"></div>
+      <div class="arrow-token">IAM tags<br>propagate</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#FACC15;--stop-bg:rgba(250,204,21,.1);--stop-glow:rgba(250,204,21,.15)">👁️<span class="stop-number">3</span></div>
+      <div class="stop-label" style="color:#FACC15">HITL Gate</div>
+      <div class="stop-sublabel">waitForTaskToken · Risk Tier</div>
+      <span class="stop-scope ss-p">Process</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#FACC15;--to-color:#A78BFA"></div>
+      <div class="arrow-token">Approved<br>→ continue</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#A78BFA;--stop-bg:rgba(167,139,250,.1);--stop-glow:rgba(167,139,250,.15)">🔧<span class="stop-number">4</span></div>
+      <div class="stop-label" style="color:#A78BFA">MCP Tools</div>
+      <div class="stop-sublabel">Scoped · ABAC-gated</div>
+      <span class="stop-scope ss-r">Reasoning</span>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#A78BFA;--to-color:#F87171"></div>
+      <div class="arrow-token">Write-ahead<br>audit commit</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#F87171;--stop-bg:rgba(248,113,113,.1);--stop-glow:rgba(248,113,113,.15)">📊<span class="stop-number">5</span></div>
+      <div class="stop-label" style="color:#F87171">Full Audit Trail</div>
+      <div class="stop-sublabel">S3 Object Lock · I5</div>
+      <span class="stop-scope ss-p">Process</span>
+    </div>
+  </div>
+
+  <!-- DETAIL ROW -->
+  <div class="detail-row">
+    <div class="detail-card" style="--stop-color:#67E8F9">
+      <div class="detail-title">Step Functions Orchestrator</div>
+      <ul class="detail-points">
+        <li>Implements the <strong>Workflow Contract</strong> declared in the Capability Definition</li>
+        <li>Provides: sequence, Parallel states, Map iterations, <strong>Retry with exponential backoff, Catch, timeouts</strong></li>
+        <li><strong>Correlation ID</strong> flows as execution name — traceable end-to-end</li>
+        <li><strong>Compensation state</strong> defined in ASL — if any step fails, compensating actions execute</li>
+        <li>Idempotency key checked before state-changing steps — safe to replay</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Workflow Contract fields</div>
+        <div class="token-value">correlation_id: {$.execution_id}<br>idempotency_key: {$.request_hash}<br>compensation: compensate_state<br>abac_boundary: per-task</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#34D399">
+      <div class="detail-title">AgentCore Task (Reasoning)</div>
+      <ul class="detail-points">
+        <li>Each Step Functions task invokes <strong>AgentCore-hosted Strands agent</strong></li>
+        <li>Agent reasons dynamically <strong>within the bounded scope of its task</strong></li>
+        <li>Can use <strong>agents-as-tools internally</strong> for Coordination within the step</li>
+        <li><strong>IAM execution role</strong> inherits session tags from Step Functions input — Identity Context maintained (I3)</li>
+        <li>Guardrails enforces Safety Envelope on every LLM call within the task (I6)</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">AgentCore invocation</div>
+        <div class="token-value">capability_id: rg-assessment-v2<br>context: $.identity_context<br>input: $.task_payload</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#FACC15">
+      <div class="detail-title">HITL Gate · Risk Tier-driven</div>
+      <ul class="detail-points">
+        <li><strong>waitForTaskToken</strong> pauses execution — Step Functions waits for human callback</li>
+        <li>HITL Service routes to <strong>designated reviewer</strong> via SNS</li>
+        <li>Threshold and conditions defined in <strong>Capability Definition HITL Conditions field</strong></li>
+        <li>R3: HITL <strong>cannot be waived</strong> — mandatory before state-changing execution continues</li>
+        <li>R2: HITL threshold configurable but required at declaration time</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">HITL callback</div>
+        <div class="token-value">waitForTaskToken: true<br>heartbeatSeconds: 3600<br>→ HITL Service → reviewer → SNS</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#A78BFA">
+      <div class="detail-title">MCP Tool Gateway</div>
+      <ul class="detail-points">
+        <li>All tool calls route via <strong>MCP Tool Gateway</strong> — agents cannot call tools directly (I3)</li>
+        <li>RFC 8693 token exchange per MCP server — <strong>scoped credentials, PrivateLink transit</strong></li>
+        <li>ABAC enforcement at each tool boundary — <strong>tenant isolation structurally enforced</strong></li>
+        <li>R3: <strong>write-ahead audit commit</strong> before any state-changing tool call executes</li>
+        <li>R3 audit pipeline outage: execution halts — no exception path</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Tool execution</div>
+        <div class="token-value">MCP Gateway → RFC 8693 token<br>tool: rg_intervention_write<br>audit_commit: BEFORE_EXECUTE</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#F87171">
+      <div class="detail-title">Audit Trail · R2/R3</div>
+      <ul class="detail-points">
+        <li><strong>Audit Record</strong> written synchronously at each step (I5) — fail-closed at R2/R3</li>
+        <li><strong>S3 Object Lock Compliance mode</strong> — retention driven by Risk Tier, immutable</li>
+        <li><strong>Step Functions console</strong>: full execution graph, state history, compensation path</li>
+        <li><strong>Langfuse</strong>: nested agent traces, tool spans, LLM-as-judge per task</li>
+        <li><strong>CloudWatch</strong>: Lambda metrics, AgentCore latency, error rates per step</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Audit retention</div>
+        <div class="token-value">risk_tier: R3 → S3 Object Lock<br>retention: max · Compliance mode<br>sha256: hashed vs Registry version</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- COMPARISON TABLE -->
+<div class="comparison-section">
+  <div class="flow-header">
+    <span class="flow-badge" style="color:#8B95B0;border-color:rgba(139,149,176,.3);background:rgba(139,149,176,.06)">Summary</span>
+    <div class="flow-title">Pattern Selection Matrix</div>
+  </div>
+  <table class="comparison-table">
+    <thead>
+      <tr>
+        <th style="width:20%">Criteria</th>
+        <th style="width:24%;color:#60A5FA">Pattern 1 · Reasoning</th>
+        <th style="width:26%;color:#C084FC">Pattern 2 · + Coordination</th>
+        <th style="width:30%;color:#67E8F9">Pattern 3 · + Process ⭐</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Execution scope declared</td>
+        <td>Reasoning</td>
+        <td>Reasoning + Coordination</td>
+        <td>Reasoning + Coordination + Process</td>
+      </tr>
+      <tr>
+        <td>Risk Tier applicability</td>
+        <td><span class="check">✓</span> R0 / R1</td>
+        <td><span class="check">✓</span> R0 / R1 / R2 (with WFC)</td>
+        <td><span class="check">✓</span> R2 / R3 — mandatory</td>
+      </tr>
+      <tr>
+        <td>Workflow Contract (I4)</td>
+        <td><span class="check">✓</span> Not required</td>
+        <td><span class="warn">⚠</span> Required if R2/R3</td>
+        <td><span class="cross">!</span> Mandatory — Registry blocks without it</td>
+      </tr>
+      <tr>
+        <td>Execution durability</td>
+        <td>Session-scoped · ephemeral</td>
+        <td>Session-scoped · ephemeral</td>
+        <td><span class="check">✓</span> Durable · spans invocations · replayable</td>
+      </tr>
+      <tr>
+        <td>Workflow determinism</td>
+        <td>LLM-driven within session</td>
+        <td>LLM-driven delegation sequence</td>
+        <td><span class="check">✓</span> Deterministic outer · dynamic inner per task</td>
+      </tr>
+      <tr>
+        <td>Compensation on failure</td>
+        <td><span class="cross">✗</span> No compensation path</td>
+        <td><span class="cross">✗</span> No compensation path</td>
+        <td><span class="check">✓</span> ASL compensation state · defined in Workflow Contract</td>
+      </tr>
+      <tr>
+        <td>HITL</td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-managed <span class="platform-inv">I5</span><br>Threshold: optional (R0/R1)</td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-managed <span class="platform-inv">I5</span><br>Threshold: optional unless R2</td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-managed via waitForTaskToken<br>R3: mandatory · cannot be waived</td>
+      </tr>
+      <tr>
+        <td>Audit Record (I5)</td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-enforced <span class="platform-inv">I5</span><br>Fail-open · standard retention</td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-enforced per Execution <span class="platform-inv">I5</span><br>Orchestrator + each specialist</td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-enforced · fail-closed <span class="platform-inv">I5</span><br>R3: write-ahead · S3 Object Lock</td>
+      </tr>
+      <tr>
+        <td>Identity propagation (I3)</td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-enforced <span class="platform-inv">I3</span></td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-enforced · acting_as chain <span class="platform-inv">I3</span></td>
+        <td class="platform-cell"><span class="check">✓</span> Platform-enforced · Step Functions input → AgentCore <span class="platform-inv">I3</span></td>
+      </tr>
+      <tr>
+        <td>Latency profile</td>
+        <td><span class="check">✓</span> Lowest — single agent</td>
+        <td><span class="warn">⚠</span> Higher — orchestrator LLM routing calls</td>
+        <td><span class="warn">⚠</span> Higher — Step Functions + task startup overhead</td>
+      </tr>
+      <tr>
+        <td>Use when</td>
+        <td>Single-domain task, R0/R1, no cross-capability delegation needed</td>
+        <td>Complex query needing multiple specialisms, dynamic routing, still session-scoped</td>
+        <td>Any R2/R3 write, regulated workflow, requires compensation, HITL, or durable audit trail</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ── LEGEND STRIP ── -->
+<div class="legend-strip" id="legend-strip">
+  <div class="legend-inner">
+    <div class="legend-row">
+      <span class="legend-group-label">Risk Tiers</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill r0" data-tip="Informational — read-only, no customer data">R0</span><span class="legend-item-label">Informational</span></span>
+        <span class="legend-item"><span class="legend-pill r1" data-tip="Operational Write — internal systems, no customer PII">R1</span><span class="legend-item-label">Operational Write</span></span>
+        <span class="legend-item"><span class="legend-pill r2" data-tip="Customer-adjacent — customer data in scope">R2</span><span class="legend-item-label">Customer-adjacent</span></span>
+        <span class="legend-item"><span class="legend-pill r3" data-tip="Regulated / Financial — compliance-grade, write-ahead audit">R3</span><span class="legend-item-label">Regulated / Financial</span></span>
+      </div>
+    </div>
+    <div class="legend-row">
+      <span class="legend-group-label">Invariants cited</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Every Capability Definition publication requires Registry approval">I1</span><span class="legend-item-label">Registry publish gate</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Identity Context propagates to every downstream call — cannot be stripped or spoofed">I3</span><span class="legend-item-label">Identity Context propagation</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="R2/R3 Capabilities require a Workflow Contract — Registry rejects without it">I4</span><span class="legend-item-label">Workflow Contract required R2/R3</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Audit Record written synchronously on every Execution — fail-open R0/R1, fail-closed R2/R3, write-ahead R3">I5</span><span class="legend-item-label">Audit Record — every Execution</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Safety Envelope immutable on publish — no runtime override possible">I6</span><span class="legend-item-label">Safety Envelope immutable on publish</span></span>
+      </div>
+    </div>
+  </div>
+  <button class="legend-close" onclick="document.getElementById('legend-strip').classList.toggle('legend-collapsed')" title="Toggle legend">
+    <span class="legend-close-icon">⌃</span>
+  </button>
+</div>
+
+<!-- FOOTER -->
+<div class="footer-note">
+  <span>UKI Enterprise AI Platform · Multi-Agent Orchestration Patterns · v5 · INTERNAL</span>
+  <div class="footer-tags">
+    <span class="footer-tag">Execution Model</span>
+    <span class="footer-tag">Risk Tier</span>
+    <span class="footer-tag">AgentCore</span>
+    <span class="footer-tag">Step Functions</span>
+    <span class="footer-tag">AWS Strands</span>
+    <span class="footer-tag">MCP</span>
+    <span class="footer-tag">ABAC</span>
+  </div>
+</div>
+
+</body>
+</html>

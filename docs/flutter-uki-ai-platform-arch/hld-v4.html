@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UKI Enterprise AI Platform · High-Level Design · v3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+
+  :root {
+    --bg:#0F1117; --surface:#181C27; --surface2:#1E2333;
+    --text-primary:#F0F4FF; --text-secondary:#9BA5BE; --text-dim:#4A5270;
+    --border:rgba(255,255,255,0.07); --border-faint:rgba(255,255,255,0.04);
+
+    --l5:#A78BFA; --l4:#34D399; --l3:#60A5FA; --l2:#FB923C; --l1:#F472B6;
+    --gov:#67E8F9; --sec:#F87171; --obs:#C084FC;
+
+    /* account colours */
+    --c-prod:    rgba(96,165,250,.07);
+    --c-prod-b:  rgba(96,165,250,.3);
+    --c-tooling: rgba(250,204,21,.06);
+    --c-tooling-b:rgba(250,204,21,.28);
+    --c-vpce:    rgba(52,211,153,.06);
+    --c-vpce-b:  rgba(52,211,153,.28);
+    --c-egress:  rgba(248,113,113,.07);
+    --c-egress-b:rgba(248,113,113,.28);
+    --c-global:  rgba(167,139,250,.05);
+    --c-global-b:rgba(167,139,250,.28);
+
+    --fs:1.05;
+  }
+
+  body { font-family:'Inter',sans-serif; background:var(--bg); min-height:100vh;
+         display:flex; justify-content:center; padding:28px 28px 100px; }
+  .canvas { width:100%; max-width:1440px; }
+
+  /* ── TOOLBAR ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:5px 9px; border-radius:8px; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:600; width:30px; height:30px; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── HEADER ── */
+  .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:20px; padding-right:180px; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:6px; }
+  .title { font-family:'Syne',sans-serif; font-size:calc(28px * var(--fs)); font-weight:800; color:var(--text-primary); letter-spacing:-.5px; line-height:1; }
+  .title-accent { background:linear-gradient(90deg,#60A5FA,#A78BFA); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .subtitle { font-size:calc(12px * var(--fs)); color:var(--text-secondary); margin-top:6px; }
+  .badge { font-family:'JetBrains Mono',monospace; font-size:calc(9.5px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:4px 10px; border-radius:20px; background:var(--surface); white-space:nowrap; }
+
+  /* ── LEGEND ── */
+  .legend-row { display:flex; align-items:center; gap:14px; margin-bottom:18px; padding:8px 14px; background:var(--surface); border:1px solid var(--border); border-radius:8px; flex-wrap:wrap; }
+  .leg { display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); color:var(--text-secondary); white-space:nowrap; }
+  .leg-dashed { width:28px; height:0; border-top:1.5px dashed; }
+  .leg-solid  { width:28px; height:0; border-top:1.5px solid; }
+  .leg-sep { width:1px; height:14px; background:var(--border); }
+
+  /* ══════════════════════════════════
+     ACCOUNT / ZONE CONTAINERS
+  ══════════════════════════════════ */
+  .zone {
+    border:1.5px dashed var(--zb);
+    background:var(--zbg);
+    border-radius:12px;
+    padding:12px;
+    position:relative;
+  }
+  .zone-lbl {
+    position:absolute; top:-10px; left:14px;
+    font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs));
+    font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--zc); background:var(--bg); padding:0 7px; white-space:nowrap;
+  }
+  .zone-sub {
+    position:absolute; top:-10px; right:14px;
+    font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs));
+    color:var(--text-dim); background:var(--bg); padding:0 7px; white-space:nowrap;
+  }
+
+  /* VPC / subnet inner boundary */
+  .vpc {
+    border:1px solid rgba(255,255,255,.1);
+    border-radius:8px; padding:8px 10px; position:relative;
+    background:rgba(255,255,255,.018);
+  }
+  .vpc-lbl {
+    position:absolute; top:-9px; left:10px;
+    font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs));
+    color:var(--text-dim); background:var(--bg); padding:0 5px;
+  }
+  .vpc-lbl em { font-style:normal; color:var(--text-secondary); }
+
+  .subnet {
+    border:1px dashed rgba(255,255,255,.12);
+    border-radius:6px; padding:6px 8px; position:relative;
+    background:rgba(255,255,255,.012);
+  }
+  .subnet-lbl {
+    position:absolute; top:-8px; left:8px;
+    font-family:'JetBrains Mono',monospace; font-size:calc(7px * var(--fs));
+    color:var(--text-dim); background:var(--bg); padding:0 4px;
+  }
+
+  /* ══════════════════════════════════
+     SERVICE BOXES
+  ══════════════════════════════════ */
+  .svc {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:7px; padding:7px 9px;
+    display:flex; flex-direction:column; gap:2px;
+  }
+  .svc::before { content:''; display:block; height:2px; border-radius:2px;
+    margin-bottom:4px; background:var(--sc,var(--l3)); opacity:.7; }
+  .svc-name { font-family:'Syne',sans-serif; font-size:calc(10px * var(--fs)); font-weight:700; color:var(--text-primary); line-height:1.2; }
+  .svc-sub  { font-size:calc(8px * var(--fs)); color:var(--text-secondary); line-height:1.4; }
+  .svc-tech { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:var(--text-dim); margin-top:1px; }
+
+  .stags { display:flex; gap:3px; flex-wrap:wrap; margin-top:4px; }
+  .stag { font-family:'JetBrains Mono',monospace; font-size:calc(7px * var(--fs)); padding:1px 5px; border-radius:3px; border:1px solid; white-space:nowrap; }
+  .t-pl  { color:var(--l3);  border-color:rgba(96,165,250,.25);  background:rgba(96,165,250,.08); }
+  .t-aws { color:#FF9900;    border-color:rgba(255,153,0,.25);   background:rgba(255,153,0,.07); }
+  .t-sec { color:var(--sec); border-color:rgba(248,113,113,.25); background:rgba(248,113,113,.07); }
+  .t-obs { color:var(--obs); border-color:rgba(192,132,252,.25); background:rgba(192,132,252,.07); }
+  .t-gov { color:var(--gov); border-color:rgba(103,232,249,.25); background:rgba(103,232,249,.07); }
+  .t-r23 { color:var(--l2);  border-color:rgba(251,146,60,.25);  background:rgba(251,146,60,.07); }
+
+  /* ── GRIDS ── */
+  .g2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+  .g4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px; }
+  .g5 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr; gap:6px; }
+  .g6 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr 1fr; gap:6px; }
+
+  /* ── FLOW CONNECTORS ── */
+  /* vertical arrow between rows */
+  .flow-v { display:flex; flex-direction:column; align-items:center; gap:2px; margin:4px 0; }
+  .flow-v-line { width:1px; height:16px; background:rgba(255,255,255,.15); position:relative; }
+  .flow-v-line.arrow::after { content:''; position:absolute; bottom:-5px; left:50%; transform:translateX(-50%);
+    border-top:5px solid rgba(255,255,255,.22); border-left:4px solid transparent; border-right:4px solid transparent; }
+  .flow-v-label { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:var(--text-dim);
+    padding:2px 10px; background:var(--surface); border:1px solid var(--border); border-radius:20px; white-space:nowrap; }
+
+  /* horizontal arrow */
+  .flow-h { display:flex; align-items:center; gap:0; }
+  .flow-h-line { flex:1; height:1px; background:rgba(255,255,255,.15); position:relative; }
+  .flow-h-line.arrow::after { content:''; position:absolute; right:-5px; top:50%; transform:translateY(-50%);
+    border-left:5px solid rgba(255,255,255,.22); border-top:4px solid transparent; border-bottom:4px solid transparent; }
+  .flow-h-label { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:var(--text-dim);
+    padding:2px 10px; background:var(--surface); border:1px solid var(--border); border-radius:20px; white-space:nowrap; flex-shrink:0; }
+
+  /* ── TGW HUB ── */
+  .tgw-hub {
+    display:flex; flex-direction:column; align-items:center; gap:0; margin:6px 0;
+  }
+  .tgw-row { display:flex; align-items:center; justify-content:center; gap:0; width:100%; }
+  .tgw-line-h { flex:1; height:1px; background:rgba(103,232,249,.3); }
+  .tgw-line-v { width:1px; background:rgba(103,232,249,.3); }
+  .tgw-node {
+    background:rgba(103,232,249,.08); border:1.5px solid rgba(103,232,249,.4);
+    border-radius:8px; padding:6px 14px;
+    font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs));
+    font-weight:700; color:var(--gov); white-space:nowrap;
+    display:flex; flex-direction:column; align-items:center; gap:1px;
+  }
+  .tgw-sub { font-size:calc(7px * var(--fs)); color:var(--text-dim); font-weight:400; }
+
+  /* ── AWS ORG OUTER ── */
+  .aws-org {
+    border:1.5px dashed rgba(255,153,0,.25);
+    border-radius:14px; padding:14px; position:relative;
+    background:rgba(255,153,0,.02);
+  }
+  .aws-org-lbl {
+    position:absolute; top:-11px; left:16px;
+    font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs));
+    font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+    color:rgba(255,153,0,.6); background:var(--bg); padding:0 8px;
+  }
+  .aws-region-lbl {
+    font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs));
+    color:rgba(96,165,250,.5); letter-spacing:1.5px; text-transform:uppercase;
+    border:1px solid rgba(96,165,250,.15); border-radius:5px;
+    padding:3px 10px; display:inline-block; margin-bottom:8px;
+  }
+
+  /* group label within a zone */
+  .grp-lbl { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs));
+    letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim);
+    margin-bottom:5px; padding-bottom:3px; border-bottom:1px solid var(--border-faint); }
+
+  /* ── EXTERNAL SERVICES STRIP ── */
+  .ext-strip { display:flex; align-items:stretch; gap:8px; margin-top:8px; }
+  .ext-svc {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:7px; padding:7px 9px; flex:1;
+  }
+  .ext-svc::before { content:''; display:block; height:2px; border-radius:2px;
+    margin-bottom:4px; background:var(--sc,var(--obs)); opacity:.6; }
+  .ext-name { font-family:'Syne',sans-serif; font-size:calc(9.5px * var(--fs)); font-weight:700; color:var(--text-primary); }
+  .ext-sub  { font-size:calc(8px * var(--fs)); color:var(--text-secondary); line-height:1.4; }
+
+  /* ── INTEGRATION TARGETS ── */
+  .int-targets { display:flex; gap:5px; flex-wrap:wrap; margin-top:6px; padding:8px 10px;
+    background:var(--surface); border:1px solid var(--border); border-radius:7px; }
+  .int-tag { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs));
+    padding:2px 8px; border-radius:4px; border:1px solid var(--border);
+    background:var(--surface2); color:var(--text-secondary); white-space:nowrap; }
+  .int-note { font-size:calc(8px * var(--fs)); color:var(--text-dim); font-style:italic; width:100%; margin-top:3px; }
+
+  /* ── MAIN LAYOUT ── */
+  .layout { display:flex; flex-direction:column; gap:8px; }
+  .row-main { display:grid; grid-template-columns:1fr 220px; gap:8px; align-items:start; }
+  .row-lower { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:start; }
+  .row-ext { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+
+  /* ── FOOTER ── */
+  .footer { margin-top:32px; border-top:1px solid var(--border); padding-top:12px;
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); color:var(--text-dim); }
+  .footer-tags { display:flex; gap:5px; flex-wrap:wrap; }
+  .footer-tag { color:var(--text-dim); border:1px solid var(--border); padding:2px 8px; border-radius:20px; background:var(--surface); font-size:calc(8px * var(--fs)); }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s"  onclick="setSize(0.9)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.05)">M</button>
+  <button class="sz-btn" id="sz-l"  onclick="setSize(1.2)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.4)">XL</button>
+</div>
+<script>
+var sizes={0.9:'sz-s',1.05:'sz-m',1.2:'sz-l',1.4:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.05);
+</script>
+
+<div class="canvas">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <div class="eyebrow">UKI Enterprise AI Platform · Infrastructure</div>
+      <div class="title">High-Level <span class="title-accent">Design</span></div>
+      <div class="subtitle">Account topology · VPC boundaries · TGW · Central VPCE · Egress · AI platform services</div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend-row">
+    <span class="leg"><span class="leg-dashed" style="border-color:rgba(255,153,0,.5)"></span>AWS account boundary</span>
+    <span class="leg-sep"></span>
+    <span class="leg"><span class="leg-solid" style="border-color:rgba(255,255,255,.2)"></span>VPC boundary</span>
+    <span class="leg"><span class="leg-dashed" style="border-color:rgba(255,255,255,.25)"></span>Subnet boundary</span>
+    <span class="leg-sep"></span>
+    <span class="leg"><span style="color:var(--gov);font-family:JetBrains Mono,monospace;font-size:11px">⬡</span> Transit Gateway — connects all VPCs</span>
+    <span class="leg-sep"></span>
+    <span class="leg"><span class="leg-dashed" style="border-color:rgba(96,165,250,.4)"></span>Platform-built service</span>
+    <span class="leg"><span class="leg-dashed" style="border-color:rgba(255,153,0,.4)"></span>AWS managed service</span>
+    <span class="leg-sep"></span>
+    <span class="leg"><span style="color:#FF9900;font-family:JetBrains Mono,monospace;font-size:9px">GW EP</span> S3/DynamoDB gateway endpoints (no TGW)</span>
+    <span class="leg"><span style="color:var(--gov);font-family:JetBrains Mono,monospace;font-size:9px">VPC EP</span> Interface endpoints via Central VPCE account</span>
+  </div>
+
+  <div class="layout">
+
+    <!-- ══════════════════════════
+         GLOBAL EDGE (outside AWS)
+         ══════════════════════════ -->
+    <div style="display:grid; grid-template-columns:1fr 180px; gap:8px; align-items:start;">
+
+      <!-- GLOBAL ZONE -->
+      <div class="zone" style="--zbg:var(--c-global);--zb:var(--c-global-b);--zc:var(--l5);">
+        <span class="zone-lbl">Global Edge · Outside AWS Account Boundary</span>
+        <div class="g5" style="margin-top:6px;">
+          <div class="svc" style="--sc:var(--l5)">
+            <div class="svc-name">AI Assistant Users</div>
+            <div class="svc-sub">Browser · Mobile · Internal tooling · API consumers</div>
+            <div class="svc-tech">HTTPS · WSS</div>
+          </div>
+          <div class="svc" style="--sc:var(--l5)">
+            <div class="svc-name">CloudFlare</div>
+            <div class="svc-sub">DDoS mitigation · CDN · WAF · TLS termination · Bot management</div>
+            <div class="svc-tech">CF Enterprise · Anycast</div>
+            <div class="stags"><span class="stag t-sec">first line of defence</span></div>
+          </div>
+          <div class="svc" style="--sc:var(--l3)">
+            <div class="svc-name">Route 53</div>
+            <div class="svc-sub">DNS routing · health checks · latency routing between regions</div>
+            <div class="svc-tech">AWS Route 53 · managed</div>
+            <div class="stags"><span class="stag t-aws">managed</span></div>
+          </div>
+          <div class="svc" style="--sc:var(--l3)">
+            <div class="svc-name">Amazon CloudFront</div>
+            <div class="svc-sub">CDN for React SPA · caches static assets. Origin is S3 React App bucket.</div>
+            <div class="svc-tech">CloudFront + S3 origin</div>
+            <div class="stags"><span class="stag t-aws">managed</span></div>
+          </div>
+          <div class="svc" style="--sc:var(--sec)">
+            <div class="svc-name">AWS WAF</div>
+            <div class="svc-sub">Secondary WAF at AWS edge. CF egress IP allowlist enforced here — direct-to-AWS blocked.</div>
+            <div class="svc-tech">Web-ACL · managed rules</div>
+            <div class="stags"><span class="stag t-sec">defence in depth</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OKTA (external IdP, sits alongside global edge) -->
+      <div class="zone" style="--zbg:rgba(167,139,250,.05);--zb:rgba(167,139,250,.25);--zc:var(--l5);">
+        <span class="zone-lbl">Identity · External</span>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;">
+          <div class="svc" style="--sc:var(--l5)">
+            <div class="svc-name">Okta</div>
+            <div class="svc-sub">Enterprise IdP (SAML 2.0). Federated into IAM Identity Center for all user types — end-users, developers, and operators. STS sessions with session tags issued downstream.</div>
+            <div class="svc-tech">OIDC · SAML 2.0</div>
+            <div class="stags"><span class="stag t-sec">MFA enforced</span></div>
+          </div>
+          <div class="svc" style="--sc:var(--l5)">
+            <div class="svc-name">AWS Certificate Manager</div>
+            <div class="svc-sub">TLS certificates for API Gateway endpoints and CloudFront distributions.</div>
+            <div class="svc-tech">ACM · auto-renew</div>
+            <div class="stags"><span class="stag t-aws">managed</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLOW: global → AWS org -->
+    <div class="flow-v">
+      <div class="flow-v-line arrow"></div>
+      <div class="flow-v-label">HTTPS/WSS · TLS 1.3 · SigV4 IAM auth · CF egress IPs only</div>
+    </div>
+
+    <!-- ══════════════════════════
+         AWS ORG BOUNDARY
+         ══════════════════════════ -->
+    <div class="aws-org">
+      <span class="aws-org-lbl">AWS Organisation · Flutter International · eu-west-1 primary · eu-west-2 DR</span>
+
+      <!-- REGION-LEVEL SERVICES (outside any VPC) -->
+      <div class="aws-region-lbl">EU-WEST-1 · Regional services (outside VPC)</div>
+      <div class="g4">
+        <div class="svc" style="--sc:var(--l3)">
+          <div class="svc-name">API Gateway · WebSocket</div>
+          <div class="svc-sub">Streaming agent responses. Connects to Lambda in private subnet via VPC Link.</div>
+          <div class="svc-tech">wss:// · $connect · $disconnect · $default</div>
+          <div class="stags"><span class="stag t-aws">regional · no VPC</span></div>
+        </div>
+        <div class="svc" style="--sc:var(--l3)">
+          <div class="svc-name">API Gateway · REST</div>
+          <div class="svc-sub">Platform REST API — capability invocation, Registry API, admin. VPC Link to Lambda.</div>
+          <div class="svc-tech">POST /v1/capabilities/{id}/invoke<br>POST /v1/registry/capabilities</div>
+          <div class="stags"><span class="stag t-aws">regional · no VPC</span></div>
+        </div>
+        <div class="svc" style="--sc:var(--sec)">
+          <div class="svc-name">IAM Identity Center</div>
+          <div class="svc-sub">SSO and identity federation. Okta federated via SAML 2.0. Issues STS sessions with session tags (tenant_id, brand, role, use-case). Lambda Authorizer validates via GetCallerIdentity and extracts tags for ABAC.</div>
+          <div class="svc-tech">IAM Identity Center · STS · SAML 2.0 federation</div>
+          <div class="stags"><span class="stag t-aws">managed</span><span class="stag t-sec">federated Okta</span></div>
+        </div>
+        <div class="svc" style="--sc:var(--l3)">
+          <div class="svc-name">S3 React App</div>
+          <div class="svc-sub">Static asset bucket for the AI Assistant web application. Served via CloudFront. Not in VPC — public bucket with OAC.</div>
+          <div class="svc-tech">S3 + CloudFront OAC</div>
+          <div class="stags"><span class="stag t-aws">static · public via CF</span></div>
+        </div>
+      </div>
+
+      <!-- FLOW: regional → accounts -->
+      <div class="flow-v" style="margin:8px 0;">
+        <div class="flow-v-line arrow"></div>
+        <div class="flow-v-label">VPC Link → private Lambda subnet</div>
+      </div>
+
+      <!-- MAIN ROW: PROD ACCOUNT + TOOLING ACCOUNT -->
+      <div class="row-main">
+
+        <!-- ── PROD ACCOUNT ── -->
+        <div class="zone" style="--zbg:var(--c-prod);--zb:var(--c-prod-b);--zc:var(--l3);">
+          <span class="zone-lbl">Account · UKI-AI-ASSISTANT-PROD</span>
+          <span class="zone-sub">eu-west-1 · eu-west-2 DR</span>
+
+          <div class="vpc" style="margin-top:8px;">
+            <span class="vpc-lbl"><em>UKI-RAI-VPC</em></span>
+
+            <!-- AZ grid -->
+            <div class="g2" style="margin-top:4px;">
+              <div class="subnet">
+                <span class="subnet-lbl">AZ 1a · private (lambda)</span>
+                <div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">
+                  <div class="svc" style="--sc:var(--l3)">
+                    <div class="svc-name">Lambda Authorizer</div>
+                    <div class="svc-sub">STS GetCallerIdentity → session tag extraction. Identity Context established.</div>
+                    <div class="svc-tech">Lambda · Node.js</div>
+                    <div class="stags"><span class="stag t-pl">platform-built</span><span class="stag t-sec">Identity Context</span></div>
+                  </div>
+                  <div class="svc" style="--sc:var(--l3)">
+                    <div class="svc-name">Agent Orchestration</div>
+                    <div class="svc-sub">Strands SDK wrapper. Loads Capability Definition, runs agent loop, writes Audit Record (I5).</div>
+                    <div class="svc-tech">Lambda / ECS · Python · Strands SDK</div>
+                    <div class="stags"><span class="stag t-pl">platform-built</span></div>
+                  </div>
+                  <div class="svc" style="--sc:var(--l3)">
+                    <div class="svc-name">Capability Registry</div>
+                    <div class="svc-sub">Lifecycle gate · publish validation · ABAC on Tool Bindings. Backed by DynamoDB.</div>
+                    <div class="svc-tech">Lambda / ECS · Python · FastAPI</div>
+                    <div class="stags"><span class="stag t-pl">platform-built</span></div>
+                  </div>
+                  <div class="svc" style="--sc:var(--l2)">
+                    <div class="svc-name">LLM Gateway</div>
+                    <div class="svc-sub">LiteLLM proxy. Per-tenant quota · prompt cache · circuit breaker · cost attribution. Calls Bedrock via Central VPCE.</div>
+                    <div class="svc-tech">ECS · LiteLLM · Redis (quota)</div>
+                    <div class="stags"><span class="stag t-pl">platform-built</span><span class="stag t-gov">via VPCE</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="subnet">
+                <span class="subnet-lbl">AZ 1b · private (lambda)</span>
+                <div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">
+                  <div class="svc" style="--sc:var(--l3)">
+                    <div class="svc-name">MCP Gateway</div>
+                    <div class="svc-sub">Tool call router. RFC 8693 token exchange per tool target. Routes to downstream systems via Central Egress.</div>
+                    <div class="svc-tech">Lambda / ECS · Python</div>
+                    <div class="stags"><span class="stag t-pl">platform-built</span><span class="stag t-sec">RFC 8693</span></div>
+                  </div>
+                  <div class="svc" style="--sc:var(--l2)">
+                    <div class="svc-name">Step Functions (Process scope)</div>
+                    <div class="svc-sub">Durable execution for R2/R3. State machine definitions in prod account. Invokes Lambda tasks. HITL waitForTaskToken.</div>
+                    <div class="svc-tech">Step Functions Standard · ASL</div>
+                    <div class="stags"><span class="stag t-r23">R2/R3 only</span><span class="stag t-aws">managed</span></div>
+                  </div>
+                  <div class="svc" style="--sc:var(--l2)">
+                    <div class="svc-name">HITL Service</div>
+                    <div class="svc-sub">Approval gate for R3. Receives task token from SFN. Routes to reviewer queue. Non-waivable.</div>
+                    <div class="svc-tech">Lambda · SQS</div>
+                    <div class="stags"><span class="stag t-pl">platform-built</span><span class="stag t-r23">R3 mandatory</span></div>
+                  </div>
+                  <div class="svc" style="--sc:var(--obs)">
+                    <div class="svc-name">CW Logs → Splunk Forwarder</div>
+                    <div class="svc-sub">Lambda/ECS logs → CloudWatch Logs → Splunk Forwarder Lambda → Splunk HEC endpoint. All platform logs flow this way.</div>
+                    <div class="svc-tech">CW Logs subscription · Lambda forwarder</div>
+                    <div class="stags"><span class="stag t-obs">always-on</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- GATEWAY ENDPOINTS — S3 and DynamoDB don't go via TGW -->
+            <div style="margin-top:8px; padding:7px 9px; border:1px dashed rgba(255,153,0,.25); border-radius:7px; background:rgba(255,153,0,.03);">
+              <div class="grp-lbl" style="color:rgba(255,153,0,.5);">VPC Gateway Endpoints · traffic stays in VPC · does NOT transit TGW</div>
+              <div class="g2">
+                <div class="svc" style="--sc:#FF9900">
+                  <div class="svc-name">S3 Gateway Endpoint</div>
+                  <div class="svc-sub">Audit Records · document uploads · Knowledge Base artefacts. Object Lock on audit bucket.</div>
+                  <div class="svc-tech">Gateway EP · com.amazonaws.eu-west-1.s3</div>
+                  <div class="stags"><span class="stag t-aws">GW EP · no TGW</span><span class="stag t-sec">Object Lock R2/R3</span></div>
+                </div>
+                <div class="svc" style="--sc:#FF9900">
+                  <div class="svc-name">DynamoDB Gateway Endpoint</div>
+                  <div class="svc-sub">Conversation state · Registry metadata · session store. On-demand capacity · PITR.</div>
+                  <div class="svc-tech">Gateway EP · com.amazonaws.eu-west-1.dynamodb</div>
+                  <div class="stags"><span class="stag t-aws">GW EP · no TGW</span><span class="stag t-gov">PITR enabled</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TGW ATTACHMENT -->
+            <div style="margin-top:8px; padding:6px 9px; border:1px solid rgba(103,232,249,.2); border-radius:7px; background:rgba(103,232,249,.04);">
+              <div class="grp-lbl" style="color:rgba(103,232,249,.5);">TGW Attachment · all other AWS service traffic + internet egress</div>
+              <div class="svc" style="--sc:var(--gov)">
+                <div class="svc-name">TGW Attachment subnet</div>
+                <div class="svc-sub">Routes non-gateway traffic to TGW. Bedrock · OpenSearch · SQS · CloudWatch · KMS · Secrets Manager all route via TGW → Central VPCE. Outbound internet (MCP tool calls) routes via TGW → Central Egress → Palo Alto.</div>
+                <div class="svc-tech">TGW attachment · route table</div>
+              </div>
+            </div>
+
+          </div><!-- /UKI-RAI-VPC -->
+        </div><!-- /prod account -->
+
+        <!-- ── TOOLING ACCOUNT ── -->
+        <div class="zone" style="--zbg:var(--c-tooling);--zb:var(--c-tooling-b);--zc:#FACC15;">
+          <span class="zone-lbl">Account · UKI-AI-ASSISTANT-TOOLING</span>
+
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+            <div class="svc" style="--sc:#FACC15">
+              <div class="svc-name">CDK Deployer</div>
+              <div class="svc-sub">Receives infra build requests from GitHub Actions. Synthesises and deploys CDK stacks to prod account. Cross-account IAM role.</div>
+              <div class="svc-tech">CDK · CodeDeploy · cross-account role</div>
+              <div class="stags"><span class="stag t-aws">managed</span></div>
+            </div>
+            <div class="svc" style="--sc:#FACC15">
+              <div class="svc-name">AWS CodeDeploy</div>
+              <div class="svc-sub">Application deployment orchestration. Blue/green deployments. Rollback on health check failure.</div>
+              <div class="svc-tech">CodeDeploy · ECS / Lambda targets</div>
+              <div class="stags"><span class="stag t-aws">managed</span></div>
+            </div>
+            <div class="svc" style="--sc:#FACC15">
+              <div class="svc-name">Evaluation Gate Runner</div>
+              <div class="svc-sub">Runs Promptfoo regression + Bedrock Evaluation on capability publish. Blocks Registry state transition on score failure.</div>
+              <div class="svc-tech">ECS · Promptfoo · Bedrock Evaluation</div>
+              <div class="stags"><span class="stag t-pl">platform-built</span></div>
+            </div>
+            <div class="svc" style="--sc:#FACC15">
+              <div class="svc-name">Amazon ECR</div>
+              <div class="svc-sub">Container image registry for all platform ECS/Lambda container images. Scanned on push.</div>
+              <div class="svc-tech">ECR · image scanning · lifecycle</div>
+              <div class="stags"><span class="stag t-aws">managed</span></div>
+            </div>
+
+            <div style="margin-top:4px; padding:7px 9px; border:1px solid var(--border); border-radius:7px; background:var(--surface);">
+              <div class="grp-lbl">GitHub Enterprise · ORG: Flutter-Global</div>
+              <div class="svc-sub" style="font-size:calc(8px * var(--fs));">GitHub Actions CI/CD. PRs trigger Promptfoo gates. Merged → CDK Deployer. 3500+ repositories under Flutter org.</div>
+              <div class="stags" style="margin-top:5px;"><span class="stag t-gov">CI/CD gated</span><span class="stag t-gov">Promptfoo PR gate</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /row-main -->
+
+      <!-- TGW HUB -->
+      <div class="tgw-hub" style="margin:10px 0;">
+        <div class="flow-v-line" style="height:12px; background:rgba(103,232,249,.3);"></div>
+        <div class="tgw-row">
+          <div class="tgw-line-h"></div>
+          <div class="tgw-node">
+            ⬡ Transit Gateway
+            <span class="tgw-sub">connects Prod VPC · Central VPCE VPC · Central Egress VPC</span>
+          </div>
+          <div class="tgw-line-h"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;width:66%;margin-top:0;">
+          <div class="flow-v-line" style="height:12px; background:rgba(103,232,249,.3);"></div>
+          <div class="flow-v-line" style="height:12px; background:rgba(103,232,249,.3);"></div>
+        </div>
+      </div>
+
+      <!-- LOWER ROW: CENTRAL VPCE + CENTRAL EGRESS -->
+      <div class="row-lower">
+
+        <!-- CENTRAL VPCE ACCOUNT -->
+        <div class="zone" style="--zbg:var(--c-vpce);--zb:var(--c-vpce-b);--zc:var(--l4);">
+          <span class="zone-lbl">Account · UKI Shared Services · Central VPC Endpoints</span>
+          <span class="zone-sub">All interface endpoint traffic routes here via TGW</span>
+
+          <div class="vpc" style="margin-top:8px;">
+            <span class="vpc-lbl"><em>Central VPCE VPC</em></span>
+            <div class="subnet" style="margin-top:6px;">
+              <span class="subnet-lbl">private · for VPC Endpoints</span>
+              <div style="margin-top:6px;" class="grp-lbl">Regional VPC Interface Endpoints</div>
+              <div class="g3" style="margin-top:4px;">
+                <div class="svc" style="--sc:var(--l2)">
+                  <div class="svc-name">Bedrock Runtime</div>
+                  <div class="svc-sub">Model inference. Claude · Titan · Llama. Called exclusively via LLM Gateway.</div>
+                  <div class="svc-tech">com.amazonaws.eu-west-1.bedrock-runtime</div>
+                  <div class="stags"><span class="stag t-aws">managed</span><span class="stag t-gov">via VPCE</span></div>
+                </div>
+                <div class="svc" style="--sc:var(--l2)">
+                  <div class="svc-name">Bedrock Guardrails</div>
+                  <div class="svc-sub">Safety Envelope enforcement on every LLM call. Called by LLM Gateway before/after model call.</div>
+                  <div class="svc-tech">com.amazonaws.eu-west-1.bedrock</div>
+                  <div class="stags"><span class="stag t-aws">managed</span><span class="stag t-sec">immutable on publish</span></div>
+                </div>
+                <div class="svc" style="--sc:var(--l4)">
+                  <div class="svc-name">OpenSearch Serverless</div>
+                  <div class="svc-sub">Vector index for RAG. tenant_id filter on every query. Ingestion from S3 via Bedrock KB pipeline.</div>
+                  <div class="svc-tech">com.amazonaws.eu-west-1.aoss</div>
+                  <div class="stags"><span class="stag t-aws">serverless</span><span class="stag t-gov">tenant-isolated</span></div>
+                </div>
+                <div class="svc" style="--sc:var(--obs)">
+                  <div class="svc-name">CloudWatch</div>
+                  <div class="svc-sub">PutMetricData from all platform services. Alarms → SNS → PagerDuty. Dashboards per capability.</div>
+                  <div class="svc-tech">com.amazonaws.eu-west-1.monitoring</div>
+                  <div class="stags"><span class="stag t-obs">always-on</span></div>
+                </div>
+                <div class="svc" style="--sc:var(--l3)">
+                  <div class="svc-name">SQS</div>
+                  <div class="svc-sub">HITL approval queues · async workflow messaging · dead-letter queues.</div>
+                  <div class="svc-tech">com.amazonaws.eu-west-1.sqs</div>
+                  <div class="stags"><span class="stag t-aws">managed</span></div>
+                </div>
+                <div class="svc" style="--sc:var(--sec)">
+                  <div class="svc-name">KMS · Secrets Manager</div>
+                  <div class="svc-sub">CMKs per account. API key / credential retrieval. Auto-rotation.</div>
+                  <div class="svc-tech">kms · secretsmanager endpoints</div>
+                  <div class="stags"><span class="stag t-sec">CMK per account</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Langfuse self-hosted note -->
+            <div style="margin-top:8px; padding:7px 9px; border:1px solid rgba(192,132,252,.2); border-radius:7px; background:rgba(192,132,252,.04);">
+              <div class="grp-lbl" style="color:rgba(192,132,252,.5);">Observability services (self-hosted in this account)</div>
+              <div class="g2">
+                <div class="svc" style="--sc:var(--obs)">
+                  <div class="svc-name">Langfuse</div>
+                  <div class="svc-sub">Self-hosted. Full trace trees per Execution. LiteLLM callback fires on every model call. LLM-as-judge scoring. 90-day retention.</div>
+                  <div class="svc-tech">ECS · RDS Postgres · self-hosted</div>
+                  <div class="stags"><span class="stag t-pl">self-hosted</span><span class="stag t-obs">primary trace store</span></div>
+                </div>
+                <div class="svc" style="--sc:var(--obs)">
+                  <div class="svc-name">CloudTrail Lake</div>
+                  <div class="svc-sub">All IAM AssumeRole · Registry API · S3 Object Lock puts · KMS usage. 7-year retention. Athena queryable.</div>
+                  <div class="svc-tech">CloudTrail Lake · S3 Object Lock · Athena</div>
+                  <div class="stags"><span class="stag t-obs">7yr · Compliance lock</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CENTRAL EGRESS ACCOUNT -->
+        <div class="zone" style="--zbg:var(--c-egress);--zb:var(--c-egress-b);--zc:var(--sec);">
+          <span class="zone-lbl">Account · UKI Shared Services · Central Egress</span>
+          <span class="zone-sub">All outbound internet traffic routes here via TGW</span>
+
+          <div class="vpc" style="margin-top:8px;">
+            <span class="vpc-lbl"><em>Central Egress VPC</em></span>
+
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+              <div class="svc" style="--sc:var(--sec)">
+                <div class="svc-name">Palo Alto VM-Series NGFW</div>
+                <div class="svc-sub">Next-gen firewall for all outbound internet traffic from the organisation. Deep packet inspection · URL filtering · threat prevention · SSL decryption. No agent traffic leaves the org without transiting here.</div>
+                <div class="svc-tech">VM-Series · Panorama-managed</div>
+                <div class="stags"><span class="stag t-sec">all outbound internet</span><span class="stag t-sec">DPI + URL filter</span></div>
+              </div>
+              <div class="svc" style="--sc:var(--sec)">
+                <div class="svc-name">VPC Internet Gateway</div>
+                <div class="svc-sub">Single internet gateway for the organisation. All outbound requests (MCP tool calls to external APIs, LLM providers outside Bedrock, Splunk HEC) exit here post-firewall.</div>
+                <div class="svc-tech">VPC IGW · public subnet</div>
+                <div class="stags"><span class="stag t-sec">post-firewall only</span></div>
+              </div>
+            </div>
+
+            <!-- what routes out -->
+            <div style="margin-top:8px; padding:7px 9px; border:1px solid var(--border); border-radius:7px; background:var(--surface);">
+              <div class="grp-lbl">Traffic that routes via Central Egress (sample)</div>
+              <div class="g2">
+                <div class="svc" style="--sc:var(--obs)">
+                  <div class="svc-name">Splunk HEC</div>
+                  <div class="svc-sub">CW Logs → Splunk Forwarder Lambda → HEC endpoint. All platform logs forwarded to enterprise Splunk.</div>
+                  <div class="svc-tech">Splunk HEC · HTTPS · token auth</div>
+                  <div class="stags"><span class="stag t-obs">log forwarding</span></div>
+                </div>
+                <div class="svc" style="--sc:var(--l2)">
+                  <div class="svc-name">Non-Bedrock LLM Providers</div>
+                  <div class="svc-sub">Anthropic direct · OpenAI · Google Vertex. Called only via LLM Gateway when Capability Definition declares non-Bedrock model.</div>
+                  <div class="svc-tech">Via LLM Gateway only · credentials in Secrets Mgr</div>
+                  <div class="stags"><span class="stag t-aws">via LLM GW only</span></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div><!-- /row-lower -->
+
+    </div><!-- /aws-org -->
+
+    <!-- ══════════════════════════
+         EXTERNAL SERVICES + INTEGRATIONS
+         ══════════════════════════ -->
+    <div class="flow-v">
+      <div class="flow-v-line arrow"></div>
+      <div class="flow-v-label">MCP tool calls · Splunk logs · via Central Egress → Palo Alto → IGW</div>
+    </div>
+
+    <div class="zone" style="--zbg:rgba(255,255,255,.02);--zb:rgba(255,255,255,.12);--zc:var(--text-dim);">
+      <span class="zone-lbl">External Systems · Integration Targets · reached via MCP Gateway + Central Egress</span>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+        <div class="row-ext">
+          <div class="ext-svc" style="--sc:var(--obs)">
+            <div class="ext-name">Splunk Enterprise</div>
+            <div class="ext-sub">Receives all platform telemetry via Splunk Forwarder Lambda → HEC. Single pane for Flutter-wide log aggregation.</div>
+          </div>
+          <div class="ext-svc" style="--sc:var(--l2)">
+            <div class="ext-name">LLM Providers (non-Bedrock)</div>
+            <div class="ext-sub">Anthropic API · OpenAI · Google Vertex AI. Routed via LLM Gateway only. Credentials in Secrets Manager.</div>
+          </div>
+          <div class="ext-svc" style="--sc:var(--obs)">
+            <div class="ext-name">PagerDuty</div>
+            <div class="ext-sub">Receives CloudWatch alarms via SNS → PagerDuty integration. On-call routing for platform incidents.</div>
+          </div>
+        </div>
+        <div>
+          <div class="grp-lbl">MCP Tool Targets · reached via MCP Gateway · RFC 8693 scoped token · Risk Tier governs access</div>
+          <div class="int-targets">
+            <span class="int-tag">CRM / CS Platform</span>
+            <span class="int-tag">RG / AML Platform</span>
+            <span class="int-tag">Payments / Wallet</span>
+            <span class="int-tag">Jira / ServiceNow</span>
+            <span class="int-tag">Confluence</span>
+            <span class="int-tag">SharePoint</span>
+            <span class="int-tag">Office 365</span>
+            <span class="int-tag">Slack</span>
+            <span class="int-tag">Google Workspace</span>
+            <span class="int-tag">GitHub (code search)</span>
+            <div class="int-note">Integrations phased over multiple product drops. Each tool target requires a Tool Binding declared in the Capability Definition and ABAC-approved at the Registry before it can be called.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /layout -->
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>UKI Enterprise AI Platform · HLD · v4 · INTERNAL · DRAFT</span>
+    <div class="footer-tags">
+      <span class="footer-tag">eu-west-1 primary</span>
+      <span class="footer-tag">eu-west-2 DR</span>
+      <span class="footer-tag">4 AWS accounts</span>
+      <span class="footer-tag">TGW · Central VPCE · Central Egress</span>
+      <span class="footer-tag">Palo Alto VM-Series</span>
+      <span class="footer-tag">GW EP: S3 + DynamoDB</span>
+      <span class="footer-tag">Splunk HEC</span>
+      <span class="footer-tag">CloudFlare + AWS WAF</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

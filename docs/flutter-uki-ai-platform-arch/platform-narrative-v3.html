@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UKI Enterprise AI Platform · Platform Narrative · v3</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+
+  :root {
+    --bg:#0F1117; --surface:#181C27; --surface2:#1E2333;
+    --text-primary:#F0F4FF; --text-secondary:#9BA5BE; --text-dim:#4A5270;
+    --border:rgba(255,255,255,0.07); --border-faint:rgba(255,255,255,0.04);
+
+    --l5:#A78BFA; --l4:#34D399; --l3:#60A5FA; --l2:#FB923C; --l1:#F472B6;
+    --gov:#67E8F9; --sec:#F87171; --obs:#C084FC;
+
+    --e-capdef:#34D399; --e-exec:#60A5FA; --e-safety:#FB923C;
+    --e-risk:#F87171;   --e-execm:#67E8F9; --e-identity:#A78BFA;
+    --e-audit:#FACC15;  --e-workflow:#C084FC;
+
+    --r0:#34D399; --r1:#FACC15; --r2:#FB923C; --r3:#F87171;
+    --fs:1.15;
+  }
+
+  body { font-family:'Inter',sans-serif; background:var(--bg); min-height:100vh;
+         display:flex; justify-content:center; align-items:flex-start; padding:32px 32px 80px; }
+  .canvas { width:100%; max-width:1200px; }
+
+  /* ── TOOLBAR ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.3); white-space:nowrap; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── HEADER ── */
+  .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:52px; padding-right:180px; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); color:var(--text-dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+  .title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; color:var(--text-primary); letter-spacing:-0.5px; line-height:1; }
+  .title-accent { background:linear-gradient(90deg,#60A5FA,#A78BFA); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; }
+
+  /* ── NARRATIVE SECTION LAYOUT ── */
+  .narrative-section {
+    display:grid; grid-template-columns:180px 1fr; gap:0 48px;
+    margin-bottom:60px; opacity:0; transform:translateY(12px);
+    animation:up .4s ease forwards;
+  }
+  .narrative-section:nth-child(1){ animation-delay:.04s; }
+  .narrative-section:nth-child(2){ animation-delay:.10s; }
+  .narrative-section:nth-child(3){ animation-delay:.17s; }
+  .narrative-section:nth-child(4){ animation-delay:.24s; }
+  .narrative-section:nth-child(5){ animation-delay:.30s; }
+  .narrative-section:nth-child(6){ animation-delay:.36s; }
+  .narrative-section:nth-child(7){ animation-delay:.42s; }
+  .narrative-section:nth-child(8){ animation-delay:.48s; }
+  .narrative-section:nth-child(9){ animation-delay:.54s; }
+  .narrative-section:nth-child(10){ animation-delay:.60s; }
+  @keyframes up { to { opacity:1; transform:translateY(0); } }
+
+  .ns-left { padding-top:4px; }
+  .ns-num { font-family:'JetBrains Mono',monospace; font-size:calc(28px * var(--fs)); font-weight:700; color:var(--text-dim); opacity:.4; line-height:1; margin-bottom:6px; }
+  .ns-eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); line-height:1.4; }
+  .ns-title { font-family:'Syne',sans-serif; font-size:calc(22px * var(--fs)); font-weight:700; color:var(--text-primary); margin-bottom:16px; line-height:1.2; }
+  .ns-body { font-size:calc(11.5px * var(--fs)); color:var(--text-secondary); line-height:1.75; max-width:760px; }
+  .ns-body p { margin-bottom:14px; }
+  .ns-body p:last-child { margin-bottom:0; }
+  .ns-body strong { color:var(--text-primary); font-weight:600; }
+
+  /* ── CALLOUT ── */
+  .callout {
+    border-left:3px solid;
+    border-image:linear-gradient(180deg,#60A5FA,#A78BFA) 1;
+    padding:16px 22px; margin:20px 0;
+    background:rgba(96,165,250,.03); border-radius:0 8px 8px 0;
+  }
+  .callout-text { font-size:calc(13px * var(--fs)); color:var(--text-primary); line-height:1.65; font-style:italic; }
+
+  /* ══════════════════════════════════
+     METRIC GRID (Why Now)
+  ══════════════════════════════════ */
+  .metric-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-top:22px; }
+  .metric-card {
+    border:1px solid var(--border); border-top:2.5px solid var(--metric-color, #60A5FA);
+    border-radius:10px; background:var(--surface); padding:18px 16px; text-align:center;
+  }
+  .metric-value { font-family:'Syne',sans-serif; font-size:calc(28px * var(--fs)); font-weight:800; color:var(--metric-color, #60A5FA); line-height:1; margin-bottom:6px; }
+  .metric-label { font-family:'Syne',sans-serif; font-size:calc(11px * var(--fs)); font-weight:700; color:var(--text-primary); margin-bottom:6px; line-height:1.2; }
+  .metric-desc { font-size:calc(9.5px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+
+  /* ══════════════════════════════════
+     ARCHITECTURE OVERVIEW
+  ══════════════════════════════════ */
+  .layer-stack { display:flex; flex-direction:column; gap:6px; margin-top:22px; }
+  .layer-card {
+    border:1px solid var(--border);
+    border-left:3px solid var(--layer-color);
+    border-radius:10px; background:var(--surface); padding:14px 18px;
+    display:grid; grid-template-columns:160px 1fr; gap:0 20px; align-items:start;
+  }
+  .layer-badge {
+    font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs));
+    font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--layer-color); margin-bottom:4px;
+  }
+  .layer-name { font-family:'Syne',sans-serif; font-size:calc(12.5px * var(--fs)); font-weight:700; color:var(--text-primary); line-height:1.2; margin-bottom:4px; }
+  .layer-components { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); color:var(--text-dim); line-height:1.7; }
+  .layer-desc { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); line-height:1.6; }
+  .layer-desc strong { color:var(--text-primary); font-weight:500; }
+
+  .pillars-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px; }
+  .pillar-card {
+    border:1px solid var(--pillar-color-border);
+    border-top:2.5px solid var(--pillar-color);
+    border-radius:10px; background:var(--surface); padding:13px 15px;
+  }
+  .pillar-name { font-family:'Syne',sans-serif; font-size:calc(12px * var(--fs)); font-weight:700; color:var(--pillar-color); margin-bottom:6px; }
+  .pillar-desc { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.55; }
+  .pillar-desc strong { color:var(--text-primary); font-weight:500; }
+
+  .aws-strip {
+    display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap;
+    margin-top:16px; padding:12px 16px; background:var(--surface);
+    border:1px solid var(--border); border-radius:9px;
+  }
+  .aws-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); white-space:nowrap; padding-top:3px; flex-shrink:0; }
+  .aws-tags { display:flex; flex-wrap:wrap; gap:5px; }
+  .aws-tag { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); padding:3px 9px; border-radius:5px; border:1px solid var(--border); background:var(--surface2); color:var(--text-secondary); }
+
+  /* ══════════════════════════════════
+     STRATEGIC APPROACH (How)
+  ══════════════════════════════════ */
+  .strategy-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:22px; }
+  .strategy-card {
+    border:1px solid var(--border); border-left:3px solid var(--strat-color, #60A5FA);
+    border-radius:10px; background:var(--surface); padding:18px 20px;
+  }
+  .strategy-name { font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:700; color:var(--strat-color, #60A5FA); margin-bottom:8px; }
+  .strategy-desc { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); line-height:1.65; }
+  .strategy-desc strong { color:var(--text-primary); font-weight:500; }
+
+  /* ══════════════════════════════════
+     DELIVERY PHASES
+  ══════════════════════════════════ */
+  .phase-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:22px; }
+  .phase-card {
+    border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:18px 20px;
+    position:relative; overflow:hidden;
+  }
+  .phase-card::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:2.5px;
+    background:var(--phase-color, #60A5FA);
+  }
+  .phase-badge {
+    font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs));
+    letter-spacing:1.5px; text-transform:uppercase; color:var(--phase-color, #60A5FA);
+    margin-bottom:6px; font-weight:700;
+  }
+  .phase-name { font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:700; color:var(--text-primary); margin-bottom:8px; }
+  .phase-scope { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); line-height:1.6; }
+  .phase-scope strong { color:var(--text-primary); font-weight:500; }
+
+  /* ══════════════════════════════════
+     HOW IT WORKS — REQUEST FLOW
+  ══════════════════════════════════ */
+  .flow-steps { display:flex; flex-direction:column; gap:0; margin-top:22px; }
+  .flow-step { display:grid; grid-template-columns:36px 1fr; gap:0 16px; position:relative; }
+  .flow-step:not(:last-child) .flow-line { position:absolute; left:17px; top:36px; bottom:0; width:1px; background:rgba(255,255,255,.07); }
+  .flow-num-col { display:flex; flex-direction:column; align-items:center; }
+  .flow-num {
+    width:34px; height:34px; border-radius:50%;
+    border:1.5px solid var(--step-color); background:rgba(0,0,0,.3);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs));
+    font-weight:700; color:var(--step-color); flex-shrink:0;
+  }
+  .flow-content { padding:4px 0 24px; }
+  .flow-title { font-family:'Syne',sans-serif; font-size:calc(12.5px * var(--fs)); font-weight:700; color:var(--step-color); margin-bottom:5px; }
+  .flow-desc { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); line-height:1.6; }
+  .flow-desc strong { color:var(--text-primary); font-weight:500; }
+
+  /* ══════════════════════════════════
+     DOMAIN MODEL — CONDENSED
+  ══════════════════════════════════ */
+  .dm-table { width:100%; border-collapse:collapse; margin-top:20px; }
+  .dm-table th { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); text-align:left; padding:6px 12px 10px; border-bottom:1px solid var(--border); }
+  .dm-table td { font-size:calc(10px * var(--fs)); color:var(--text-secondary); padding:9px 12px; border-bottom:1px solid var(--border-faint); vertical-align:top; line-height:1.5; }
+  .dm-table tr:last-child td { border-bottom:none; }
+  .dm-table tr:hover td { background:rgba(255,255,255,.015); }
+  .dm-entity-name { font-family:'Syne',sans-serif; font-size:calc(11px * var(--fs)); font-weight:700; }
+  .dm-tag { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); padding:1px 7px; border-radius:3px; border:1px solid; white-space:nowrap; }
+
+  /* ══════════════════════════════════
+     RISK TIER TABLE
+  ══════════════════════════════════ */
+  .risk-table { width:100%; border-collapse:collapse; margin-top:20px; }
+  .risk-table th { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); text-align:left; padding:6px 12px 10px; border-bottom:1px solid var(--border); }
+  .risk-table td { font-size:calc(10px * var(--fs)); color:var(--text-secondary); padding:10px 12px; border-bottom:1px solid var(--border-faint); vertical-align:top; line-height:1.5; }
+  .risk-table tr:last-child td { border-bottom:none; }
+  .risk-table tr:hover td { background:rgba(255,255,255,.018); }
+  .rt-badge { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700; padding:2px 9px; border-radius:4px; white-space:nowrap; }
+  .rt-r0 { background:rgba(52,211,153,.15);  color:var(--r0); }
+  .rt-r1 { background:rgba(250,204,21,.15);  color:var(--r1); }
+  .rt-r2 { background:rgba(251,146,60,.15);  color:var(--r2); }
+  .rt-r3 { background:rgba(248,113,113,.15); color:var(--r3); }
+  .rt-name { font-weight:600; color:var(--text-primary); display:block; margin-bottom:3px; }
+  .rt-def { font-size:calc(9.5px * var(--fs)); color:var(--text-secondary); }
+  .rt-flag { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); padding:1px 7px; border-radius:3px; white-space:nowrap; }
+  .flag-ok     { background:rgba(52,211,153,.1);  color:#34D399; border:1px solid rgba(52,211,153,.2); }
+  .flag-alert  { background:rgba(248,113,113,.1); color:#F87171; border:1px solid rgba(248,113,113,.2); }
+
+  /* ══════════════════════════════════
+     SUCCESS METRICS TABLE
+  ══════════════════════════════════ */
+  .success-table { width:100%; border-collapse:collapse; margin-top:20px; }
+  .success-table th { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); text-align:left; padding:6px 12px 10px; border-bottom:1px solid var(--border); }
+  .success-table td { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); padding:11px 12px; border-bottom:1px solid var(--border-faint); vertical-align:top; line-height:1.5; }
+  .success-table tr:last-child td { border-bottom:none; }
+  .success-table tr:hover td { background:rgba(255,255,255,.015); }
+  .success-metric { font-weight:600; color:var(--text-primary); }
+  .success-target { font-family:'JetBrains Mono',monospace; font-size:calc(9.5px * var(--fs)); color:#60A5FA; }
+
+  /* ══════════════════════════════════
+     NON-GOALS
+  ══════════════════════════════════ */
+  .nongoal-list { display:flex; flex-direction:column; gap:8px; margin-top:20px; }
+  .nongoal { display:flex; align-items:flex-start; gap:12px; padding:11px 14px; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+  .nongoal-x { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim); flex-shrink:0; padding-top:1px; }
+  .nongoal-text { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+  .nongoal-text strong { color:var(--text-primary); font-weight:500; }
+
+  /* ── DIVIDER / FOOTER ── */
+  .section-divider { height:1px; background:var(--border); margin-bottom:52px; }
+  .footer { padding-top:14px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .footer-note { font-size:calc(10px * var(--fs)); color:var(--text-dim); font-family:'JetBrains Mono',monospace; }
+  .footer-links { display:flex; gap:20px; }
+  .footer-link { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:rgba(96,165,250,.5); text-decoration:none; }
+  .footer-link:hover { color:rgba(96,165,250,.8); }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s"  onclick="setSize(0.85)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.15)">M</button>
+  <button class="sz-btn" id="sz-l"  onclick="setSize(1.3)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.5)">XL</button>
+</div>
+<script>
+var sizes={0.85:'sz-s',1.15:'sz-m',1.3:'sz-l',1.5:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.15);
+</script>
+
+<div class="canvas">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <div class="eyebrow">UKI Enterprise AI Platform · Platform Narrative</div>
+      <div class="title">Enterprise AI <span class="title-accent">Platform</span></div>
+      <div class="subtitle">Why we are building it · What it is · How it works · How we deliver it</div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       01. VISION & OPPORTUNITY
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">01</div>
+      <div class="ns-eyebrow">Vision</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">Why this platform exists</div>
+      <div class="ns-body">
+        <p>Artificial intelligence is moving from experimentation to operational infrastructure. Competitors are deploying AI-powered workflows that reduce cost, accelerate decisions, and create customer experiences that were previously impossible at scale. The question is no longer whether to invest in AI — it is whether to build the capability to do so <strong>systematically</strong>, or to remain dependent on ad-hoc point solutions that cannot scale, cannot be governed, and cannot be trusted in regulated markets.</p>
+
+        <p>Flutter operates across a portfolio of regulated betting brands — PokerStars, Paddy Power, Betfair, Sky Betting &amp; Gaming — each subject to distinct regulatory obligations around Responsible Gambling, Anti-Money Laundering, data protection, and consumer fairness. Deploying AI capabilities in this environment without a shared governance foundation creates compounding risk: fragmented safety controls, unprovable audit trails, identity models that break at brand boundaries, and no consistent answer to the question a regulator will eventually ask — <em>how do you know your AI did what you said it did?</em></p>
+
+        <div class="callout">
+          <div class="callout-text">A governed, multi-tenant AI control plane that enforces safety, identity, and audit invariants unconditionally across every AI capability deployed within the organisation — regardless of which team built it, which brand runs it, or which model powers it.</div>
+        </div>
+
+        <p>The platform is not a productivity tool or an AI feature set. It is a <strong>control plane</strong>. It provides a shared, governed, reusable foundation for AI across every brand and function — purpose-built for enterprise scale, multi-brand operation, and the regulatory requirements of a licensed gaming operator. It absorbs the hard, shared problems — security, compliance, cost control, identity, data governance — so that product teams spend their time building agents that deliver value, not re-solving infrastructure.</p>
+
+        <p>Platform owns Layers 1–3. Product and brand teams own Layers 4–5. This is not a centralisation of AI; it is a centralisation of the infrastructure that <strong>makes AI safe and scalable</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       02. WHY NOW
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">02</div>
+      <div class="ns-eyebrow">Why Now</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">The cost of not building</div>
+      <div class="ns-body">
+        <p>Without a shared platform, each team builds their own guardrails, their own data pipelines, their own observability. The cost is paid in duplicated effort, inconsistent safety controls, and an inability to share capability across brands. A guardrail failure in one brand that could have been caught by a platform-level control is not a technical risk — it is a <strong>regulatory and reputational risk</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       03. ARCHITECTURE OVERVIEW
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">03</div>
+      <div class="ns-eyebrow">Architecture</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">Five layers, three cross-cutting pillars</div>
+      <div class="ns-body">
+        <p>The platform is structured as five technology layers from authoring surface to data plane, with three pillars — Governance, Security, Observability — enforced vertically across all of them. No layer operates outside the pillars. Every AI capability deployed on the platform passes through all five layers on every request.</p>
+        <p>Authoring produces a <strong>Capability Definition</strong> — the governed artefact that every other layer reasons about. Once published through the Registry gate, the runtime layers execute it within the constraints declared at authoring time. The pillars are not add-ons; they are the reason the layers are structured the way they are.</p>
+      </div>
+
+      <!-- LAYER STACK -->
+      <div class="layer-stack">
+
+        <div class="layer-card" style="--layer-color:var(--l5)">
+          <div class="layer-left">
+            <div class="layer-badge">L5 · Team-Owned</div>
+            <div class="layer-name">Consumer &amp; Agent Experience</div>
+            <div class="layer-components">Consumer surfaces<br>Internal tooling<br>Brand-specific UX<br>Third-party integrations</div>
+          </div>
+          <div class="layer-right">
+            <div class="layer-desc">The surfaces through which users and systems interact with published capabilities — Chat UIs, Slack bots, IDE integrations, REST API clients. Team-owned and brand-specific. These surfaces do not contain AI logic; they invoke published capabilities from the layer below. <strong>Feedback capture at this layer feeds the Langfuse quality loop.</strong></div>
+          </div>
+        </div>
+
+        <div class="layer-card" style="--layer-color:var(--l4)">
+          <div class="layer-left">
+            <div class="layer-badge">L4 · Team-Owned</div>
+            <div class="layer-name">Domain Agent Services</div>
+            <div class="layer-components">Agent authoring<br>Prompt engineering<br>Capability registration<br>Domain-specific tools</div>
+          </div>
+          <div class="layer-right">
+            <div class="layer-desc">Where domain teams author and register capabilities. Each capability is defined by its system prompt, tool bindings, Safety Envelope, and Risk Tier. Teams control their own delivery cadence. The Registry publish gate enforces quality and governance requirements — <strong>no capability reaches production without passing through it.</strong></div>
+          </div>
+        </div>
+
+        <div class="layer-card" style="--layer-color:var(--l3)">
+          <div class="layer-left">
+            <div class="layer-badge">L3 · Platform-Owned</div>
+            <div class="layer-name">AI Platform Services</div>
+            <div class="layer-components">LLM Gateway · LiteLLM<br>Agent Runtime · AgentCore<br>Guardrails · Bedrock<br>Capability Registry</div>
+          </div>
+          <div class="layer-right">
+            <div class="layer-desc"><strong>The non-negotiable contract boundary.</strong> All model access routes through the LLM Gateway (LiteLLM). All agent execution runs in AgentCore. All safety enforcement is applied by Bedrock Guardrails at this layer. The Capability Registry is the system of record for every published capability — it enforces invariants I1–I6 on every publish. No L4 team can bypass L3.</div>
+          </div>
+        </div>
+
+        <div class="layer-card" style="--layer-color:var(--l2)">
+          <div class="layer-left">
+            <div class="layer-badge">L2 · Platform-Owned</div>
+            <div class="layer-name">Data &amp; Knowledge</div>
+            <div class="layer-components">OpenSearch vectors<br>Document ingestion<br>RAG pipeline<br>Brand-isolated indexes</div>
+          </div>
+          <div class="layer-right">
+            <div class="layer-desc">Vector stores, document ingestion pipelines, and the retrieval system that agents use for grounded responses. <strong>Brand isolation is structural</strong> — every RAG query is filtered by tenant_id from the Identity Context. Knowledge bases are versioned, indexed per brand, and never cross-pollinated. Ingestion pipelines produce embeddings via the same Bedrock models governed by the LLM Gateway.</div>
+          </div>
+        </div>
+
+        <div class="layer-card" style="--layer-color:var(--l1)">
+          <div class="layer-left">
+            <div class="layer-badge">L1 · Platform-Owned</div>
+            <div class="layer-name">Foundation &amp; Infrastructure</div>
+            <div class="layer-components">IAM · Session Tags<br>IAM Identity Center · Okta federation<br>KMS · Secrets Manager<br>VPC · CloudWatch<br>CloudTrail · Langfuse</div>
+          </div>
+          <div class="layer-right">
+            <div class="layer-desc">Identity, compute, networking, and observability foundations. <strong>IAM with session tags</strong> is the mechanism for Identity Context establishment — tenant_id, brand, role, and use-case injected at authentication. <strong>IAM Identity Center with Okta federation (SAML 2.0)</strong> handles enterprise IdP integration — Okta authenticates, IAM Identity Center issues STS sessions with session tags. <strong>KMS</strong> encrypts Audit Records and secrets at rest. <strong>CloudWatch and CloudTrail</strong> provide the always-on metrics and compliance audit log layers. <strong>Langfuse</strong> runs here as the trace and evaluation platform, receiving spans from every LLM call and tool invocation via the LiteLLM callback.</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- PILLARS -->
+      <div class="pillars-row">
+        <div class="pillar-card" style="--pillar-color:var(--gov);--pillar-color-border:rgba(103,232,249,.15);">
+          <div class="pillar-name">Governance</div>
+          <div class="pillar-desc">The Registry publish gate, lifecycle state machine, Risk Tier proportionality, and Workflow Contract requirement form a consistent, enforced governance layer. <strong>No capability escapes governance review regardless of which authoring path produced it.</strong> Six platform invariants express the unconditional guarantees — see the domain model reference for details.</div>
+        </div>
+        <div class="pillar-card" style="--pillar-color:var(--sec);--pillar-color-border:rgba(248,113,113,.15);">
+          <div class="pillar-name">Security</div>
+          <div class="pillar-desc">Identity Context is established once at session start via IAM session tags and propagated immutably through every tool call via RFC 8693 token exchange. <strong>There is no path to call a tool anonymously or under a different identity.</strong> ABAC enforces tool access at the Registry and at every MCP boundary. Tenant isolation is structural — tenant_id is injected at every RAG query and quota check.</div>
+        </div>
+        <div class="pillar-card" style="--pillar-color:var(--obs);--pillar-color-border:rgba(192,132,252,.15);">
+          <div class="pillar-name">Observability</div>
+          <div class="pillar-desc">Five signal layers — Langfuse traces, CloudWatch metrics, CloudTrail audit, platform Audit Records (S3 Object Lock), and Step Functions execution history for R2/R3 — provide a canonical investigation order for any production incident. <strong>Audit Records are written synchronously, not as background logging.</strong> Cost is attributed to tenant and capability_id in real time.</div>
+        </div>
+      </div>
+
+      <!-- AWS SERVICES STRIP -->
+      <div class="aws-strip">
+        <span class="aws-label">AWS Services</span>
+        <div class="aws-tags">
+          <span class="aws-tag">Bedrock</span>
+          <span class="aws-tag">Strands / AgentCore</span>
+          <span class="aws-tag">Step Functions</span>
+          <span class="aws-tag">Bedrock Guardrails</span>
+          <span class="aws-tag">DynamoDB</span>
+          <span class="aws-tag">S3 + Object Lock</span>
+          <span class="aws-tag">CloudWatch</span>
+          <span class="aws-tag">CloudTrail</span>
+          <span class="aws-tag">IAM + Session Tags</span>
+          <span class="aws-tag">IAM Identity Center</span>
+          <span class="aws-tag">OpenSearch</span>
+          <span class="aws-tag">KMS</span>
+          <span class="aws-tag">SNS · PagerDuty</span>
+          <span class="aws-tag">Langfuse</span>
+          <span class="aws-tag">LiteLLM</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       04. STRATEGIC APPROACH
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">04</div>
+      <div class="ns-eyebrow">How</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">Four strategic pillars</div>
+      <div class="ns-body">
+        <p>The platform is not just a technology stack — it is an opinionated set of choices about how enterprise AI should be built in a regulated, multi-brand organisation. Four pillars guide every architecture and build decision.</p>
+      </div>
+
+      <div class="strategy-grid">
+        <div class="strategy-card" style="--strat-color:#60A5FA">
+          <div class="strategy-name">AWS-Native Foundation</div>
+          <div class="strategy-desc">Built on AWS managed services — <strong>Bedrock</strong> for LLM inference, <strong>AgentCore</strong> for agent hosting, <strong>Step Functions</strong> for durable workflow execution, and <strong>OpenSearch</strong> for vector retrieval. AWS-native means reduced operational burden, stronger security posture, and alignment with existing infrastructure investment. Third-party tools are adopted only where AWS has a genuine gap.</div>
+        </div>
+        <div class="strategy-card" style="--strat-color:#34D399">
+          <div class="strategy-name">Standards-Based Interoperability</div>
+          <div class="strategy-desc">Agents and tools are integrated using open standards — <strong>MCP</strong> (Model Context Protocol) for tool connectivity and <strong>A2A</strong> for agent-to-agent communication. Capabilities built today are not locked to a single vendor or framework. Agents can be composed and shared across brands without bespoke integration work.</div>
+        </div>
+        <div class="strategy-card" style="--strat-color:#F87171">
+          <div class="strategy-name">Non-Negotiable Guardrails</div>
+          <div class="strategy-desc">Content safety, PII detection, data loss prevention, and prompt injection protection are enforced at the <strong>gateway level</strong> — not optional, not bypassable, and fully auditable. Every LLM invocation is logged. Every Audit Record is written synchronously. This is the foundation of operating AI in a <strong>UKGC-regulated</strong> environment.</div>
+        </div>
+        <div class="strategy-card" style="--strat-color:#A78BFA">
+          <div class="strategy-name">Agent Marketplace</div>
+          <div class="strategy-desc">Agents built on the platform are <strong>discoverable, rated, versioned, and shareable</strong> across brands. A compliance agent built for one brand can be adopted by another in hours, not months. The marketplace model transforms AI capability from a cost centre into a <strong>shared asset</strong> with network effects across the portfolio.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       05. DELIVERY — GOLDEN THREAD
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">05</div>
+      <div class="ns-eyebrow">Delivery</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">The journey of deploying an agent</div>
+      <div class="ns-body">
+        <p>The phases are not abstract capability milestones — they describe a concrete, progressive expansion of what a team can build and how far the platform carries them. Follow a single agent from idea to production to see what each phase unlocks.</p>
+        <p><strong>The example:</strong> a Paddy Power Customer Service agent that answers account queries, retrieves betting history, and — at higher risk tiers — applies responsible gambling interventions.</p>
+      </div>
+
+      <div class="flow-steps">
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#60A5FA">1</div>
+            <div class="flow-line"></div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#60A5FA">Phase 1 — Foundation: the first governed agent</div>
+            <div class="flow-desc">A developer on the Paddy Power team authenticates via <strong>Okta → IAM Identity Center</strong> and receives an STS session with brand and role tags. They author a Capability Definition: a system prompt, an R0 Risk Tier declaration (read-only), and tool bindings to the customer knowledge base. The definition passes the <strong>Registry publish gate</strong> — Safety Envelope validated, tool bindings inspected, evaluation suite run by Promptfoo. The agent is deployed to AgentCore. On first invocation, the request flows through the <strong>LLM Gateway</strong> (quota checked, cost attributed), <strong>Bedrock Guardrails</strong> (PII redacted, injection blocked), and RAG retrieval (brand-isolated by session tag). An <strong>Audit Record</strong> is committed to S3. The team has a governed, observable, brand-isolated R0 agent in production — identity to audit trail, end-to-end.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#34D399">2</div>
+            <div class="flow-line"></div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#34D399">Phase 2 — Platform Maturity: the agent writes and waits for humans</div>
+            <div class="flow-desc">The same team now wants the agent to update a customer's communication preferences — an R2 action (customer-adjacent write). They version the Capability Definition to R2, add a <strong>Workflow Contract</strong> (idempotency key, compensation logic), and declare a <strong>HITL gate</strong> before the write executes. The platform enforces the declaration: Step Functions manages the durable workflow, the HITL service pauses execution and routes the approval to a human operator, and the Audit Record switches to <strong>fail-closed</strong> semantics — the write cannot proceed if the audit pipeline is unavailable. The agent is now published to the <strong>marketplace</strong> — the Betfair team discovers it, forks the definition, rebinds it to their own knowledge base and brand tags, and deploys their own instance. One agent design, two governed deployments, no integration work.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#A78BFA">3</div>
+            <div class="flow-line"></div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#A78BFA">Phase 3 — Ecosystem: agents compose and collaborate</div>
+            <div class="flow-desc">The Customer Service agent now needs to trigger a Responsible Gambling assessment — an R3 action (regulated write). Rather than embedding that logic, it invokes a specialist <strong>RG Assessment agent</strong> via <strong>A2A protocol</strong>. The orchestrating agent delegates, the specialist executes under its own Capability Definition and Safety Envelope, and both agents' Audit Records are correlated by execution ID. <strong>Promptfoo regression tests</strong> run as PR gates on every definition change — the evaluation framework is integrated to CI/CD, not a manual step. The marketplace now has network effects: agents built by one team are consumed, rated, and improved by others across brands.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:var(--text-dim)">→</div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:var(--text-dim)">2027+ Vision — not in scope</div>
+            <div class="flow-desc">Autonomous agent negotiation, coalition formation, predictive orchestration. Architectural decisions in Phases 1–3 must not preclude this direction, but it is not a current deliverable. The platform's standards-based integration layer (MCP + A2A) and the Capability Registry's versioned contract model are the foundations that make this direction possible without re-platforming.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       06. HOW IT WORKS
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">06</div>
+      <div class="ns-eyebrow">Request Flow</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">What happens on every Execution</div>
+      <div class="ns-body">
+        <p>Every AI capability invocation follows the same governed path — from the surface that called it, through identity establishment, into the runtime, through safety enforcement, out to tool calls, and back with a synchronously committed Audit Record. The steps below describe that path for a typical R1 or R2 Execution. R3 adds a write-ahead Audit Record commitment and a HITL gate before any state-changing tool call executes.</p>
+      </div>
+
+      <div class="flow-steps">
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#A78BFA">1</div>
+            <div class="flow-line"></div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#A78BFA">Identity established</div>
+            <div class="flow-desc">The calling surface authenticates through Okta, federated via <strong>IAM Identity Center (SAML 2.0)</strong>. IAM Identity Center issues an <strong>STS session with injected session tags</strong> — tenant_id, brand, role, use-case. This is the Identity Context for the Execution. Raw user credentials stop here — they do not flow past this boundary. The Identity Context is immutable for the duration of the session.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#34D399">2</div>
+            <div class="flow-line"></div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#34D399">Capability Definition resolved</div>
+            <div class="flow-desc">AgentCore loads the <strong>Published Capability Definition</strong> from the Registry — the specific version, its Safety Envelope, Risk Tier, Execution Model declaration, and permitted Tool Bindings. Draft or Review-state definitions are rejected. The ABAC check against Identity Context and Tool Bindings runs here — if the caller's session tags do not permit the tool set declared in the definition, the request is rejected before any model call is made.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#60A5FA">3</div>
+            <div class="flow-line"></div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#60A5FA">Agent loop executes</div>
+            <div class="flow-desc">The agent's perceive-reason-act loop runs within AgentCore. The LLM call is routed through the <strong>LLM Gateway</strong>, which enforces per-tenant quota, checks prompt cache, selects the provider, and attributes cost. Bedrock Guardrails evaluates every prompt and response against the <strong>Safety Envelope</strong> — PII detection, injection blocking, denied topic enforcement, output constraints. Each LLM call produces a Langfuse span. For Coordination-scope capabilities, the orchestrating agent invokes specialist capabilities via the same path recursively.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#FB923C">4</div>
+            <div class="flow-line"></div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#FB923C">Tool calls execute under Identity Context</div>
+            <div class="flow-desc">When the agent calls a tool, the <strong>MCP Gateway</strong> performs an RFC 8693 token exchange — the session-scoped IAM credential is transformed into a tool-scoped token that carries the Identity Context forward. The downstream tool receives a credential that proves who is calling and on behalf of which tenant — it cannot be impersonated and cannot exceed the ABAC permissions granted at session start. Tool calls are recorded as spans in the Langfuse trace and as entries in the Audit Record.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#FACC15">5</div>
+            <div class="flow-line"></div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#FACC15">Audit Record committed</div>
+            <div class="flow-desc">On Execution close, the <strong>Audit Record</strong> is written synchronously to S3. It contains: the Identity Context, the Capability Definition version and SHA-256, the Safety Envelope version, every tool call and its response hash, all guardrail decisions, token counts, and attributed cost. For R0/R1 a pipeline outage triggers fail-open with alerting. For R2/R3 the Execution halts — the record must commit before the response is returned. For R3 the record is committed <strong>before</strong> any state-changing tool call executes, not after.</div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="flow-num-col">
+            <div class="flow-num" style="--step-color:#67E8F9">6</div>
+          </div>
+          <div class="flow-content">
+            <div class="flow-title" style="color:#67E8F9">Observability updated</div>
+            <div class="flow-desc">CloudWatch metrics increment — error counts, latency, guardrail blocks, LLM Gateway quota consumption. The Langfuse trace is closed with the full span tree. Cost is posted to the per-tenant spend ledger and evaluated against the configured budget cap. If the cap is breached the <strong>circuit breaker opens</strong>, CloudWatch raises an alarm, and PagerDuty notifies the on-call engineer. For R2/R3 Process-scope executions, the Step Functions execution record is the persistent state of the workflow — queryable independently of the Langfuse trace.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       07. DOMAIN MODEL — CONDENSED
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">07</div>
+      <div class="ns-eyebrow">Domain Model</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">The platform's ubiquitous language</div>
+      <div class="ns-body">
+        <p>Eight entities form the shared vocabulary across all architecture documents and views. Every component in the platform exists to store, enforce, or execute something described by one of these entities. When a term appears in a view or a design decision, it refers to one of these.</p>
+      </div>
+
+      <table class="dm-table">
+        <thead>
+          <tr>
+            <th>Entity</th>
+            <th>When</th>
+            <th>One-liner</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="dm-entity-name" style="color:var(--e-capdef)">Capability Definition</span></td>
+            <td><span class="dm-tag" style="color:#34D399;border-color:rgba(52,211,153,.25);background:rgba(52,211,153,.08)">Design-time</span></td>
+            <td>The immutable, versioned specification of an AI capability — the platform's fundamental unit of management. All governance derives from this artefact.</td>
+          </tr>
+          <tr>
+            <td><span class="dm-entity-name" style="color:var(--e-safety)">Safety Envelope</span></td>
+            <td><span class="dm-tag" style="color:#FB923C;border-color:rgba(251,146,60,.25);background:rgba(251,146,60,.08)">Design-time</span></td>
+            <td>A versioned policy component of the Capability Definition. Declares permitted content scope, PII handling, injection controls, output constraints. Immutable on publish. Enforced by Guardrails at runtime but cannot be changed by it.</td>
+          </tr>
+          <tr>
+            <td><span class="dm-entity-name" style="color:var(--e-risk)">Risk Tier</span></td>
+            <td><span class="dm-tag" style="color:#FB923C;border-color:rgba(251,146,60,.25);background:rgba(251,146,60,.08)">Design-time</span></td>
+            <td>R0–R3 classification of what a Capability is permitted to affect. Drives every governance control proportionally — evaluation rigour, HITL, audit retention, fail-open vs fail-closed semantics. See Section 8.</td>
+          </tr>
+          <tr>
+            <td><span class="dm-entity-name" style="color:var(--e-execm)">Execution Model</span></td>
+            <td><span class="dm-tag" style="color:#FB923C;border-color:rgba(251,146,60,.25);background:rgba(251,146,60,.08)">Design-time</span></td>
+            <td>A declared field on the Capability Definition — Reasoning (always), Coordination (optional, for orchestration), Process (required for R2/R3). Registry-visible; not an implementation detail hidden in code.</td>
+          </tr>
+          <tr>
+            <td><span class="dm-entity-name" style="color:var(--e-exec)">Execution</span></td>
+            <td><span class="dm-tag" style="color:#60A5FA;border-color:rgba(96,165,250,.25);background:rgba(96,165,250,.08)">Runtime</span></td>
+            <td>A runtime instance of a Published Capability Definition processing a request. Traces to exactly one Definition version, one Identity Context, and produces one Audit Record. The atomic unit of platform accountability.</td>
+          </tr>
+          <tr>
+            <td><span class="dm-entity-name" style="color:var(--e-identity)">Identity Context</span></td>
+            <td><span class="dm-tag" style="color:#60A5FA;border-color:rgba(96,165,250,.25);background:rgba(96,165,250,.08)">Runtime</span></td>
+            <td>The propagated security principal for an Execution — established once at session start, immutable for its duration. Carries tenant, brand, role, and use-case. Every tool call and ABAC decision is a function of it.</td>
+          </tr>
+          <tr>
+            <td><span class="dm-entity-name" style="color:var(--e-audit)">Audit Record</span></td>
+            <td><span class="dm-tag" style="color:#60A5FA;border-color:rgba(96,165,250,.25);background:rgba(96,165,250,.08)">Runtime</span></td>
+            <td>The immutable output of every Execution. Written synchronously — not best-effort logging. Contains identity, capability version, safety state, all tool calls, guardrail traces, cost. Retention driven by Risk Tier.</td>
+          </tr>
+          <tr>
+            <td><span class="dm-entity-name" style="color:var(--e-workflow)">Workflow Contract</span></td>
+            <td><span class="dm-tag" style="color:#60A5FA;border-color:rgba(96,165,250,.25);background:rgba(96,165,250,.08)">Runtime · R2/R3</span></td>
+            <td>Required for R2/R3 Capabilities. Defines correlation, idempotency, compensation semantics, and ABAC at step boundaries. The Registry will not publish R2/R3 without one.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       08. RISK TIER
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">08</div>
+      <div class="ns-eyebrow">Risk Tier</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">Governance proportional to risk</div>
+      <div class="ns-body">
+        <p>Risk Tier is the single most consequential classification a team makes when defining a capability. Every governance control in the platform — how rigorous the evaluation gate is, whether HITL is required, how long audit records are retained, whether the platform fails open or closed on an outage — is derived from it. Over-classifying is safe but inefficient. Under-classifying is a governance failure.</p>
+        <p>The R0/R1 boundary is structurally enforced — the Registry inspects Tool Bindings and rejects write-capable bindings on declared R0 capabilities. The R1/R2 boundary is a deliberate declaration decision that cannot be made by accident.</p>
+      </div>
+
+      <table class="risk-table">
+        <thead>
+          <tr>
+            <th>Tier</th>
+            <th>Definition</th>
+            <th>Workflow Contract</th>
+            <th>HITL</th>
+            <th>Audit on outage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="rt-badge rt-r0">R0</span></td>
+            <td><span class="rt-name">Read-Only</span><span class="rt-def">No write tool bindings. Retrieves and responds. Cannot modify any system of record. Structurally enforced at publish.</span></td>
+            <td><span class="rt-flag flag-ok">Not required</span></td>
+            <td><span class="rt-flag flag-ok">Not required</span></td>
+            <td><span class="rt-flag flag-ok">Fail-open</span></td>
+          </tr>
+          <tr>
+            <td><span class="rt-badge rt-r1">R1</span></td>
+            <td><span class="rt-name">Operational Write</span><span class="rt-def">Writes to internal systems only. Subject must be non-customer. No regulatory reporting obligation on the target system.</span></td>
+            <td><span class="rt-flag flag-ok">Not required</span></td>
+            <td><span class="rt-flag flag-ok">Optional</span></td>
+            <td><span class="rt-flag flag-ok">Fail-open</span></td>
+          </tr>
+          <tr>
+            <td><span class="rt-badge rt-r2">R2</span></td>
+            <td><span class="rt-name">Customer-Adjacent</span><span class="rt-def">Writes where subject is a customer or data carries regulatory significance. A wrong write can harm a customer or generate a regulatory question.</span></td>
+            <td><span class="rt-flag flag-alert">Mandatory</span></td>
+            <td><span class="rt-flag flag-alert">Required</span></td>
+            <td><span class="rt-flag flag-alert">Fail-closed</span></td>
+          </tr>
+          <tr>
+            <td><span class="rt-badge rt-r3">R3</span></td>
+            <td><span class="rt-name">Regulated</span><span class="rt-def">Writes with direct regulatory obligation — RG interventions, AML flags, financial transactions. Wrong writes are reportable events. Write-ahead audit before any tool call.</span></td>
+            <td><span class="rt-flag flag-alert">Mandatory + compensation</span></td>
+            <td><span class="rt-flag flag-alert">Mandatory · no waiver</span></td>
+            <td><span class="rt-flag flag-alert">Fail-closed · write-ahead</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       09. SUCCESS METRICS
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">09</div>
+      <div class="ns-eyebrow">Metrics</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">How we measure success</div>
+      <div class="ns-body">
+        <p>The platform is measured on operational reliability, developer experience, and cost transparency. These targets are reviewed at each phase gate and adjusted as the platform matures.</p>
+      </div>
+
+      <table class="success-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Target</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="success-metric">Agent success rate</span></td>
+            <td><span class="success-target">&gt;95%</span> of agent invocations complete successfully</td>
+          </tr>
+          <tr>
+            <td><span class="success-metric">Average user rating</span></td>
+            <td><span class="success-target">&gt;4.0 / 5.0</span> across all published agents</td>
+          </tr>
+          <tr>
+            <td><span class="success-metric">Platform uptime</span></td>
+            <td><span class="success-target">99.9%</span> — platform treated as critical infrastructure</td>
+          </tr>
+          <tr>
+            <td><span class="success-metric">Developer onboarding</span></td>
+            <td><span class="success-target">&lt;2 hours</span> from zero to first deployed agent</td>
+          </tr>
+          <tr>
+            <td><span class="success-metric">Cost attribution</span></td>
+            <td><span class="success-target">100%</span> — every token attributable to brand and use case</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════
+       10. NON-GOALS
+       ═══════════════════════════════════ -->
+  <div class="narrative-section">
+    <div class="ns-left">
+      <div class="ns-num">10</div>
+      <div class="ns-eyebrow">Non-Goals</div>
+    </div>
+    <div class="ns-right">
+      <div class="ns-title">What the platform does not do</div>
+      <div class="ns-body">
+        <p>Clarity about what the platform does not own matters as much as what it does. These boundaries prevent teams from pushing responsibility onto the platform and prevent the platform from over-reaching into decisions that belong to the teams building on it.</p>
+      </div>
+
+      <div class="nongoal-list">
+        <div class="nongoal">
+          <div class="nongoal-x">×</div>
+          <div class="nongoal-text"><strong>Does not replace application logic.</strong> The platform governs how AI capabilities are deployed and executed. It does not define the business logic within them. A Responsible Gambling decision engine built on the platform owns its own decisioning logic — the platform ensures that logic runs governed, not that it is correct.</div>
+        </div>
+        <div class="nongoal">
+          <div class="nongoal-x">×</div>
+          <div class="nongoal-text"><strong>Does not own Risk Tier classification.</strong> Risk Tier is a team decision made at authoring time. The platform validates and enforces the declared tier — it does not determine which tier a given capability should be. A team that misclassifies R2 work as R1 has made a governance failure the platform cannot prevent, only make harder to do accidentally.</div>
+        </div>
+        <div class="nongoal">
+          <div class="nongoal-x">×</div>
+          <div class="nongoal-text"><strong>Does not make regulatory decisions.</strong> The platform enforces the conditions under which AI capabilities are permitted to operate. It does not determine whether a specific AI output satisfies a regulatory obligation. That remains a human and legal function. The platform's contribution is ensuring every Execution is traceable, auditable, and governed — not that every output is compliant.</div>
+        </div>
+        <div class="nongoal">
+          <div class="nongoal-x">×</div>
+          <div class="nongoal-text"><strong>Does not guarantee output quality.</strong> Guardrails enforce the Safety Envelope and the evaluation gate assesses quality at publish time. Neither guarantees correct or high-quality outputs at runtime. Quality monitoring and human feedback loops are the responsibility of the teams operating capabilities on the platform.</div>
+        </div>
+        <div class="nongoal">
+          <div class="nongoal-x">×</div>
+          <div class="nongoal-text"><strong>Does not constrain model choice unnecessarily.</strong> The LLM Gateway routes to multiple providers and does not mandate a single model. Teams declare permitted model selection in their Capability Definition — the platform enforces the declared boundary but does not impose one beyond what Risk Tier and Safety Envelope require.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-note">Platform Narrative · UKI Enterprise AI Platform · v3 · INTERNAL</div>
+    <div class="footer-links">
+      <a class="footer-link" href="domain-model-v1.html">domain model →</a>
+      <a class="footer-link" href="architecture-overview-v9.html">architecture overview →</a>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

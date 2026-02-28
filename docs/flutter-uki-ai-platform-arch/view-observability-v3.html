@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Observability &amp; Audit · UKI Enterprise AI Platform · v3</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#0F1117; --surface:#181C27; --surface2:#1E2333;
+    --text-primary:#F0F4FF; --text-secondary:#9BA5BE; --text-dim:#4A5270;
+    --border:rgba(255,255,255,0.07); --border-faint:rgba(255,255,255,0.04);
+
+    /* observability tool colours */
+    --col-langfuse:  #A78BFA;
+    --col-cw:        #60A5FA;
+    --col-trail:     #FACC15;
+    --col-audit:     #F87171;
+    --col-sfn:       #67E8F9;
+    --col-cost:      #34D399;
+
+    /* risk tier */
+    --r0:#34D399; --r1:#FACC15; --r2:#FB923C; --r3:#F87171;
+
+    --fs: 1.15;
+  }
+  body {
+    font-family:'Inter',sans-serif; background:var(--bg); color:var(--text-primary);
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    padding:32px 32px 100px;
+  }
+
+  /* ── TOOLBAR ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.3); white-space:nowrap; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── PAGE HEADER ── */
+  .page-header { text-align:center; margin-bottom:40px; width:100%; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); letter-spacing:3px; text-transform:uppercase; color:var(--text-dim); margin-bottom:10px; }
+  .page-title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; letter-spacing:-.5px; }
+  .page-title-accent { background:linear-gradient(90deg,#A78BFA,#67E8F9); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .page-subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; line-height:1.55; max-width:780px; margin-left:auto; margin-right:auto; }
+  .badge { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 10px; border-radius:20px; background:var(--surface); margin-top:14px; }
+
+  /* ── SECTION HEADER ── */
+  .section-header { display:flex; align-items:center; gap:14px; margin-bottom:14px; width:100%; }
+  .section-badge { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); letter-spacing:2px; text-transform:uppercase; padding:4px 12px; border-radius:20px; border:1px solid; white-space:nowrap; }
+  .section-title { font-family:'Syne',sans-serif; font-size:calc(18px * var(--fs)); font-weight:700; }
+  .section-timing { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim); margin-left:auto; padding:4px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; }
+
+  /* ── SECTION WRAPPER ── */
+  .section { width:100%; margin-bottom:12px; }
+
+  /* ══════════════════════════════════════════════
+     SECTION 1 — OBSERVABILITY STACK GRID
+     ══════════════════════════════════════════════ */
+  .stack-grid {
+    display:grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap:8px;
+    width:100%;
+  }
+  .stack-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-top:3px solid var(--tool-color);
+    border-radius:10px; padding:14px 14px 12px;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .stack-icon-row { display:flex; align-items:center; gap:8px; }
+  .stack-icon { font-size:calc(18px * var(--fs)); }
+  .stack-name { font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:700; color:var(--tool-color); }
+  .stack-role { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); color:var(--text-dim); letter-spacing:.5px; margin-top:-4px; }
+  .stack-always { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); padding:2px 7px; border-radius:3px; width:fit-content; margin-bottom:2px; }
+  .always-on   { background:rgba(52,211,153,.1); color:var(--r0); border:1px solid rgba(52,211,153,.2); }
+  .cond-r23    { background:rgba(103,232,249,.08); color:var(--col-sfn); border:1px solid rgba(103,232,249,.2); }
+  .stack-points { list-style:none; display:flex; flex-direction:column; gap:3px; }
+  .stack-points li { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.45; padding-left:11px; position:relative; }
+  .stack-points li::before { content:'·'; position:absolute; left:3px; color:var(--tool-color); opacity:.55; }
+  .stack-points li strong { color:var(--text-primary); font-weight:500; }
+  .stack-retention { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); padding:4px 8px; border-radius:4px; margin-top:auto; border:1px solid rgba(255,255,255,.06); background:rgba(255,255,255,.02); color:var(--text-dim); line-height:1.5; }
+
+  /* ══════════════════════════════════════════════
+     SECTION 2 — INCIDENT INVESTIGATION FLOW
+     ══════════════════════════════════════════════ */
+  .node-row {
+    display:grid;
+    grid-template-columns: 1fr 52px 1fr 52px 1fr;
+    align-items:center;
+    margin-bottom:10px;
+  }
+  .node-col { display:flex; flex-direction:column; align-items:center; gap:7px; }
+  .stop-node { width:54px; height:54px; border-radius:50%; border:2px solid var(--stop-color); background:var(--stop-bg); display:flex; align-items:center; justify-content:center; font-size:calc(20px * var(--fs)); position:relative; box-shadow:0 0 20px var(--stop-glow); flex-shrink:0; }
+  .stop-number { position:absolute; top:-7px; right:-7px; width:19px; height:19px; border-radius:50%; background:var(--stop-color); color:#0F1117; font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .stop-label { font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:700; color:var(--stop-color); text-align:center; line-height:1.2; }
+  .stop-sublabel { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-secondary); text-align:center; letter-spacing:.4px; }
+
+  .arrow-col { display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .arrow-line { width:100%; height:2px; background:linear-gradient(90deg,var(--from-color),var(--to-color)); opacity:.4; position:relative; }
+  .arrow-line::after { content:''; position:absolute; right:-5px; top:50%; transform:translateY(-50%); border-left:7px solid var(--to-color); border-top:4px solid transparent; border-bottom:4px solid transparent; opacity:.65; }
+  .arrow-token { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-secondary); text-align:center; white-space:nowrap; letter-spacing:.3px; line-height:1.4; }
+
+  .detail-row { display:grid; grid-template-columns:1fr 52px 1fr 52px 1fr; align-items:stretch; }
+  .detail-spacer {}
+
+  /* ── ROW BRIDGE — continuation connector between investigation rows ── */
+  .row-bridge {
+    display:flex; align-items:center; gap:10px;
+    padding:8px 0 8px; margin-bottom:10px;
+  }
+  .bridge-fill { flex:1; height:1px; background:var(--border); }
+  .bridge-pill {
+    font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs));
+    color:var(--text-dim); letter-spacing:1px; text-transform:uppercase;
+    padding:4px 14px; border:1px solid var(--border); border-radius:20px;
+    background:var(--surface); white-space:nowrap;
+  }
+  .bridge-arrow-right {
+    width:0; height:0;
+    border-top:4px solid transparent; border-bottom:4px solid transparent;
+    border-left:7px solid var(--text-dim); opacity:.4; flex-shrink:0;
+  }
+  .detail-card { background:var(--surface); border:1px solid var(--border); border-top:2.5px solid var(--stop-color); border-radius:10px; padding:calc(12px * var(--fs)) calc(13px * var(--fs)); display:flex; flex-direction:column; gap:8px; animation:fadeUp .35s ease both; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  .detail-title { font-family:'Syne',sans-serif; font-size:calc(11px * var(--fs)); font-weight:700; color:var(--stop-color); line-height:1.2; }
+  .detail-points { list-style:none; display:flex; flex-direction:column; gap:4px; }
+  .detail-points li { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.45; padding-left:12px; position:relative; }
+  .detail-points li::before { content:'·'; position:absolute; left:3px; color:var(--stop-color); opacity:.55; }
+  .detail-points li strong { color:var(--text-primary); font-weight:500; }
+  .token-box { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-left:2px solid var(--stop-color); border-radius:5px; padding:6px 10px; margin-top:auto; }
+  .token-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-bottom:3px; }
+  .token-value { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--stop-color); opacity:.85; line-height:1.55; }
+
+  /* ══════════════════════════════════════════════
+     SECTION 3 — AUDIT RECORD ANATOMY
+     ══════════════════════════════════════════════ */
+  .audit-grid {
+    display:grid;
+    grid-template-columns: 200px 1fr 1fr 1fr 1fr;
+    border:1px solid var(--border);
+    border-radius:10px;
+    overflow:hidden;
+    background:var(--surface);
+    width:100%;
+  }
+  /* header row */
+  .ag-header { background:var(--surface2); padding:10px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; }
+  .ag-header-label { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700; letter-spacing:1px; text-transform:uppercase; }
+  /* field label column */
+  .ag-field { padding:8px 14px; border-bottom:1px solid var(--border-faint); border-right:1px solid var(--border); display:flex; align-items:center; }
+  .ag-field-name { font-family:'JetBrains Mono',monospace; font-size:calc(9.5px * var(--fs)); color:var(--text-primary); font-weight:500; }
+  /* value cells */
+  .ag-cell { padding:8px 12px; border-bottom:1px solid var(--border-faint); display:flex; align-items:flex-start; }
+  .ag-cell:not(:last-child) { border-right:1px solid var(--border-faint); }
+  .ag-val { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); line-height:1.55; }
+  .ag-present  { color:var(--text-secondary); }
+  .ag-enhanced { color:var(--r2); }
+  .ag-max      { color:var(--r3); }
+  .ag-absent   { color:var(--text-dim); opacity:.5; }
+  /* last row no bottom border */
+  .ag-field.last, .ag-cell.last { border-bottom:none; }
+  /* tier header colours */
+  .th-r0 { color:var(--r0); }
+  .th-r1 { color:var(--r1); }
+  .th-r2 { color:var(--r2); }
+  .th-r3 { color:var(--r3); }
+  /* group row */
+  .ag-group { grid-column:1 / -1; padding:6px 14px; background:rgba(255,255,255,.02); border-bottom:1px solid var(--border-faint); }
+  .ag-group-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); }
+  /* semantic tags */
+  .sem { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); padding:1px 6px; border-radius:3px; white-space:nowrap; }
+  .sem-wa  { background:rgba(248,113,113,.1); color:#F87171;  border:1px solid rgba(248,113,113,.2); }
+  .sem-fc  { background:rgba(251,146,60,.1);  color:#FB923C;  border:1px solid rgba(251,146,60,.2); }
+  .sem-fo  { background:rgba(52,211,153,.1);  color:#34D399;  border:1px solid rgba(52,211,153,.2); }
+  .sem-imm { background:rgba(103,232,249,.1); color:#67E8F9;  border:1px solid rgba(103,232,249,.2); }
+
+  /* ══════════════════════════════════════════════
+     SECTION 4 — COST & QUOTA ATTRIBUTION
+     ══════════════════════════════════════════════ */
+  .cost-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; width:100%; }
+  .cost-card { background:var(--surface); border:1px solid var(--border); border-top:2.5px solid var(--cost-color); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:8px; }
+  .cost-title { font-family:'Syne',sans-serif; font-size:calc(12.5px * var(--fs)); font-weight:700; color:var(--cost-color); }
+  .cost-points { list-style:none; display:flex; flex-direction:column; gap:4px; }
+  .cost-points li { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); line-height:1.45; padding-left:12px; position:relative; }
+  .cost-points li::before { content:'·'; position:absolute; left:3px; color:var(--cost-color); opacity:.55; }
+  .cost-points li strong { color:var(--text-primary); font-weight:500; }
+  .cost-box { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-left:2px solid var(--cost-color); border-radius:5px; padding:6px 10px; margin-top:auto; }
+  .cost-box-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-bottom:3px; }
+  .cost-box-val { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--cost-color); opacity:.85; line-height:1.55; }
+
+  /* ── DIVIDER ── */
+  .flow-divider { width:100%; margin:36px 0 28px; display:flex; align-items:center; gap:20px; }
+  .divider-line { flex:1; height:1px; background:var(--border); }
+  .divider-content { background:var(--surface); border:1px solid rgba(96,165,250,.2); border-radius:10px; padding:12px 22px; text-align:center; flex-shrink:0; max-width:820px; }
+  .divider-heading { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); margin-bottom:4px; }
+  .divider-text { font-size:calc(12px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+  .divider-text em { font-style:normal; color:var(--text-primary); }
+
+  /* ── FOOTER ── */
+  .footer-note { margin-top:48px; border-top:1px solid var(--border); padding-top:14px; width:100%; display:flex; justify-content:space-between; align-items:center; font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim); }
+  .footer-tags { display:flex; gap:6px; flex-wrap:wrap; }
+  .footer-tag { font-size:calc(9.5px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 9px; border-radius:20px; background:var(--surface); }
+
+  /* ── LEGEND STRIP ── */
+  .legend-strip {
+    position:fixed; bottom:0; left:0; right:0; z-index:900;
+    background:rgba(15,17,23,0.97);
+    border-top:1px solid rgba(255,255,255,0.09);
+    backdrop-filter:blur(12px);
+    transition:transform .25s ease;
+    box-shadow: 0 -4px 24px rgba(0,0,0,.4);
+  }
+  .legend-strip.legend-collapsed { transform:translateY(calc(100% - 28px)); }
+  .legend-inner {
+    display:grid;
+    grid-template-columns: max-content 1fr;
+    row-gap:4px;
+    padding:7px 52px 7px 20px; max-width:1400px; margin:0 auto;
+  }
+  .legend-row { display:contents; }
+  .legend-group-label {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:2px;
+    text-transform:uppercase; color:var(--text-dim); white-space:nowrap;
+    padding-right:16px; align-self:center;
+  }
+  .legend-items {
+    display:flex; align-items:center; gap:8px;
+  }
+  .legend-item {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; color:var(--text-secondary); white-space:nowrap;
+    cursor:default;
+  }
+  .legend-item-label { font-size:11px; color:var(--text-secondary); }
+  .legend-pill {
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700;
+    padding:2px 7px; border-radius:3px; flex-shrink:0;
+    position:relative; cursor:default;
+  }
+  .legend-pill[data-tip]::after {
+    content: attr(data-tip);
+    position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%);
+    background:#1E2333; border:1px solid rgba(255,255,255,.12);
+    color:var(--text-secondary); font-size:10px; font-weight:400;
+    font-family:'Inter',sans-serif; letter-spacing:0;
+    white-space:nowrap; padding:5px 10px; border-radius:6px;
+    pointer-events:none; opacity:0; transition:opacity .15s;
+    box-shadow:0 4px 16px rgba(0,0,0,.5);
+  }
+  .legend-pill[data-tip]:hover::after { opacity:1; }
+  .legend-pill.r0 { background:rgba(52,211,153,.12);  color:var(--r0); border:1px solid rgba(52,211,153,.25); }
+  .legend-pill.r1 { background:rgba(250,204,21,.10);  color:var(--r1); border:1px solid rgba(250,204,21,.22); }
+  .legend-pill.r2 { background:rgba(251,146,60,.10);  color:var(--r2); border:1px solid rgba(251,146,60,.22); }
+  .legend-pill.r3 { background:rgba(248,113,113,.10); color:var(--r3); border:1px solid rgba(248,113,113,.22); }
+  .legend-pill.inv { background:rgba(103,232,249,.08); color:#67E8F9; border:1px solid rgba(103,232,249,.2); }
+  .legend-close {
+    position:absolute; top:0; right:16px;
+    background:none; border:none; cursor:pointer;
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
+    padding:6px 8px; line-height:1;
+    display:flex; align-items:center; gap:4px;
+    transition:color .15s;
+  }
+  .legend-close:hover { color:var(--text-secondary); }
+  .legend-close-icon { display:inline-block; transition:transform .25s ease; font-size:13px; }
+  .legend-strip.legend-collapsed .legend-close-icon { transform:rotate(180deg); }
+  .legend-strip.legend-collapsed .legend-close::before {
+    content:'Reference'; font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s" onclick="setSize(0.85)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.15)">M</button>
+  <button class="sz-btn" id="sz-l" onclick="setSize(1.3)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.5)">XL</button>
+</div>
+<script>
+var sizes={0.85:'sz-s',1.15:'sz-m',1.3:'sz-l',1.5:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.15);
+</script>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="eyebrow">UKI Enterprise AI Platform · Capability Operations</div>
+  <div class="page-title">Observability <span class="page-title-accent">&amp; Audit</span></div>
+  <div class="page-subtitle">Five always-on signal layers covering every Execution — Langfuse traces, CloudWatch metrics, CloudTrail IAM audit, platform Audit Records (I5), and Step Functions execution history (R2/R3). What fires, what's in it, where to look first, and how cost flows to tenants.</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SECTION 1 — THE OBSERVABILITY STACK
+     ═══════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-badge" style="color:#9BA5BE;border-color:rgba(155,165,190,.3);background:rgba(155,165,190,.05)">Section 1</span>
+    <div class="section-title">The Observability Stack</div>
+    <div class="section-timing">What fires · on every Execution</div>
+  </div>
+
+  <div class="stack-grid">
+
+    <!-- Langfuse -->
+    <div class="stack-card" style="--tool-color:var(--col-langfuse)">
+      <div class="stack-icon-row">
+        <div class="stack-icon">🔭</div>
+        <div>
+          <div class="stack-name">Langfuse</div>
+          <div class="stack-role">Trace · Spans · LLM-as-judge</div>
+        </div>
+      </div>
+      <span class="stack-always always-on">Always on</span>
+      <ul class="stack-points">
+        <li>Full <strong>nested trace tree</strong> per Execution — root span, agent loop spans, tool call spans, LLM call spans</li>
+        <li><strong>LiteLLM callback</strong> fires automatically on every model call — no instrumentation required per Capability</li>
+        <li>Tool call spans include: tool name, input parameters, response status, latency</li>
+        <li><strong>LLM-as-judge evals</strong> configurable per Capability — automatic quality scoring on sampled outputs</li>
+        <li>For Coordination scope: <strong>orchestrator span wraps specialist spans</strong> — full delegation chain visible</li>
+      </ul>
+      <div class="stack-retention">Retention: 90 days default<br>Query: Langfuse UI / API</div>
+    </div>
+
+    <!-- CloudWatch -->
+    <div class="stack-card" style="--tool-color:var(--col-cw)">
+      <div class="stack-icon-row">
+        <div class="stack-icon">📊</div>
+        <div>
+          <div class="stack-name">CloudWatch</div>
+          <div class="stack-role">Metrics · Alarms · Dashboards</div>
+        </div>
+      </div>
+      <span class="stack-always always-on">Always on</span>
+      <ul class="stack-points">
+        <li><strong>LLM Gateway</strong>: request rate, token throughput, cache hit rate, circuit breaker state, cost per tenant/capability</li>
+        <li><strong>AgentCore</strong>: agent invocation count, Execution latency p50/p95/p99, error rate, timeout rate</li>
+        <li><strong>Guardrails</strong>: policy violation count by type (PII, injection, denied topic), block rate</li>
+        <li><strong>MCP Gateway</strong>: tool call volume, RFC 8693 exchange latency, downstream error rate</li>
+        <li>Alarms feed <strong>SNS → PagerDuty</strong> for production alerting thresholds</li>
+      </ul>
+      <div class="stack-retention">Retention: 15 months<br>Query: CW dashboards / Metrics Insights</div>
+    </div>
+
+    <!-- CloudTrail -->
+    <div class="stack-card" style="--tool-color:var(--col-trail)">
+      <div class="stack-icon-row">
+        <div class="stack-icon">🗒️</div>
+        <div>
+          <div class="stack-name">CloudTrail</div>
+          <div class="stack-role">IAM · API · Compliance log</div>
+        </div>
+      </div>
+      <span class="stack-always always-on">Always on</span>
+      <ul class="stack-points">
+        <li>Records every <strong>IAM AssumeRole and session tag assignment</strong> — proof of Identity Context establishment</li>
+        <li>All <strong>Registry API calls</strong>: publish events, lifecycle transitions, ABAC check results</li>
+        <li><strong>S3 Object Lock</strong> put/get events on Audit Records — tamper-evidence chain</li>
+        <li>Guardrails <strong>policy evaluation events</strong> — who, which capability, what outcome</li>
+        <li>All <strong>KMS key usage events</strong> — decryption of Audit Records auditable independently</li>
+      </ul>
+      <div class="stack-retention">Retention: 7 years (S3 Object Lock)<br>Query: Athena over CloudTrail Lake</div>
+    </div>
+
+    <!-- Platform Audit Record -->
+    <div class="stack-card" style="--tool-color:var(--col-audit)">
+      <div class="stack-icon-row">
+        <div class="stack-icon">🔒</div>
+        <div>
+          <div class="stack-name">Audit Record</div>
+          <div class="stack-role">I5 · Platform invariant</div>
+        </div>
+      </div>
+      <span class="stack-always always-on">Always on · I5</span>
+      <ul class="stack-points">
+        <li>Written <strong>synchronously on every Execution</strong> — not background, not async (I5)</li>
+        <li>Contains: Identity Context, Capability Definition version + SHA-256, Safety Envelope version, all tool calls, guardrail traces, token counts, cost, Risk Tier</li>
+        <li>Semantics scale with Risk Tier — see Section 3 for full anatomy</li>
+        <li><strong>R0/R1: fail-open</strong> on pipeline outage — execution continues, alert fires</li>
+        <li><strong>R2/R3: fail-closed</strong> — Execution halts if Audit Record cannot be committed</li>
+        <li><strong>R3: write-ahead</strong> — committed before any state-changing tool call executes</li>
+      </ul>
+      <div class="stack-retention">Retention: Risk Tier-defined<br>Storage: S3 Object Lock · Compliance mode</div>
+    </div>
+
+    <!-- Step Functions (R2/R3) -->
+    <div class="stack-card" style="--tool-color:var(--col-sfn)">
+      <div class="stack-icon-row">
+        <div class="stack-icon">🗺️</div>
+        <div>
+          <div class="stack-name">Step Functions</div>
+          <div class="stack-role">Workflow history · R2/R3 only</div>
+        </div>
+      </div>
+      <span class="stack-always cond-r23">R2 / R3 · Process scope</span>
+      <ul class="stack-points">
+        <li><strong>Full execution graph</strong> in AWS console — state-by-state visibility, input/output at every transition</li>
+        <li><strong>Compensation path</strong> visible when triggered — which states executed, what compensated</li>
+        <li>HITL approval events recorded: reviewer identity, decision, timestamp, task token</li>
+        <li>Correlation ID links Step Functions execution to <strong>Langfuse trace and Audit Record</strong> — single artefact per Execution</li>
+        <li><strong>Execution history retained 90 days</strong> in service; Audit Record in S3 is permanent</li>
+      </ul>
+      <div class="stack-retention">Retention: 90 days in SFN<br>Query: SFN console / GetExecutionHistory API</div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- DIVIDER -->
+<div class="flow-divider">
+  <div class="divider-line"></div>
+  <div class="divider-content">
+    <div class="divider-heading">Incident investigation order</div>
+    <div class="divider-text">When an alert fires, the investigation has a <em>canonical stop order</em> — start at CloudWatch alarms to scope the problem, then Langfuse to identify the Execution, then the Audit Record for the compliance-grade facts, then CloudTrail for IAM proof. Step Functions only for R2/R3 workflow failures.</div>
+  </div>
+  <div class="divider-line"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SECTION 2 — INCIDENT INVESTIGATION FLOW
+     ═══════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-badge" style="color:#60A5FA;border-color:rgba(96,165,250,.3);background:rgba(96,165,250,.05)">Section 2</span>
+    <div class="section-title">Incident Investigation Flow</div>
+    <div class="section-timing">Production · canonical stop order</div>
+  </div>
+
+  <!-- ROW A: stops 1–3 -->
+  <div class="node-row">
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#F87171;--stop-bg:rgba(248,113,113,.1);--stop-glow:rgba(248,113,113,.18)">🚨<span class="stop-number">1</span></div>
+      <div class="stop-label" style="color:#F87171">Alert</div>
+      <div class="stop-sublabel">CloudWatch → PagerDuty</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#F87171;--to-color:#60A5FA"></div>
+      <div class="arrow-token">Scope<br>the blast</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#60A5FA;--stop-bg:rgba(96,165,250,.1);--stop-glow:rgba(96,165,250,.2)">📊<span class="stop-number">2</span></div>
+      <div class="stop-label" style="color:#60A5FA">CloudWatch</div>
+      <div class="stop-sublabel">Metrics · error spike</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#60A5FA;--to-color:#A78BFA"></div>
+      <div class="arrow-token">Find the<br>Execution</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#A78BFA;--stop-bg:rgba(167,139,250,.1);--stop-glow:rgba(167,139,250,.15)">🔭<span class="stop-number">3</span></div>
+      <div class="stop-label" style="color:#A78BFA">Langfuse</div>
+      <div class="stop-sublabel">Trace · spans · tool calls</div>
+    </div>
+  </div>
+
+  <div class="detail-row">
+    <div class="detail-card" style="--stop-color:#F87171">
+      <div class="detail-title">Alert triggers investigation</div>
+      <ul class="detail-points">
+        <li>CloudWatch alarm → <strong>SNS → PagerDuty</strong> — on-call engineer notified</li>
+        <li>Alarm payload includes: <strong>capability_id, tenant_id, alarm type, threshold, time window</strong></li>
+        <li>Common triggers: error rate spike, latency p95 breach, guardrail block rate elevated, circuit breaker open, Audit Record pipeline failure</li>
+        <li>Severity classified by <strong>Risk Tier of the affected Capability</strong> — R3 incidents are Sev1 by default</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Alert context</div>
+        <div class="token-value">capability_id · tenant_id<br>alarm_type · risk_tier<br>time_window · threshold_breached</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#60A5FA">
+      <div class="detail-title">CloudWatch — scope &amp; triage</div>
+      <ul class="detail-points">
+        <li>Open <strong>per-capability dashboard</strong> — error rate, latency, guardrail blocks, tool call failures</li>
+        <li>Identify <strong>which layer failed</strong>: LLM Gateway (quota?), AgentCore (timeout?), Guardrails (block storm?), MCP Gateway (downstream outage?)</li>
+        <li>Check <strong>LLM Gateway circuit breaker state</strong> — is it open? Which tenants affected?</li>
+        <li>Correlate timestamp to <strong>specific execution_id range</strong> for Langfuse drill-down</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Key metrics</div>
+        <div class="token-value">AgentCore/ExecutionErrors<br>LLMGateway/CircuitBreakerState<br>Guardrails/BlockRate · MCP/ToolErrors</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#A78BFA">
+      <div class="detail-title">Langfuse — trace the Execution</div>
+      <ul class="detail-points">
+        <li>Filter by <strong>capability_id + time window</strong> from CloudWatch — isolate failing traces</li>
+        <li>Inspect <strong>tool call spans</strong>: which tool, what parameters, response status, latency — identifies downstream system failures</li>
+        <li>Inspect <strong>LLM call spans</strong>: model, tokens, latency, guardrail outcome — identifies model or Safety Envelope issues</li>
+        <li>For Coordination scope: <strong>specialist delegation chain</strong> visible — which specialist failed or looped</li>
+        <li>LLM-as-judge score visible — <strong>quality regression</strong> identifiable without human review of every output</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Trace context</div>
+        <div class="token-value">execution_id → root span<br> └ agent_loop_span[n]<br>    └ tool:confluence.read · 503</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BRIDGE: row A → row B -->
+  <div class="row-bridge">
+    <div class="bridge-fill"></div>
+    <span class="bridge-pill">↓ continue investigation</span>
+    <div class="bridge-fill"></div>
+  </div>
+
+  <!-- ROW B: stops 4–6 -->
+  <div class="node-row">
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#F87171;--stop-bg:rgba(248,113,113,.08);--stop-glow:rgba(248,113,113,.14)">🔒<span class="stop-number">4</span></div>
+      <div class="stop-label" style="color:#F87171">Audit Record</div>
+      <div class="stop-sublabel">I5 · immutable facts</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#F87171;--to-color:#FACC15"></div>
+      <div class="arrow-token">IAM<br>proof</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#FACC15;--stop-bg:rgba(250,204,21,.08);--stop-glow:rgba(250,204,21,.14)">🗒️<span class="stop-number">5</span></div>
+      <div class="stop-label" style="color:#FACC15">CloudTrail</div>
+      <div class="stop-sublabel">IAM · API audit log</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#FACC15;--to-color:#67E8F9"></div>
+      <div class="arrow-token">R2/R3<br>only</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#67E8F9;--stop-bg:rgba(103,232,249,.07);--stop-glow:rgba(103,232,249,.13)">🗺️<span class="stop-number">6</span></div>
+      <div class="stop-label" style="color:#67E8F9">Step Functions</div>
+      <div class="stop-sublabel">Workflow graph · R2/R3</div>
+    </div>
+  </div>
+
+  <div class="detail-row">
+    <div class="detail-card" style="--stop-color:#F87171">
+      <div class="detail-title">Audit Record — immutable facts (I5)</div>
+      <ul class="detail-points">
+        <li>Retrieve from <strong>S3 using execution_id</strong> — immutable, tamper-evident, SHA-256 hashed against Registry version</li>
+        <li>Contains <strong>Identity Context at time of Execution</strong> — who ran what, with which permissions, proven</li>
+        <li>All <strong>guardrail decisions</strong> with policy version — proves Safety Envelope was enforced</li>
+        <li><strong>Capability Definition version</strong> locked at Execution time — "what was running at the time of the incident" has a definitive answer</li>
+        <li>R3: Audit Record committed <strong>before</strong> any state-changing tool call — no ambiguity about what was authorised</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Immutable facts</div>
+        <div class="token-value">execution_id · capability_version<br>identity_context · guardrail_trace<br>tool_calls · cost · risk_tier</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#FACC15">
+      <div class="detail-title">CloudTrail — IAM &amp; API proof</div>
+      <ul class="detail-points">
+        <li><strong>AssumeRole events</strong> — proves session tags were correctly assigned at authentication time</li>
+        <li><strong>Registry API calls</strong> — proves which version of the Capability Definition was published and when</li>
+        <li>S3 Object Lock events — proves <strong>Audit Record was written and has not been tampered with</strong></li>
+        <li>Useful for: <strong>privilege escalation investigation</strong>, cross-tenant access suspicion, compliance audit requests</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">IAM proof</div>
+        <div class="token-value">AssumeRole · session tags assigned<br>Registry publish · version transition<br>S3:PutObject · Object Lock confirmed</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#67E8F9">
+      <div class="detail-title">Step Functions — R2/R3 workflow</div>
+      <ul class="detail-points">
+        <li>Open <strong>execution graph in console</strong> — immediately see which state failed, what input it received, what error was returned</li>
+        <li>Identify if <strong>compensation state was triggered</strong> — which compensating actions executed, which failed</li>
+        <li>HITL gate: <strong>task token, reviewer identity, approval/rejection, timestamp</strong> all in execution history</li>
+        <li>Correlate to Langfuse via <strong>correlation_id</strong> embedded in execution input — single artefact covers the full workflow</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Workflow state</div>
+        <div class="token-value">state: ComplianceCheck → FAILED<br>error: States.TaskFailed<br>compensation: RollbackState EXECUTED</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- DIVIDER -->
+<div class="flow-divider">
+  <div class="divider-line"></div>
+  <div class="divider-content">
+    <div class="divider-heading">Audit Record anatomy by Risk Tier</div>
+    <div class="divider-text">Every Execution produces an Audit Record. The <em>fields present, write semantics, and retention period</em> all scale with Risk Tier. The table below shows what is in each record and what changes at R2 and R3.</div>
+  </div>
+  <div class="divider-line"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SECTION 3 — AUDIT RECORD ANATOMY
+     ═══════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-badge" style="color:#F87171;border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)">Section 3</span>
+    <div class="section-title">Audit Record Anatomy (I5)</div>
+    <div class="section-timing">Every Execution · Risk Tier-scaled</div>
+  </div>
+
+  <div class="audit-grid">
+
+    <!-- HEADER ROW -->
+    <div class="ag-header"><span class="ag-header-label" style="color:var(--text-dim)">Field</span></div>
+    <div class="ag-header"><span class="ag-header-label th-r0">R0 — Informational</span></div>
+    <div class="ag-header"><span class="ag-header-label th-r1">R1 — Operational Write</span></div>
+    <div class="ag-header"><span class="ag-header-label th-r2">R2 — Customer-adjacent</span></div>
+    <div class="ag-header"><span class="ag-header-label th-r3">R3 — Regulated / Financial</span></div>
+
+    <!-- GROUP: Identity -->
+    <div class="ag-group" style="grid-column:1/-1"><span class="ag-group-label">Identity &amp; Context</span></div>
+    <div class="ag-field"><span class="ag-field-name">execution_id</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">UUID · session-scoped</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">UUID · session-scoped</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">UUID · correlation_id linked</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">UUID · correlation_id + idempotency_key</span></div>
+
+    <div class="ag-field"><span class="ag-field-name">identity_context</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">tenant_id · brand · role</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">tenant_id · brand · role</span></div>
+    <div class="ag-cell"><span class="ag-val ag-enhanced">+ use-case · acting_as_capability_id</span></div>
+    <div class="ag-cell"><span class="ag-val ag-max">+ full invocation_chain · delegation depth</span></div>
+
+    <div class="ag-field"><span class="ag-field-name">capability_version</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">capability_id · semver · SHA-256</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">capability_id · semver · SHA-256</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">capability_id · semver · SHA-256</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">capability_id · semver · SHA-256</span></div>
+
+    <!-- GROUP: Safety -->
+    <div class="ag-group" style="grid-column:1/-1"><span class="ag-group-label">Safety Envelope &amp; Guardrails</span></div>
+    <div class="ag-field"><span class="ag-field-name">safety_envelope_version</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">version ref · hash</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">version ref · hash</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">version ref · hash</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">version ref · hash</span></div>
+
+    <div class="ag-field"><span class="ag-field-name">guardrail_trace</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">policy eval · outcome</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">policy eval · outcome</span></div>
+    <div class="ag-cell"><span class="ag-val ag-enhanced">+ PII decision detail · denied topic list</span></div>
+    <div class="ag-cell"><span class="ag-val ag-max">+ full input/output hash · injection attempt flag</span></div>
+
+    <!-- GROUP: Execution -->
+    <div class="ag-group" style="grid-column:1/-1"><span class="ag-group-label">Execution Detail</span></div>
+    <div class="ag-field"><span class="ag-field-name">tool_calls</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">tool name · status · latency</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">tool name · status · latency</span></div>
+    <div class="ag-cell"><span class="ag-val ag-enhanced">+ scoped_token_id · parameter hash</span></div>
+    <div class="ag-cell"><span class="ag-val ag-max">+ full params · response hash · write-ahead flag</span></div>
+
+    <div class="ag-field"><span class="ag-field-name">llm_calls</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">model · tokens · latency</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">model · tokens · latency</span></div>
+    <div class="ag-cell"><span class="ag-val ag-enhanced">+ prompt_cache_hit · provider</span></div>
+    <div class="ag-cell"><span class="ag-val ag-max">+ input/output token hash · cache_key</span></div>
+
+    <div class="ag-field"><span class="ag-field-name">hitl_record</span></div>
+    <div class="ag-cell"><span class="ag-val ag-absent">n/a — not applicable</span></div>
+    <div class="ag-cell"><span class="ag-val ag-absent">n/a — threshold optional</span></div>
+    <div class="ag-cell"><span class="ag-val ag-enhanced">reviewer_id · decision · timestamp</span></div>
+    <div class="ag-cell"><span class="ag-val ag-max">reviewer_id · decision · task_token · non-waivable</span></div>
+
+    <!-- GROUP: Write semantics -->
+    <div class="ag-group" style="grid-column:1/-1"><span class="ag-group-label">Write Semantics &amp; Retention</span></div>
+    <div class="ag-field"><span class="ag-field-name">write_semantics</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present"><span class="sem sem-fo">fail-open</span> — execution continues on pipeline outage</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present"><span class="sem sem-fo">fail-open</span> — execution continues on pipeline outage</span></div>
+    <div class="ag-cell"><span class="ag-val ag-enhanced"><span class="sem sem-fc">fail-closed</span> — Execution halts if Record cannot commit</span></div>
+    <div class="ag-cell"><span class="ag-val ag-max"><span class="sem sem-wa">write-ahead</span> — committed before state-changing tool calls</span></div>
+
+    <div class="ag-field"><span class="ag-field-name">storage</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">S3 Object Lock · standard retention</span></div>
+    <div class="ag-cell"><span class="ag-val ag-present">S3 Object Lock · standard retention</span></div>
+    <div class="ag-cell"><span class="ag-val ag-enhanced">S3 Object Lock · extended retention</span></div>
+    <div class="ag-cell"><span class="ag-val ag-max">S3 Object Lock · Compliance mode · max retention</span></div>
+
+    <div class="ag-field last"><span class="ag-field-name">immutability</span></div>
+    <div class="ag-cell last"><span class="ag-val ag-present"><span class="sem sem-imm">Object Lock</span> Governance mode</span></div>
+    <div class="ag-cell last"><span class="ag-val ag-present"><span class="sem sem-imm">Object Lock</span> Governance mode</span></div>
+    <div class="ag-cell last"><span class="ag-val ag-enhanced"><span class="sem sem-imm">Object Lock</span> Compliance mode</span></div>
+    <div class="ag-cell last"><span class="ag-val ag-max"><span class="sem sem-imm">Object Lock</span> Compliance mode · no root override</span></div>
+
+  </div>
+</div>
+
+
+<!-- DIVIDER -->
+<div class="flow-divider">
+  <div class="divider-line"></div>
+  <div class="divider-content">
+    <div class="divider-heading">Cost &amp; quota attribution</div>
+    <div class="divider-text">Every token consumed is attributed to a <em>tenant / capability_id / session</em> triplet at the LLM Gateway. Cost flows up through quota enforcement, circuit breaker, and spend reporting — giving per-brand cost visibility across the entire Flutter portfolio.</div>
+  </div>
+  <div class="divider-line"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════
+     SECTION 4 — COST & QUOTA ATTRIBUTION
+     ═══════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <span class="section-badge" style="color:#34D399;border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.05)">Section 4</span>
+    <div class="section-title">Cost &amp; Quota Attribution</div>
+    <div class="section-timing">LLM Gateway · per-tenant · real-time</div>
+  </div>
+
+  <div class="cost-row">
+
+    <div class="cost-card" style="--cost-color:var(--col-cost)">
+      <div class="cost-title">Token Attribution</div>
+      <ul class="cost-points">
+        <li>LLM Gateway tags every request at entry with <strong>tenant_id · capability_id · session_id</strong> — cost record opened before model call</li>
+        <li><strong>Prompt cache hits</strong> reduce billable input tokens — cache hit rate tracked in CloudWatch per capability, surfaced in Langfuse spans</li>
+        <li>Token counts (input, output, cached) written to <strong>Audit Record on Execution close</strong> — cost is part of the immutable record</li>
+        <li>Cost attributed in <strong>real time</strong> — no post-hoc reconciliation needed</li>
+        <li>Multi-model Executions (where LLM routing selects different providers per step): <strong>each model call attributed separately</strong></li>
+      </ul>
+      <div class="cost-box">
+        <div class="cost-box-label">Attribution key</div>
+        <div class="cost-box-val">tenant_id: pp-001<br>capability_id: cs-agent-v3<br>session_id: sess-uuid · model: claude-sonnet-4</div>
+      </div>
+    </div>
+
+    <div class="cost-card" style="--cost-color:var(--col-cw)">
+      <div class="cost-title">Quota Enforcement &amp; Circuit Breaker</div>
+      <ul class="cost-points">
+        <li><strong>Burst limit</strong>: checked on every request — requests per minute per tenant/capability. Exceeded → 429, no model call made, no cost incurred</li>
+        <li><strong>Sustained limit</strong>: rolling window token budget per tenant — prevents runaway cost from malfunctioning agent loops</li>
+        <li><strong>Hard budget cap</strong>: configured per tenant in LLM Gateway. When cumulative spend reaches cap, circuit breaker opens — all requests for that tenant return 429 with `budget_exceeded` error code</li>
+        <li>Circuit breaker state <strong>visible in CloudWatch</strong> as a binary alarm — on-call notified immediately on open</li>
+        <li>Budget cap is <strong>tenant-configurable via Registry API</strong> — each brand controls its own ceiling</li>
+      </ul>
+      <div class="cost-box">
+        <div class="cost-box-label">Circuit breaker states</div>
+        <div class="cost-box-val">CLOSED → normal operation<br>OPEN   → budget_exceeded · 429 returned<br>Reset: manual via Registry API</div>
+      </div>
+    </div>
+
+    <div class="cost-card" style="--cost-color:var(--col-langfuse)">
+      <div class="cost-title">Spend Reporting &amp; Attribution</div>
+      <ul class="cost-points">
+        <li><strong>Per-tenant spend dashboard</strong> in CloudWatch: daily/weekly/monthly spend by brand, by capability_id, by model</li>
+        <li><strong>Langfuse cost metadata</strong>: each trace carries token counts and estimated cost — enables per-Execution spend visibility for debugging expensive agent loops</li>
+        <li><strong>Prompt caching savings</strong> calculated and displayed — shows ROI on cache-eligible system prompts. R0/R1 Capabilities with stable system prompts typically see 70–85% input token reduction</li>
+        <li>Cost data in Audit Records enables <strong>compliance-grade spend audit</strong> — cost attribution is tamper-evident at R2/R3</li>
+        <li>Exportable to <strong>FinOps tooling</strong> via CloudWatch Metrics Streams → S3 → Athena query</li>
+      </ul>
+      <div class="cost-box">
+        <div class="cost-box-label">Spend query example</div>
+        <div class="cost-box-val">SELECT capability_id, SUM(cost_usd)<br>FROM audit_records<br>WHERE tenant_id='pp-001' AND date='2026-02'</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ── LEGEND STRIP ── -->
+<div class="legend-strip" id="legend-strip">
+  <div class="legend-inner">
+    <div class="legend-row">
+      <span class="legend-group-label">Risk Tiers</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill r0" data-tip="Informational — read-only, no customer data">R0</span><span class="legend-item-label">Informational</span></span>
+        <span class="legend-item"><span class="legend-pill r1" data-tip="Operational Write — internal systems, no customer PII">R1</span><span class="legend-item-label">Operational Write</span></span>
+        <span class="legend-item"><span class="legend-pill r2" data-tip="Customer-adjacent — customer data in scope">R2</span><span class="legend-item-label">Customer-adjacent</span></span>
+        <span class="legend-item"><span class="legend-pill r3" data-tip="Regulated / Financial — compliance-grade, write-ahead audit">R3</span><span class="legend-item-label">Regulated / Financial</span></span>
+      </div>
+    </div>
+    <div class="legend-row">
+      <span class="legend-group-label">Invariants cited</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Audit Record written synchronously on every Execution — fail-open R0/R1, fail-closed R2/R3, write-ahead R3">I5</span><span class="legend-item-label">Audit Record — every Execution</span></span>
+      </div>
+    </div>
+  </div>
+  <button class="legend-close" onclick="document.getElementById('legend-strip').classList.toggle('legend-collapsed')" title="Toggle legend">
+    <span class="legend-close-icon">⌃</span>
+  </button>
+</div>
+  <span>UKI Enterprise AI Platform · Observability &amp; Audit · v3 · INTERNAL</span>
+  <div class="footer-tags">
+    <span class="footer-tag">Langfuse</span>
+    <span class="footer-tag">CloudWatch</span>
+    <span class="footer-tag">CloudTrail</span>
+    <span class="footer-tag">Audit Record · I5</span>
+    <span class="footer-tag">S3 Object Lock</span>
+    <span class="footer-tag">Circuit Breaker</span>
+    <span class="footer-tag">Cost Attribution</span>
+  </div>
+</div>
+
+</body>
+</html>

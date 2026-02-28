@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UKI Enterprise AI Platform · Architecture Overview · v9</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0F1117;
+    --surface:  #181C27;
+    --surface2: #1E2333;
+
+    --l5-accent: #A78BFA;  --l5-dim: #2D1F4E;
+    --l4-accent: #34D399;  --l4-dim: #0D2E22;
+    --l3-accent: #60A5FA;  --l3-dim: #0D1F3E;
+    --l2-accent: #FB923C;  --l2-dim: #2E1608;
+    --l1-accent: #F472B6;  --l1-dim: #2E0E20;
+
+    --gov-accent: #67E8F9;
+    --sec-accent: #F87171;
+    --obs-accent: #C084FC;
+
+    /* domain model entity colours — used in anatomy chips */
+    --dm-safety:    #FB923C;
+    --dm-risk:      #F87171;
+    --dm-execmodel: #67E8F9;
+    --dm-identity:  #A78BFA;
+    --dm-audit:     #FACC15;
+    --dm-workflow:  #C084FC;
+    --dm-inv-accent:#F87171;
+
+    --text-primary:   #F0F4FF;
+    --text-secondary: #9BA5BE;   /* ← brightened from #8B95B0 */
+    --text-dim:       #4A5270;
+    --border:         rgba(255,255,255,0.07);
+    --border-faint:   rgba(255,255,255,0.04);
+    --fs: 1.15;
+  }
+
+  body { font-family:'Inter',sans-serif; background:var(--bg); min-height:100vh; display:flex; justify-content:center; align-items:flex-start; padding:32px 32px 64px; }
+  .canvas { width:100%; }
+
+  /* ── HEADER ── */
+  .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:20px; padding-right:180px; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); color:var(--text-dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+  .title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; color:var(--text-primary); letter-spacing:-0.5px; line-height:1; }
+  .title-accent { background:linear-gradient(90deg,#60A5FA,#A78BFA); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; }
+  .mission { font-size:calc(11px * var(--fs)); color:var(--text-dim); margin-top:6px; max-width:680px; line-height:1.5; font-style:italic; }
+  .badge { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:4px 10px; border-radius:20px; background:var(--surface); white-space:nowrap; }
+
+  /* ── DOMAIN MODEL REFERENCE STRIP ── */
+  .dm-ref-strip { display:flex; align-items:flex-start; gap:10px; margin-bottom:20px; padding:12px 16px; background:var(--surface); border:1px solid var(--border); border-radius:10px; flex-wrap:wrap; }
+  .dm-ref-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); white-space:nowrap; padding-top:3px; flex-shrink:0; }
+  .dm-ref-entities { display:flex; flex-wrap:wrap; gap:5px; flex:1; }
+  .dm-ref-entity { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); padding:3px 10px; border-radius:5px; border:1px solid var(--border); background:var(--surface2); color:var(--text-secondary); display:flex; align-items:center; gap:6px; }
+  .dm-ref-entity-name { color:var(--text-primary); font-weight:500; }
+  .dm-ref-entity-desc { color:var(--text-secondary); font-size:calc(8.5px * var(--fs)); }
+  .dm-ref-link { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); color:var(--l3-accent); opacity:.6; white-space:nowrap; padding-top:3px; flex-shrink:0; text-decoration:none; }
+  .dm-ref-link:hover { opacity:1; }
+  /* entity accent dots */
+  .dm-ref-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+
+  /* ── LEGEND ── */
+  .legend { display:flex; gap:20px; margin-bottom:20px; padding:10px 16px; background:var(--surface); border-radius:8px; border:1px solid var(--border); width:fit-content; flex-wrap:wrap; }
+  .legend-item { display:flex; align-items:center; gap:7px; font-size:calc(11px * var(--fs)); color:var(--text-secondary); font-family:'JetBrains Mono',monospace; }
+  .legend-pip { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+  /* ── MAIN GRID: layers + pillars sidebar ── */
+  .main-grid { display:grid; grid-template-columns:1fr 52px; gap:6px; align-items:stretch; }
+  .layers { display:flex; flex-direction:column; gap:6px; }
+
+  /* ── PILLAR SIDEBAR ── */
+  .pillars { display:flex; flex-direction:column; gap:6px; }
+  .pillar { flex:1; border-radius:10px; border:1px solid; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:14px 6px; position:relative; overflow:hidden; }
+  .pillar::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; border-radius:2px 2px 0 0; }
+  .pillar-gov { background:rgba(103,232,249,.04); border-color:rgba(103,232,249,.2); }
+  .pillar-gov::before { background:var(--gov-accent); }
+  .pillar-sec { background:rgba(248,113,113,.04); border-color:rgba(248,113,113,.2); }
+  .pillar-sec::before { background:var(--sec-accent); }
+  .pillar-obs { background:rgba(192,132,252,.04); border-color:rgba(192,132,252,.2); }
+  .pillar-obs::before { background:var(--obs-accent); }
+  .pillar-text { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; writing-mode:vertical-rl; transform:rotate(180deg); line-height:1.3; text-align:center; }
+  .pillar-icon { font-size:calc(16px * var(--fs)); }
+  .pillar-gov .pillar-text { color:var(--gov-accent); opacity:.8; }
+  .pillar-sec .pillar-text { color:var(--sec-accent); opacity:.8; }
+  .pillar-obs .pillar-text { color:var(--obs-accent); opacity:.8; }
+
+  /* ── LAYER ROW ── */
+  .layer { display:grid; grid-template-columns:180px 1fr; border-radius:14px; overflow:hidden; border:1px solid var(--border); opacity:0; transform:translateY(10px); animation:up 0.35s ease forwards; }
+  .layer:nth-child(1){ animation-delay:.04s; }
+  .layer:nth-child(2){ animation-delay:.10s; }
+  .layer:nth-child(3){ animation-delay:.17s; }
+  .layer:nth-child(4){ animation-delay:.24s; }
+  .layer:nth-child(5){ animation-delay:.30s; }
+  @keyframes up { to { opacity:1; transform:translateY(0); } }
+
+  .l5 { border-color:rgba(167,139,250,.28); }
+  .l4 { border-color:rgba(52,211,153,.22); }
+  .l3 { border-color:rgba(96,165,250,.38); box-shadow:0 0 40px rgba(96,165,250,.07); }
+
+  /* ── LAYER LABEL ── */
+  .layer-label { padding:22px 18px; display:flex; flex-direction:column; justify-content:center; position:relative; }
+  .l5  .layer-label { background:var(--l5-dim); }
+  .l4  .layer-label { background:var(--l4-dim); }
+  .l3  .layer-label { background:linear-gradient(145deg,#0D1F3E,#091524); }
+  .layer-label::after { content:''; position:absolute; right:0; top:20%; height:60%; width:1px; opacity:.35; }
+  .l5  .layer-label::after { background:var(--l5-accent); }
+  .l4  .layer-label::after { background:var(--l4-accent); }
+  .l3  .layer-label::after { background:var(--l3-accent); }
+  .layer-tag { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:500; letter-spacing:1.5px; text-transform:uppercase; padding:3px 8px; border-radius:4px; width:fit-content; margin-bottom:10px; }
+  .l5  .layer-tag { background:rgba(167,139,250,.15); color:var(--l5-accent); }
+  .l4  .layer-tag { background:rgba(52,211,153,.15);  color:var(--l4-accent); }
+  .l3  .layer-tag { background:rgba(96,165,250,.2);   color:var(--l3-accent); }
+  .layer-name { font-family:'Syne',sans-serif; font-size:calc(14px * var(--fs)); font-weight:700; color:var(--text-primary); line-height:1.2; margin-bottom:4px; }
+  .layer-sub  { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.4; }
+
+  /* ── CONTENT PANE ── */
+  .layer-content { padding:14px; display:flex; flex-direction:column; gap:8px; justify-content:center; min-width:0; }
+  .l5  .layer-content { background:rgba(167,139,250,.04); }
+  .l4  .layer-content { background:rgba(52,211,153,.03); justify-content:flex-start; }
+  .l3  .layer-content { background:rgba(96,165,250,.05); }
+
+  /* ── CARD GRID ── */
+  .card-grid { display:grid; gap:6px; }
+  .g5 { grid-template-columns:repeat(5,1fr); }
+  .g4 { grid-template-columns:repeat(4,1fr); }
+  .g3 { grid-template-columns:repeat(3,1fr); }
+  .g2 { grid-template-columns:repeat(2,1fr); }
+  .g6 { grid-template-columns:repeat(6,1fr); }
+  .row-sep { height:1px; background:var(--border); margin:2px 0; }
+  .row-label { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); font-weight:500; letter-spacing:1.8px; text-transform:uppercase; padding:0 2px; margin-bottom:2px; }
+  .row-label.mandatory { color:var(--l3-accent); opacity:.7; }
+  .row-label.dim { color:var(--text-dim); }
+
+  /* ── COMPONENT CARD ── */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:10px 12px; display:flex; flex-direction:column; gap:4px; transition:border-color .2s,transform .15s,box-shadow .2s; cursor:default; }
+  .card:hover { transform:translateY(-2px); }
+  .card::before { content:''; display:block; height:2px; border-radius:2px; margin-bottom:5px; flex-shrink:0; }
+  .l5  .card::before { background:var(--l5-accent); opacity:.6; }
+  .l4  .card::before { background:var(--l4-accent); opacity:.6; }
+  .l3  .card::before { background:var(--l3-accent); opacity:.6; }
+  .l5  .card:hover { border-color:rgba(167,139,250,.4); box-shadow:0 4px 16px rgba(167,139,250,.1); }
+  .l4  .card:hover { border-color:rgba(52,211,153,.4);  box-shadow:0 4px 16px rgba(52,211,153,.08); }
+  .l3  .card:hover { border-color:rgba(96,165,250,.5);  box-shadow:0 4px 20px rgba(96,165,250,.12); }
+  .card.core { background:linear-gradient(140deg,#0D1F3E,#111B35); border-color:rgba(96,165,250,.25); }
+  .card.core::before { background:linear-gradient(90deg,#60A5FA,#A78BFA); opacity:1; }
+  .card.core:hover { border-color:rgba(96,165,250,.5); }
+  .card-name   { font-family:'Syne',sans-serif; font-size:calc(11px * var(--fs)); font-weight:700; color:var(--text-primary); line-height:1.2; flex-shrink:0; }
+  .card-detail { font-size:calc(9.5px * var(--fs)); color:var(--text-secondary); line-height:1.5; flex:1; }
+
+  /* ── TECH LOZENGES ── */
+  .tech-row { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; flex-shrink:0; align-items:center; }
+  .tech-lozenge { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); font-weight:500; padding:2px 9px; border-radius:20px; border:1px solid transparent; white-space:nowrap; line-height:1.6; }
+  .l5  .tech-lozenge { background:rgba(167,139,250,.1);  color:var(--l5-accent); border-color:rgba(167,139,250,.22); }
+  .l4  .tech-lozenge { background:rgba(52,211,153,.1);   color:var(--l4-accent); border-color:rgba(52,211,153,.22); }
+  .l3  .tech-lozenge { background:rgba(96,165,250,.12);  color:var(--l3-accent); border-color:rgba(96,165,250,.22); }
+  .card.core .tech-lozenge { background:rgba(96,165,250,.18); color:var(--l3-accent); border-color:rgba(96,165,250,.32); }
+
+  /* ── L5 TWO-ZONE LAYOUT ── */
+  .l5-zone-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); font-weight:500; letter-spacing:1.8px; text-transform:uppercase; margin-bottom:6px; }
+  .l5-consumer-label { color:var(--l5-accent); opacity:.55; }
+  .l5-authoring-label { color:var(--l5-accent); opacity:.55; margin-top:10px; }
+  .l5-zone-sep { height:1px; background:rgba(167,139,250,.12); margin:10px 0 4px; }
+  /* "authoring surface for" tag on authoring path cards in L5 */
+  .l5-for-tag { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:var(--l5-accent); opacity:.6; margin-bottom:3px; }
+
+  /* ── L4 CAPABILITY AUTHORING ── */
+  /* constraint gradient header above the 4 authoring cards */
+  .constraint-gradient-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    padding: 0 2px;
+  }
+  .constraint-gradient-bar-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: calc(8px * var(--fs));
+    color: var(--text-dim);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+  .constraint-gradient-bar-line {
+    flex: 1;
+    height: 1px;
+    margin: 0 8px;
+    background: linear-gradient(90deg, rgba(52,211,153,.5), rgba(167,139,250,.3));
+  }
+  /* persona tag on each authoring path card */
+  .persona-tag { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); padding:2px 7px; border-radius:3px; width:fit-content; margin-bottom:4px; }
+  .persona-constrained { background:rgba(52,211,153,.1); color:var(--l4-accent); border:1px solid rgba(52,211,153,.2); }
+  .persona-process    { background:rgba(103,232,249,.1); color:#67E8F9; border:1px solid rgba(103,232,249,.2); }
+  .persona-expressive { background:rgba(167,139,250,.1); color:var(--l5-accent); border:1px solid rgba(167,139,250,.2); }
+  /* "UI surface:" reference on authoring cards */
+  .ui-surface-ref { font-size:calc(8.5px * var(--fs)); color:var(--text-dim); margin-top:4px; font-family:'JetBrains Mono',monospace; }
+  .ui-surface-ref span { color:var(--l5-accent); opacity:.75; }
+  /* execution scope chips on authoring cards */
+  .exec-scope-row { display:flex; flex-wrap:wrap; gap:3px; margin-top:5px; }
+  .exec-scope { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); padding:2px 7px; border-radius:3px; border:1px solid; white-space:nowrap; }
+  .exec-reasoning { background:rgba(52,211,153,.08); color:var(--l4-accent); border-color:rgba(52,211,153,.2); }
+  .exec-coord     { background:rgba(192,132,252,.08); color:#C084FC; border-color:rgba(192,132,252,.2); }
+  .exec-process   { background:rgba(103,232,249,.08); color:#67E8F9; border-color:rgba(103,232,249,.2); }
+  .exec-scope-dim { opacity:.35; }
+
+  /* ── L4 CONVERGENCE ZONE ── */
+  .convergence-zone {
+    border: 1px solid rgba(52,211,153,.18);
+    border-radius: 10px;
+    padding: 12px 14px 14px;
+    background: rgba(52,211,153,.015);
+    position: relative;
+  }
+  .convergence-zone-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: calc(8px * var(--fs));
+    font-weight: 500;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--l4-accent);
+    opacity: .55;
+    margin-bottom: 8px;
+  }
+  .convergence-arrows {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 6px;
+    padding: 0 12.5%;
+  }
+  .conv-arrow { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); color:var(--l4-accent); opacity:.35; text-align:center; }
+
+  /* ── ANATOMY PANEL ── */
+  .anatomy-panel { background:rgba(52,211,153,.018); border:1px solid rgba(52,211,153,.14); border-radius:9px; padding:10px 14px 12px; }
+  .anatomy-tier-header { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); font-weight:500; letter-spacing:1.6px; text-transform:uppercase; color:var(--l4-accent); opacity:.5; margin-bottom:6px; }
+  .anatomy-base-row { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid rgba(52,211,153,.1); }
+  .anatomy-chip { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); padding:4px 10px; border-radius:5px; background:var(--surface); border:1px solid rgba(52,211,153,.2); color:var(--text-secondary); display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
+  .anatomy-chip .chip-label { color:var(--text-primary); font-weight:500; }
+  .anatomy-chip .chip-sub { color:var(--text-secondary); font-size:calc(8.5px * var(--fs)); }  /* ← brightened + larger */
+  .anatomy-chip .dep-arrow { font-size:calc(8px * var(--fs)); color:var(--l3-accent); opacity:.7; }
+  .anatomy-chip .dep-target { color:var(--l3-accent); opacity:.7; font-size:calc(8.5px * var(--fs)); }
+  /* governance field chips */
+  .anatomy-chip.gov-field { border-color:rgba(248,113,113,.28); background:rgba(248,113,113,.05); }
+  .anatomy-chip.gov-field .chip-label { color:#FCA5A5; }
+  .extensions-header { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); font-weight:500; letter-spacing:1.6px; text-transform:uppercase; color:var(--text-dim); margin-bottom:8px; }
+  .extensions-header em { font-style:normal; color:var(--text-dim); opacity:.7; letter-spacing:0; text-transform:none; font-size:calc(8.5px * var(--fs)); }
+  .extensions-groups { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .ext-group { display:flex; flex-direction:column; gap:4px; }
+  .ext-group-label { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); font-weight:600; padding:3px 8px; border-radius:4px; margin-bottom:3px; }
+  .ext-group-label.process-ext { color:#67E8F9; background:rgba(103,232,249,.07); border:1px solid rgba(103,232,249,.15); }
+  .ext-group-label.coord-ext   { color:#C084FC; background:rgba(192,132,252,.07); border:1px solid rgba(192,132,252,.15); }
+  .ext-group.process-ext .anatomy-chip { border-color:rgba(103,232,249,.2); }
+  .ext-group.coord-ext   .anatomy-chip { border-color:rgba(192,132,252,.2); }
+  .ext-group.process-ext .dep-target   { color:#67E8F9; }
+  .ext-group.coord-ext   .dep-target   { color:#C084FC; }
+
+  /* ── CALLOUT STRIP ── */
+  .callout-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:6px; margin-right:58px; align-items:stretch; opacity:0; animation:up .35s ease .34s forwards; }
+  .callout-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 14px 12px; display:flex; flex-direction:column; gap:5px; height:100%; }
+  .callout-card:hover { border-color:rgba(255,255,255,.12); }
+  .callout-icon { font-size:calc(18px * var(--fs)); line-height:1; }
+  .callout-title { font-family:'Syne',sans-serif; font-size:calc(12px * var(--fs)); font-weight:700; color:var(--text-primary); margin-top:2px; }
+  .callout-detail { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.55; flex:1; }
+  .callout-flag { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); font-weight:500; padding:3px 8px; border-radius:4px; margin-top:4px; width:fit-content; }
+  .flag-gov { background:rgba(103,232,249,.1); color:var(--gov-accent); border:1px solid rgba(103,232,249,.2); }
+  .flag-sec { background:rgba(248,113,113,.1); color:var(--sec-accent); border:1px solid rgba(248,113,113,.2); }
+  .flag-obs { background:rgba(192,132,252,.1); color:var(--obs-accent); border:1px solid rgba(192,132,252,.2); }
+
+  /* ── FOOTER ── */
+  .footer { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; opacity:0; animation:up .35s ease .44s forwards; }
+  .footer-note { font-size:calc(10px * var(--fs)); color:var(--text-dim); font-family:'JetBrains Mono',monospace; }
+  .footer-tags { display:flex; gap:6px; }
+  .footer-tag { font-size:calc(9.5px * var(--fs)); font-family:'JetBrains Mono',monospace; color:var(--text-dim); border:1px solid var(--border); padding:3px 9px; border-radius:20px; background:var(--surface); }
+
+  /* ── SIZE PICKER ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.3); white-space:nowrap; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── L2 / L1 LAYER COLOURS ── */
+  .l2 { border-color:rgba(251,146,60,.22); }
+  .l1 { border-color:rgba(244,114,182,.22); }
+  .l2 .layer-label { background:var(--l2-dim); }
+  .l1 .layer-label { background:var(--l1-dim); }
+  .l2 .layer-label::after { background:var(--l2-accent); }
+  .l1 .layer-label::after { background:var(--l1-accent); }
+  .l2 .layer-tag { background:rgba(251,146,60,.15);  color:var(--l2-accent); }
+  .l1 .layer-tag { background:rgba(244,114,182,.15); color:var(--l1-accent); }
+  .l2 .layer-content { background:rgba(251,146,60,.03); }
+  .l1 .layer-content { background:rgba(244,114,182,.02); }
+  .l2 .card::before { background:var(--l2-accent); opacity:.6; }
+  .l1 .card::before { background:var(--l1-accent); opacity:.6; }
+  .l2 .card:hover { border-color:rgba(251,146,60,.4);  box-shadow:0 4px 16px rgba(251,146,60,.08); }
+  .l1 .card:hover { border-color:rgba(244,114,182,.4); box-shadow:0 4px 16px rgba(244,114,182,.08); }
+  .l2 .tech-lozenge { background:rgba(251,146,60,.1);   color:var(--l2-accent); border-color:rgba(251,146,60,.22); }
+  .l1 .tech-lozenge { background:rgba(244,114,182,.1);  color:var(--l1-accent); border-color:rgba(244,114,182,.22); }
+
+  /* ── SDLC BAND ── */
+  .sdlc-band { width:calc(100% - 58px); margin-top:10px; border:1px solid rgba(250,204,21,.25); border-radius:14px; background:rgba(250,204,21,.03); display:flex; overflow:hidden; opacity:0; animation:up .35s ease .28s forwards; }
+  .sdlc-label { padding:22px 18px; background:rgba(250,204,21,.07); border-right:1px solid rgba(250,204,21,.18); display:flex; flex-direction:column; justify-content:center; flex-shrink:0; width:180px; }
+  .sdlc-tag  { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:500; letter-spacing:1.5px; text-transform:uppercase; padding:3px 8px; border-radius:4px; width:fit-content; margin-bottom:10px; background:rgba(250,204,21,.15); color:#FACC15; }
+  .sdlc-name { font-family:'Syne',sans-serif; font-size:calc(14px * var(--fs)); font-weight:700; color:#FACC15; line-height:1.2; margin-bottom:4px; }
+  .sdlc-sub  { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.4; }
+  .sdlc-content { padding:14px; flex:1; }
+  .sdlc-content .card::before { background:#FACC15; opacity:.6; }
+  .sdlc-content .card:hover   { border-color:rgba(250,204,21,.4); box-shadow:0 4px 16px rgba(250,204,21,.08); }
+  .sdlc-content .tech-lozenge { background:rgba(250,204,21,.1); color:#FACC15; border-color:rgba(250,204,21,.22); }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s" onclick="setSize(0.85)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.15)">M</button>
+  <button class="sz-btn" id="sz-l" onclick="setSize(1.3)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.5)">XL</button>
+</div>
+<script>
+var sizes={0.85:'sz-s',1.15:'sz-m',1.3:'sz-l',1.5:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.15);
+</script>
+
+<div class="canvas">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <div class="eyebrow">UKI Enterprise AI Platform · Architecture Overview</div>
+      <div class="title">Platform <span class="title-accent">Architecture</span></div>
+      <div class="subtitle">5-layer model &nbsp;·&nbsp; Multi-provider &nbsp;·&nbsp; AWS-native &nbsp;·&nbsp; MCP / A2A</div>
+      <div class="mission">A governed, multi-tenant AI control plane that enforces safety, identity, and audit invariants unconditionally across every AI capability deployed within the organisation.</div>
+    </div>
+  </div>
+
+  <!-- DOMAIN MODEL REFERENCE STRIP -->
+  <div class="dm-ref-strip">
+    <div class="dm-ref-label">Domain Model</div>
+    <div class="dm-ref-entities">
+      <div class="dm-ref-entity"><div class="dm-ref-dot" style="background:#34D399"></div><span class="dm-ref-entity-name">Capability Definition</span><span class="dm-ref-entity-desc">central governed artefact — every authoring path produces one</span></div>
+      <div class="dm-ref-entity"><div class="dm-ref-dot" style="background:#FB923C"></div><span class="dm-ref-entity-name">Safety Envelope</span><span class="dm-ref-entity-desc">versioned · declared intent · evaluated at publish</span></div>
+      <div class="dm-ref-entity"><div class="dm-ref-dot" style="background:#F87171"></div><span class="dm-ref-entity-name">Risk Tier</span><span class="dm-ref-entity-desc">R0–R3 · drives governance proportionality</span></div>
+      <div class="dm-ref-entity"><div class="dm-ref-dot" style="background:#67E8F9"></div><span class="dm-ref-entity-name">Execution Model</span><span class="dm-ref-entity-desc">Reasoning · Coordination · Process — declared field, not implementation detail</span></div>
+      <div class="dm-ref-entity"><div class="dm-ref-dot" style="background:#60A5FA"></div><span class="dm-ref-entity-name">Execution</span><span class="dm-ref-entity-desc">runtime instance — traces to one Definition, one Identity Context, one Audit Record</span></div>
+      <div class="dm-ref-entity"><div class="dm-ref-dot" style="background:#A78BFA"></div><span class="dm-ref-entity-name">Identity Context</span><span class="dm-ref-entity-desc">established at session start · immutable for Execution duration</span></div>
+      <div class="dm-ref-entity"><div class="dm-ref-dot" style="background:#FACC15"></div><span class="dm-ref-entity-name">Audit Record</span><span class="dm-ref-entity-desc">synchronous · immutable · retention driven by Risk Tier</span></div>
+      <div class="dm-ref-entity"><div class="dm-ref-dot" style="background:#C084FC"></div><span class="dm-ref-entity-name">Workflow Contract</span><span class="dm-ref-entity-desc">mandatory R2/R3 · idempotency · compensation · ABAC at step boundaries</span></div>
+    </div>
+    <a class="dm-ref-link" href="domain-model-v1.html">full model →</a>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-pip" style="background:#A78BFA"></div>L5 Experiences</div>
+    <div class="legend-item"><div class="legend-pip" style="background:#34D399"></div>L4 Capability Authoring</div>
+    <div class="legend-item"><div class="legend-pip" style="background:#60A5FA"></div>L3 Platform Contract</div>
+    <div class="legend-item"><div class="legend-pip" style="background:#FB923C"></div>L2 Data &amp; LLMs</div>
+    <div class="legend-item"><div class="legend-pip" style="background:#F472B6"></div>L1 Foundations</div>
+    <div class="legend-item"><div class="legend-pip" style="background:#FACC15"></div>SDLC Cross-cutting</div>
+  </div>
+
+  <!-- LAYER STACK + PILLAR SIDEBAR -->
+  <div class="main-grid">
+    <div class="layers">
+
+      <!-- ═══ L5: EXPERIENCES ═══ -->
+      <div class="layer l5">
+        <div class="layer-label">
+          <div class="layer-tag">L5 · Team-Owned</div>
+          <div class="layer-name">Experiences</div>
+          <div class="layer-sub">Consumer &amp; authoring<br>surfaces</div>
+        </div>
+        <div class="layer-content">
+
+          <div class="l5-zone-label l5-consumer-label">Consumer surfaces — invoke published Capabilities</div>
+          <div class="card-grid g3">
+            <div class="card">
+              <div class="card-name">Chat UI</div>
+              <div class="card-detail">Streaming WebSocket with citation display and conversation history. Feedback capture feeds LLM Observability quality loop. Session identity bound to authenticated user — ABAC tags propagate to all downstream agent calls. Deployed per application, not a platform-hosted UI</div>
+              <div class="tech-row"><span class="tech-lozenge">WebSocket</span><span class="tech-lozenge">IAM Identity Center</span></div>
+            </div>
+            <div class="card">
+              <div class="card-name">Slack / Teams</div>
+              <div class="card-detail">Bot integrations surfacing agents where internal teams already operate. Slack Events API or Teams Bot Framework routes messages to platform agent endpoints. Thread context maintained per session. Primary surface for IT Ops and incident response agents</div>
+              <div class="tech-row"><span class="tech-lozenge">Slack Events API</span><span class="tech-lozenge">Teams Bot Framework</span></div>
+            </div>
+            <div class="card">
+              <div class="card-name">API Clients</div>
+              <div class="card-detail">Direct REST or WebSocket consumers for system-to-system integration — automation pipelines, scheduled jobs, internal tooling calling agent endpoints programmatically. Authentication via IAM Identity Center service credentials; ABAC session tags set at STS session issuance</div>
+              <div class="tech-row"><span class="tech-lozenge">REST</span><span class="tech-lozenge">IAM Identity Center</span></div>
+            </div>
+          </div>
+
+          <div class="l5-zone-sep"></div>
+          <div class="l5-zone-label l5-authoring-label">Authoring surfaces — UI for Capability Definition authoring (L4)</div>
+          <div class="card-grid g4">
+            <div class="card">
+              <div class="l5-for-tag">for · Guided Assembly</div>
+              <div class="card-name">Assembly UI</div>
+              <div class="card-detail">Constrained template-and-tool selection surface for business users and domain experts. Exposes only Registry-approved components — no raw field authoring. Risk Tier and Safety Envelope resolved from template selection</div>
+              <div class="tech-row"><span class="tech-lozenge">Registry API</span><span class="tech-lozenge">to be built</span></div>
+            </div>
+            <div class="card">
+              <div class="l5-for-tag">for · Low-code Builder</div>
+              <div class="card-name">Langflow</div>
+              <div class="card-detail">Node-graph visual authoring for technically-oriented non-engineers. Drag-and-drop tool and RAG source selection from Capability Registry. Design-time Safety Envelope and Risk Tier validation before Registry submission</div>
+              <div class="tech-row"><span class="tech-lozenge">Langflow</span><span class="tech-lozenge">Registry API</span></div>
+            </div>
+            <div class="card">
+              <div class="l5-for-tag">for · Workflow Studio</div>
+              <div class="card-name">Step Functions Studio</div>
+              <div class="card-detail">Visual state machine authoring for process designers and solutions architects defining R2/R3 Workflow Contracts. Produces ASL definitions — Workflow Contract component attached to a Capability Definition. Persona: compliance architect, not developer</div>
+              <div class="tech-row"><span class="tech-lozenge">Step Functions</span><span class="tech-lozenge">ASL</span></div>
+            </div>
+            <div class="card">
+              <div class="l5-for-tag">for · Pro-code</div>
+              <div class="card-name">IDE Plugins</div>
+              <div class="card-detail">VS Code / Cursor extensions — Registry discovery queries Registry API to surface available tools, MCP servers, and RAG sources as autocomplete; generates Strands decorator stubs from tool schema. Also surfaces SDLC agents (PR review, test gen, doc gen) inline</div>
+              <div class="tech-row"><span class="tech-lozenge">VS Code</span><span class="tech-lozenge">Cursor</span><span class="tech-lozenge">Registry API</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ═══ L4: CAPABILITY AUTHORING ═══ -->
+      <div class="layer l4">
+        <div class="layer-label">
+          <div class="layer-tag">L4 · Team-Owned</div>
+          <div class="layer-name">Capability<br>Authoring</div>
+          <div class="layer-sub">Every path produces<br>a Capability Definition</div>
+        </div>
+        <div class="layer-content">
+
+          <!-- Constraint gradient header -->
+          <div class="constraint-gradient-bar">
+            <span class="constraint-gradient-bar-label">← most constrained</span>
+            <div class="constraint-gradient-bar-line"></div>
+            <span class="constraint-gradient-bar-label">most expressive →</span>
+          </div>
+
+          <!-- Four authoring path cards -->
+          <div class="card-grid g4">
+
+            <div class="card">
+              <div class="persona-tag persona-constrained">Business user · Domain expert</div>
+              <div class="card-name">Guided Assembly</div>
+              <div class="card-detail">Constrained to Registry-approved templates and tools. Execution Model platform-managed — Reasoning only, no configuration required. Safety Envelope and Risk Tier resolved automatically from template. Cannot emit a Capability Definition that violates invariants</div>
+              <div class="exec-scope-row">
+                <span class="exec-scope exec-reasoning">Reasoning</span>
+                <span class="exec-scope exec-coord exec-scope-dim">Coordination</span>
+                <span class="exec-scope exec-process exec-scope-dim">Process</span>
+              </div>
+              <div class="ui-surface-ref">UI surface: <span>Assembly UI (L5 · to be built)</span></div>
+            </div>
+
+            <div class="card">
+              <div class="persona-tag persona-constrained">Technical non-engineer</div>
+              <div class="card-name">Low-code Builder</div>
+              <div class="card-detail">Node-graph composition with tool and RAG source selection from Capability Registry. Safety Envelope and Risk Tier declared by author with design-time validation enforced before Registry submission. Produces same lifecycle-gated Capability Definition as pro-code path</div>
+              <div class="exec-scope-row">
+                <span class="exec-scope exec-reasoning">Reasoning</span>
+                <span class="exec-scope exec-coord">Coordination</span>
+                <span class="exec-scope exec-process exec-scope-dim">Process</span>
+              </div>
+              <div class="ui-surface-ref">UI surface: <span>Langflow (L5)</span></div>
+            </div>
+
+            <div class="card">
+              <div class="persona-tag persona-process">Process designer · Solutions architect</div>
+              <div class="card-name">Workflow Studio</div>
+              <div class="card-detail">Process scope authoring for R2/R3 Capability Definitions. Produces the Workflow Contract component — correlation ID, idempotency, compensation, ABAC at step boundaries, replay guarantees. Contract attached to a Capability Definition; may be versioned and owned independently by compliance function</div>
+              <div class="exec-scope-row">
+                <span class="exec-scope exec-reasoning exec-scope-dim">Reasoning</span>
+                <span class="exec-scope exec-coord exec-scope-dim">Coordination</span>
+                <span class="exec-scope exec-process">Process</span>
+              </div>
+              <div class="ui-surface-ref">UI surface: <span>Step Functions Studio (L5)</span></div>
+            </div>
+
+            <div class="card">
+              <div class="persona-tag persona-expressive">Engineer</div>
+              <div class="card-name">Pro-code</div>
+              <div class="card-detail">Full Capability Definition authoring — all three Execution Model scopes available. Strands for Reasoning, LangGraph for Coordination graph topology, Step Functions for Process orchestration. Submitted via CI/CD pipeline through Registry lifecycle gates</div>
+              <div class="exec-scope-row">
+                <span class="exec-scope exec-reasoning">Reasoning</span>
+                <span class="exec-scope exec-coord">Coordination</span>
+                <span class="exec-scope exec-process">Process</span>
+              </div>
+              <div class="ui-surface-ref">UI surface: <span>IDE Plugins (L5)</span></div>
+            </div>
+
+          </div>
+
+          <!-- Convergence zone — shared output of all four paths -->
+          <div class="convergence-zone">
+            <div class="convergence-zone-label">Capability Definition — governed artefact every path submits to the Registry</div>
+            <div class="convergence-arrows">
+              <span class="conv-arrow">↓</span>
+              <span class="conv-arrow">↓</span>
+              <span class="conv-arrow">↓</span>
+              <span class="conv-arrow">↓</span>
+            </div>
+            <div class="anatomy-panel">
+              <div class="anatomy-tier-header">Capability Definition anatomy — fields common to all</div>
+              <div class="anatomy-base-row">
+                <div class="anatomy-chip"><span class="chip-label">System Prompt</span><span class="chip-sub">versioned · immutable on publish</span></div>
+                <div class="anatomy-chip"><span class="chip-label">Tool Bindings</span><span class="chip-sub">schema-validated · ABAC-filtered</span></div>
+                <div class="anatomy-chip"><span class="chip-label">RAG Source</span><span class="chip-sub">KB ARN + tenant filter</span></div>
+                <div class="anatomy-chip"><span class="chip-label">Model Selection</span><span class="chip-sub">per-tenant permitted list</span></div>
+                <div class="anatomy-chip"><span class="chip-label">Lifecycle State</span><span class="chip-sub">Draft → Review → Published → Deprecated</span></div>
+                <div class="anatomy-chip gov-field"><span class="chip-label">Safety Envelope</span><span class="chip-sub">versioned · evaluated at publish · I2 / I6</span></div>
+                <div class="anatomy-chip gov-field"><span class="chip-label">Risk Tier</span><span class="chip-sub">R0–R3 · declared · drives governance · I2 / I4</span></div>
+                <div class="anatomy-chip gov-field"><span class="chip-label">Execution Model</span><span class="dep-arrow">→</span><span class="dep-target">Reasoning · Coordination · Process</span></div>
+                <div class="anatomy-chip"><span class="chip-label">Guardrail Config</span><span class="dep-arrow">→</span><span class="dep-target">L3 Guardrails enforces Safety Envelope</span></div>
+              </div>
+              <div class="extensions-header">Optional capability extensions &nbsp;<em>— composable, not prescriptive. Any combination valid.</em></div>
+              <div class="extensions-groups">
+                <div class="ext-group process-ext">
+                  <div class="ext-group-label process-ext">Process extensions — expand agent beyond session scope</div>
+                  <div class="anatomy-chip"><span class="chip-label">Workflow Config</span><span class="dep-arrow">→</span><span class="dep-target">L3 Workflow Engine</span><span class="chip-sub">durable · retry · compensation</span></div>
+                  <div class="anatomy-chip"><span class="chip-label">HITL Conditions</span><span class="dep-arrow">→</span><span class="dep-target">L3 HITL Service</span><span class="chip-sub">approval gates · escalation</span></div>
+                  <div class="anatomy-chip"><span class="chip-label">Long-term Memory</span><span class="dep-arrow">→</span><span class="dep-target">Agent Runtime</span><span class="chip-sub">cross-session persistence</span></div>
+                </div>
+                <div class="ext-group coord-ext">
+                  <div class="ext-group-label coord-ext">Coordination extensions — extend beyond a single agent</div>
+                  <div class="anatomy-chip"><span class="chip-label">Specialist Agent Bindings</span><span class="chip-sub">agent-as-tool · LLM-driven sequencing</span></div>
+                  <div class="anatomy-chip"><span class="chip-label">Graph Definition</span><span class="chip-sub">LangGraph · mixed or code-driven sequencing</span></div>
+                  <div class="anatomy-chip"><span class="chip-label">Goal Decomposition Config</span><span class="chip-sub">supervisor pattern · task delegation</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ═══ L3: SHARED PLATFORM SERVICES ═══ -->
+      <div class="layer l3">
+        <div class="layer-label">
+          <div class="layer-tag">L3 · Platform-Owned</div>
+          <div class="layer-name">Shared Platform Services</div>
+          <div class="layer-sub">Contract boundary —<br>build once, govern centrally</div>
+        </div>
+        <div class="layer-content">
+          <div class="card-grid g4">
+
+            <div class="card">
+              <div class="card-name">LLM Gateway</div>
+              <div class="card-detail">Single entry point — no direct model calls from L4. Multi-provider routing, load balancing, semantic caching, rate limiting, cost tracking</div>
+              <div class="tech-row"><span class="tech-lozenge">LiteLLM</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">Guardrails Service</div>
+              <div class="card-detail">Runtime enforcement of the Safety Envelope declared in the Capability Definition. PII detection/redaction pre-LLM, prompt injection blocking, content filtering, DLP on output. Non-bypassable. Full audit trace. Coverage gap on non-Bedrock routes — design pending</div>
+              <div class="tech-row"><span class="tech-lozenge">Bedrock Guardrails</span><span class="tech-lozenge">Comprehend</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">Agent Runtime</div>
+              <div class="card-detail">Platform-managed Execution host. Establishes and propagates Identity Context (RFC 8693), manages MCP Gateway, Memory (working + long-term), per-tenant sandbox isolation, Code Execution</div>
+              <div class="tech-row"><span class="tech-lozenge">AWS AgentCore</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">MCP Tool Gateway</div>
+              <div class="card-detail">Runtime proxy for all tool calls — ABAC-filtered catalogue, RFC 8693 token exchange per MCP server enforcing Identity Context scope, health monitoring, PrivateLink-only egress. Agents cannot call tools directly</div>
+              <div class="tech-row"><span class="tech-lozenge">AgentCore MCP</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">Capability Registry</div>
+              <div class="card-detail">Enforces domain invariants: validates Safety Envelope and Risk Tier at publish (I2), blocks execution of unpublished Definitions (I1), rejects R2/R3 without Workflow Contract (I4). System of record — versioned, SHA-256 hashed. Runtime ABAC-filtered tool discovery via Registry API</div>
+              <div class="tech-row"><span class="tech-lozenge">DynamoDB</span><span class="tech-lozenge">Registry API</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">RAG Services</div>
+              <div class="card-detail">Hybrid retrieval (kNN + BM25), reranking, citation generation. Tenant isolation enforced at OpenSearch query level — structurally impossible to cross tenant boundary</div>
+              <div class="tech-row"><span class="tech-lozenge">Bedrock KBs</span><span class="tech-lozenge">OpenSearch Serverless</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">LLM Observability</div>
+              <div class="card-detail">Trace trees, generation-level spans, session grouping, LLM-as-judge evaluation, prompt debugging. Own data model (traces → spans → generations) — not OTEL-based. LiteLLM callback fires for all providers including cache hits. <em style="color:#FACC15;font-style:normal;">⚠ OTEL integration decision pending</em></div>
+              <div class="tech-row"><span class="tech-lozenge">Langfuse (self-hosted)</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">Prompt Management</div>
+              <div class="card-detail">Centralised prompt library with versioning and A/B testing. Templates retrieved at agent runtime — system prompts never hardcoded in Capability Definitions or source code. Rollback to any prior version without a code deploy</div>
+              <div class="tech-row"><span class="tech-lozenge">SportsBet PM</span><span class="tech-lozenge">Langfuse Prompts</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">Cost &amp; Budget Control</div>
+              <div class="card-detail">Real-time spend tracking via LiteLLM virtual keys — one key per tenant with configurable monthly budget cap. Circuit breaker cuts traffic at 100% budget consumed. Cost attributed per tenant / agent / session across Bedrock, Azure OpenAI, and Gemini routes</div>
+              <div class="tech-row"><span class="tech-lozenge">LiteLLM spend tracking</span><span class="tech-lozenge">CloudWatch alarms</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">Audit &amp; Compliance</div>
+              <div class="card-detail">Writes the Audit Record (I5) — immutable, synchronous on every Execution. Identity Context, Safety Envelope version, Risk Tier in effect, all MCP tool calls and results, guardrail traces, token counts, cost. SHA-256 hashed against Registry version entry. S3 Object Lock retention driven by Risk Tier. Fail-closed for R2/R3 — no state-changing tool calls without audit commit</div>
+              <div class="tech-row"><span class="tech-lozenge">S3 Object Lock</span><span class="tech-lozenge">KMS per tenant</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">Workflow Engine</div>
+              <div class="card-detail">Implements the Workflow Contract for R2/R3 Capability Definitions. Step Functions state machines provide durable execution, deterministic sequencing, retries, timeouts, parallel branches, and compensation. ABAC enforced at each step boundary via Identity Context</div>
+              <div class="tech-row"><span class="tech-lozenge">Step Functions</span></div>
+            </div>
+
+            <div class="card">
+              <div class="card-name">HITL Service</div>
+              <div class="card-detail">Routes approval requests to designated reviewers — Marketplace peer review, high-stakes agent action confirmation, compliance sign-off. Threshold driven by Risk Tier. Condition defined per Capability Definition in Registry; response routing via SNS to reviewer surface</div>
+              <div class="tech-row"><span class="tech-lozenge">AgentCore HITL</span><span class="tech-lozenge">SNS</span></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ L2: DATA, KNOWLEDGE & LLMs ═══ -->
+      <div class="layer l2">
+        <div class="layer-label">
+          <div class="layer-tag">L2 · Platform-Owned</div>
+          <div class="layer-name">Data, Knowledge<br>&amp; LLMs</div>
+          <div class="layer-sub">Storage, retrieval,<br>model access</div>
+        </div>
+        <div class="layer-content">
+          <div class="card-grid g4">
+            <div class="card">
+              <div class="card-name">Multi-provider LLM Access</div>
+              <div class="card-detail">AWS Bedrock (primary), Azure OpenAI, Gemini, Anthropic direct. LiteLLM routes at L3 — provider is a runtime variable, not a deployment decision. Cross-region inference profiles for resilience</div>
+              <div class="tech-row"><span class="tech-lozenge">AWS Bedrock</span><span class="tech-lozenge">Azure OpenAI</span><span class="tech-lozenge">Gemini</span></div>
+            </div>
+            <div class="card">
+              <div class="card-name">Vector Database</div>
+              <div class="card-detail">OpenSearch Serverless primary — hybrid kNN + BM25. Tenant isolation enforced at index level. S3 Vectors evaluated positively for warm-tier cost optimisation, not formally committed</div>
+              <div class="tech-row"><span class="tech-lozenge">OpenSearch Serverless</span><span class="tech-lozenge">S3 Vectors (warm tier)</span></div>
+            </div>
+            <div class="card">
+              <div class="card-name">Document &amp; Knowledge Stores</div>
+              <div class="card-detail">Structured and unstructured knowledge sources feeding RAG ingestion pipelines. DLP and Guardrails pre-processing applied before vector or LLM ingestion. ACL metadata propagated to vector store for query-time access control</div>
+              <div class="tech-row"><span class="tech-lozenge">S3</span><span class="tech-lozenge">OpenSearch</span><span class="tech-lozenge">Kendra</span></div>
+            </div>
+            <div class="card">
+              <div class="card-name">Enterprise Connectors</div>
+              <div class="card-detail">Incremental sync from internal systems into knowledge stores for RAG ingestion. ACL metadata propagated at sync time. Operational connectors (live calls at execution time) handled via MCP Tool Gateway at L3</div>
+              <div class="tech-row"><span class="tech-lozenge">Confluence</span><span class="tech-lozenge">Jira</span><span class="tech-lozenge">GitHub</span><span class="tech-lozenge">S3</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ L1: CLOUD FOUNDATIONS ═══ -->
+      <div class="layer l1">
+        <div class="layer-label">
+          <div class="layer-tag">L1 · Platform-Owned</div>
+          <div class="layer-name">Cloud Foundations</div>
+          <div class="layer-sub">Identity, compute,<br>networking, secrets</div>
+        </div>
+        <div class="layer-content">
+          <div class="card-grid g4">
+            <div class="card">
+              <div class="card-name">Identity &amp; Access</div>
+              <div class="card-detail">Establishes the Identity Context — Okta IdP → IAM Identity Center → ABAC session tags (tenant_id, brand, permission_scopes). Tags propagate through every layer. RFC 8693 token exchange scopes OAuth per MCP tool call</div>
+              <div class="tech-row"><span class="tech-lozenge">Okta</span><span class="tech-lozenge">IAM Identity Center</span><span class="tech-lozenge">STS Session Tags</span></div>
+            </div>
+            <div class="card">
+              <div class="card-name">Compute</div>
+              <div class="card-detail">Serverless-first for event-driven tasks. Fargate for long-running agent runtimes. AgentCore abstracts container lifecycle — teams don't manage infrastructure for agent execution</div>
+              <div class="tech-row"><span class="tech-lozenge">Lambda</span><span class="tech-lozenge">ECS Fargate</span><span class="tech-lozenge">AgentCore</span></div>
+            </div>
+            <div class="card">
+              <div class="card-name">Secrets &amp; Config</div>
+              <div class="card-detail">All credentials injected at agent runtime — never in environment variables, source code, or Capability Definitions. Automated rotation. KMS encryption per tenant. Parameter Store for non-secret config</div>
+              <div class="tech-row"><span class="tech-lozenge">Secrets Manager</span><span class="tech-lozenge">Parameter Store</span></div>
+            </div>
+            <div class="card">
+              <div class="card-name">Networking</div>
+              <div class="card-detail">VPC + PrivateLink for all internal service communication. WAF at API Gateway. TLS everywhere. No public internet egress from agents or MCP tool calls. SCP denies direct provider API calls from L4</div>
+              <div class="tech-row"><span class="tech-lozenge">VPC</span><span class="tech-lozenge">PrivateLink</span><span class="tech-lozenge">WAF</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /layers -->
+
+    <!-- CROSS-CUTTING PILLARS SIDEBAR -->
+    <div class="pillars">
+      <div class="pillar pillar-gov">
+        <div class="pillar-icon">⚖️</div>
+        <div class="pillar-text">Governance &amp; Compliance</div>
+      </div>
+      <div class="pillar pillar-sec">
+        <div class="pillar-icon">🔐</div>
+        <div class="pillar-text">Security · Unified Enforcement</div>
+      </div>
+      <div class="pillar pillar-obs">
+        <div class="pillar-icon">📊</div>
+        <div class="pillar-text">Observability · Holistic Visibility</div>
+      </div>
+    </div>
+
+  </div><!-- /main-grid -->
+
+  <!-- SDLC CROSS-CUTTING BAND -->
+  <div class="sdlc-band">
+    <div class="sdlc-label">
+      <div class="sdlc-tag">SDLC · Cross-Cutting</div>
+      <div class="sdlc-name">Developer &amp;<br>Lifecycle</div>
+      <div class="sdlc-sub">CI/CD, gates,<br>local dev</div>
+    </div>
+    <div class="sdlc-content">
+      <div class="card-grid g4">
+        <div class="card">
+          <div class="card-name">AI-Native CI/CD</div>
+          <div class="card-detail">GitHub Actions pipelines with agent-aware gates. Pushes Capability Definitions to Registry API, runs evaluation suite, manages lifecycle state transitions. Blocks promotion on gate failure — no manual override path in pipeline</div>
+          <div class="tech-row"><span class="tech-lozenge">GitHub Actions</span><span class="tech-lozenge">Registry API</span></div>
+        </div>
+        <div class="card">
+          <div class="card-name">Capability Lifecycle Gates</div>
+          <div class="card-detail">Draft → Review → Published enforced in Capability Registry. Safety Envelope and Risk Tier validated before promotion. Evaluation results attached immutably to version record. System prompt locked on publish — version-pinned, no runtime override. Two tracks: Production (team-owned) and Marketplace (peer review)</div>
+          <div class="tech-row"><span class="tech-lozenge">Capability Registry</span></div>
+        </div>
+        <div class="card">
+          <div class="card-name">Evaluation Framework</div>
+          <div class="card-detail">Team-defined quality gate — framework is team choice (Promptfoo, LangSmith, Bedrock KB Eval, pytest against Registry API). Gate rigour proportional to Risk Tier — R2/R3 require extended evaluation suites. Guardrails handles runtime safety separately and is non-bypassable</div>
+          <div class="tech-row"><span class="tech-lozenge">Promptfoo</span><span class="tech-lozenge">LangSmith</span><span class="tech-lozenge">Bedrock Eval</span></div>
+        </div>
+        <div class="card">
+          <div class="card-name">Local Dev Environment</div>
+          <div class="card-detail">Strands local mode with Docker Compose mocked L3 services. Registry API mock surfaces tool catalogue for IDE discovery. Sandbox MCP endpoints return fixture responses — actual schemas exercised without production side-effects</div>
+          <div class="tech-row"><span class="tech-lozenge">Strands local mode</span><span class="tech-lozenge">Docker Compose</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CROSS-CUTTING CALLOUTS -->
+  <div class="callout-strip">
+    <div class="callout-card">
+      <div class="callout-icon">⚖️</div>
+      <div class="callout-title">Governance &amp; Compliance</div>
+      <div class="callout-detail">Capability Definition lifecycle (Draft → Review → Published) enforced in Capability Registry. Safety Envelope validated and Risk Tier declared before publish — invariants I1 and I2. Two release tracks — Production (team-owned) and Marketplace (peer review). System prompt immutable on publish. S3 Object Lock audit retention period driven by Risk Tier. R2/R3 fail-closed on audit pipeline outage. GDPR lawful basis established at authentication.</div>
+      <span class="callout-flag flag-gov">GDPR · S3 Object Lock · Risk Tier</span>
+    </div>
+    <div class="callout-card">
+      <div class="callout-icon">🔐</div>
+      <div class="callout-title">Security · Unified Enforcement</div>
+      <div class="callout-detail">Okta → IAM Identity Center → ABAC session tags (tenant_id, brand, permission_scopes) establish the Identity Context at session start and propagate through every layer (I3). RFC 8693 token exchange scopes OAuth per MCP tool call. SCP denies direct provider API calls from L4. Guardrails enforces Safety Envelope at runtime and is non-bypassable. VPC PrivateLink — no public internet from agents. KMS per tenant.</div>
+      <span class="callout-flag flag-sec">ABAC · RFC 8693 · PrivateLink · Safety Envelope</span>
+    </div>
+    <div class="callout-card">
+      <div class="callout-icon">📊</div>
+      <div class="callout-title">Observability · Holistic Visibility</div>
+      <div class="callout-detail">Langfuse (self-hosted) for LLM-specific tracing — own data model (traces → spans → generations), LLM-as-judge quality evaluation, provider-agnostic via LiteLLM callback. LiteLLM real-time spend tracking and budget circuit breakers per tenant. Audit Record written synchronously on every Execution (I5) — CloudWatch for infrastructure, Splunk for security events. OTEL integration decision pending.</div>
+      <span class="callout-flag flag-obs">Langfuse · LiteLLM · CloudWatch · Splunk</span>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-note">L3 is the non-negotiable contract boundary · Capability Registry enforces domain invariants I1–I6 · No direct model calls from L4 · Identity Context immutable through every tool invocation</div>
+    <div class="footer-tags">
+      <span class="footer-tag">AWS-native</span>
+      <span class="footer-tag">MCP 1.x</span>
+      <span class="footer-tag">A2A</span>
+      <span class="footer-tag">GDPR</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

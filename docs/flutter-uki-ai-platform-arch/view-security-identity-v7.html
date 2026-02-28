@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security &amp; Identity Propagation · UKI Enterprise AI Platform · v6</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#0F1117; --surface:#181C27; --surface2:#1E2333;
+    --text-primary:#F0F4FF; --text-secondary:#9BA5BE; --text-dim:#4A5270;
+    --border:rgba(255,255,255,0.07); --border-faint:rgba(255,255,255,0.04);
+    --fs: 1.15;
+  }
+  body {
+    font-family:'Inter',sans-serif;
+    background:var(--bg);
+    color:var(--text-primary);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:32px 32px 64px;
+  }
+
+  /* ── TOOLBAR ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.3); white-space:nowrap; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── PAGE HEADER ── */
+  .page-header { text-align:center; margin-bottom:48px; width:100%; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); letter-spacing:3px; text-transform:uppercase; color:var(--text-dim); margin-bottom:10px; }
+  .page-title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; letter-spacing:-.5px; }
+  .page-title-accent { background:linear-gradient(90deg,#F87171,#FB923C); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .page-subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; line-height:1.5; max-width:640px; margin-left:auto; margin-right:auto; }
+  .badge { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 10px; border-radius:20px; background:var(--surface); margin-top:14px; }
+
+  /* ── FLOW WRAPPER ── */
+  .flow { width:100%; margin-bottom:20px; }
+
+  /* ── FLOW HEADER ── */
+  .flow-header { display:flex; align-items:center; gap:16px; margin-bottom:16px; }
+  .flow-badge {
+    font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs));
+    letter-spacing:2px; text-transform:uppercase;
+    padding:4px 12px; border-radius:20px; border:1px solid; white-space:nowrap; flex-shrink:0;
+  }
+  .flow-title { font-family:'Syne',sans-serif; font-size:calc(18px * var(--fs)); font-weight:700; }
+  .flow-timing {
+    font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim);
+    margin-left:auto; flex-shrink:0; padding:4px 10px;
+    background:var(--surface); border:1px solid var(--border); border-radius:6px; letter-spacing:.5px;
+  }
+
+  /* ── LOOP NOTE (Flow 2) ── */
+  .loop-note {
+    display:flex; align-items:center; gap:10px; margin-bottom:16px;
+    padding:8px 16px; background:rgba(251,146,60,.05);
+    border:1px solid rgba(251,146,60,.18); border-radius:8px;
+  }
+  .loop-icon { font-size:calc(14px * var(--fs)); flex-shrink:0; }
+  .loop-text { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:rgba(251,146,60,.7); line-height:1.4; }
+
+  /* ── NODE ROW — 5 stops: 9-col grid ── */
+  .node-row {
+    display:grid;
+    grid-template-columns: 1fr 56px 1fr 56px 1fr 56px 1fr 56px 1fr;
+    align-items:center;
+    margin-bottom:10px;
+  }
+  .node-col { display:flex; flex-direction:column; align-items:center; gap:7px; }
+
+  /* ── NODES ── */
+  .stop-node {
+    width:54px; height:54px; border-radius:50%;
+    border:2px solid var(--stop-color); background:var(--stop-bg);
+    display:flex; align-items:center; justify-content:center;
+    font-size:calc(20px * var(--fs)); position:relative;
+    box-shadow:0 0 20px var(--stop-glow); flex-shrink:0;
+  }
+  .stop-number {
+    position:absolute; top:-7px; right:-7px;
+    width:19px; height:19px; border-radius:50%;
+    background:var(--stop-color); color:#0F1117;
+    font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .stop-label {
+    font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:700;
+    color:var(--stop-color); text-align:center; line-height:1.2;
+  }
+  .stop-sublabel {
+    font-family:'JetBrains Mono',monospace; font-size:calc(9.5px * var(--fs));
+    color:var(--text-secondary); text-align:center; letter-spacing:.5px;
+  }
+
+  /* ── ARROWS ── */
+  .arrow-col { display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .arrow-line {
+    width:100%; height:2px;
+    background:linear-gradient(90deg, var(--from-color), var(--to-color));
+    opacity:.4; position:relative;
+  }
+  .arrow-line::after {
+    content:''; position:absolute; right:-5px; top:50%; transform:translateY(-50%);
+    border-left:7px solid var(--to-color);
+    border-top:4px solid transparent; border-bottom:4px solid transparent; opacity:.65;
+  }
+  .arrow-token {
+    font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs));
+    color:var(--text-secondary); text-align:center; white-space:nowrap;
+    letter-spacing:.3px; line-height:1.4;
+  }
+
+  /* ── DETAIL ROW — mirrors node-row grid ── */
+  .detail-row {
+    display:grid;
+    grid-template-columns: 1fr 56px 1fr 56px 1fr 56px 1fr 56px 1fr;
+    align-items:stretch;
+  }
+  .detail-spacer {}
+  .detail-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-top:2.5px solid var(--stop-color); border-radius:10px;
+    padding:calc(12px * var(--fs)) calc(14px * var(--fs));
+    display:flex; flex-direction:column; gap:8px;
+    animation:fadeUp .35s ease both;
+  }
+  .detail-title {
+    font-family:'Syne',sans-serif; font-size:calc(11.5px * var(--fs)); font-weight:700;
+    color:var(--stop-color); line-height:1.2;
+  }
+  .detail-points { list-style:none; display:flex; flex-direction:column; gap:4px; }
+  .detail-points li {
+    font-size:calc(10.5px * var(--fs)); color:var(--text-secondary);
+    line-height:1.45; padding-left:12px; position:relative;
+  }
+  .detail-points li::before { content:'·'; position:absolute; left:3px; color:var(--stop-color); opacity:.55; }
+  .detail-points li strong { color:var(--text-primary); font-weight:500; }
+
+  /* ── TOKEN BOX ── */
+  .token-box {
+    background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07);
+    border-left:2px solid var(--stop-color); border-radius:5px;
+    padding:6px 10px; margin-top:auto;
+  }
+  .token-label {
+    font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs));
+    letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-bottom:3px;
+  }
+  .token-value {
+    font-family:'JetBrains Mono',monospace; font-size:calc(9.5px * var(--fs));
+    color:var(--stop-color); opacity:.85; line-height:1.5;
+  }
+
+  /* ── DIVIDER ── */
+  .flow-divider { width:100%; margin:40px 0; display:flex; align-items:center; gap:20px; }
+  .divider-line { flex:1; height:1px; background:var(--border); }
+  .divider-content {
+    background:var(--surface); border:1px solid rgba(96,165,250,.2);
+    border-radius:10px; padding:14px 24px; text-align:center; flex-shrink:0; max-width:780px;
+  }
+  .divider-heading {
+    font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs));
+    letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); margin-bottom:5px;
+  }
+  .divider-text { font-size:calc(12px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+  .divider-text em { font-style:normal; color:var(--text-primary); }
+
+  /* ── FOOTER ── */
+  .footer-note {
+    margin-top:48px; border-top:1px solid var(--border); padding-top:14px;
+    width:100%; display:flex; justify-content:space-between; align-items:center;
+    font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim);
+  }
+  .footer-tags { display:flex; gap:6px; flex-wrap:wrap; }
+  .footer-tag { font-size:calc(9.5px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 9px; border-radius:20px; background:var(--surface); }
+
+  /* ── LEGEND STRIP ── */
+  .legend-strip {
+    position:fixed; bottom:0; left:0; right:0; z-index:900;
+    background:rgba(15,17,23,0.97);
+    border-top:1px solid rgba(255,255,255,0.09);
+    backdrop-filter:blur(12px);
+    transition:transform .25s ease;
+    box-shadow: 0 -4px 24px rgba(0,0,0,.4);
+  }
+  .legend-strip.legend-collapsed { transform:translateY(calc(100% - 28px)); }
+  .legend-inner {
+    display:grid;
+    grid-template-columns: max-content 1fr;
+    row-gap:4px;
+    padding:7px 52px 7px 20px; max-width:1400px; margin:0 auto;
+  }
+  .legend-row { display:contents; }
+  .legend-group-label {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:2px;
+    text-transform:uppercase; color:var(--text-dim); white-space:nowrap;
+    padding-right:16px; align-self:center;
+  }
+  .legend-items {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .legend-item {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; color:var(--text-secondary); white-space:nowrap;
+    cursor:default;
+  }
+  .legend-item-label { font-size:11px; color:var(--text-secondary); }
+  .legend-pill {
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700;
+    padding:2px 7px; border-radius:3px; flex-shrink:0;
+    position:relative; cursor:default;
+  }
+  .legend-pill[data-tip]::after {
+    content: attr(data-tip);
+    position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%);
+    background:#1E2333; border:1px solid rgba(255,255,255,.12);
+    color:var(--text-secondary); font-size:10px; font-weight:400;
+    font-family:'Inter',sans-serif; letter-spacing:0;
+    white-space:nowrap; padding:5px 10px; border-radius:6px;
+    pointer-events:none; opacity:0; transition:opacity .15s;
+    box-shadow:0 4px 16px rgba(0,0,0,.5);
+  }
+  .legend-pill[data-tip]:hover::after { opacity:1; }
+  .legend-pill.inv { background:rgba(103,232,249,.08); color:#67E8F9; border:1px solid rgba(103,232,249,.2); }
+  .legend-close {
+    position:absolute; top:0; right:16px;
+    background:none; border:none; cursor:pointer;
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
+    padding:6px 8px; line-height:1;
+    display:flex; align-items:center; gap:4px;
+    transition:color .15s;
+  }
+  .legend-close:hover { color:var(--text-secondary); }
+  .legend-close-icon { display:inline-block; transition:transform .25s ease; font-size:13px; }
+  .legend-strip.legend-collapsed .legend-close-icon { transform:rotate(180deg); }
+  .legend-strip.legend-collapsed .legend-close::before {
+    content:'Reference'; font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+  }
+
+  @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s" onclick="setSize(0.85)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.15)">M</button>
+  <button class="sz-btn" id="sz-l" onclick="setSize(1.3)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.5)">XL</button>
+</div>
+<script>
+var sizes={0.85:'sz-s',1.15:'sz-m',1.3:'sz-l',1.5:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.15);
+</script>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="eyebrow">UKI Enterprise AI Platform · Security Architecture</div>
+  <div class="page-title">Security &amp; <span class="page-title-accent">Identity Propagation</span></div>
+  <div class="page-subtitle">Two distinct flows establishing and propagating the Identity Context (I3) — authentication once at session start, tool authorisation per tool call inside the Agent Runtime</div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- FLOW 1: OIDC AUTHENTICATION                        -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="flow">
+  <div class="flow-header">
+    <span class="flow-badge" style="color:#A78BFA;border-color:rgba(167,139,250,.3);background:rgba(167,139,250,.06)">Flow 1</span>
+    <div class="flow-title">OIDC Authentication — <span style="color:#A78BFA">Who are you?</span></div>
+    <div class="flow-timing">Once · at session establishment</div>
+  </div>
+
+  <!-- NODE ROW -->
+  <div class="node-row">
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#A78BFA;--stop-bg:rgba(167,139,250,.1);--stop-glow:rgba(167,139,250,.15)">👤<span class="stop-number">1</span></div>
+      <div class="stop-label" style="color:#A78BFA">User</div>
+      <div class="stop-sublabel">Browser / client</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#A78BFA;--to-color:#C084FC"></div>
+      <div class="arrow-token">SAML login<br>request</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#C084FC;--stop-bg:rgba(192,132,252,.1);--stop-glow:rgba(192,132,252,.15)">🏢<span class="stop-number">2</span></div>
+      <div class="stop-label" style="color:#C084FC">Okta IdP</div>
+      <div class="stop-sublabel">SAML 2.0 provider</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#C084FC;--to-color:#34D399"></div>
+      <div class="arrow-token">SAML<br>assertion</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#34D399;--stop-bg:rgba(52,211,153,.1);--stop-glow:rgba(52,211,153,.15)">🏛️<span class="stop-number">3</span></div>
+      <div class="stop-label" style="color:#34D399">IAM Identity Center</div>
+      <div class="stop-sublabel">SSO · STS session issuance</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#34D399;--to-color:#60A5FA"></div>
+      <div class="arrow-token">IAM session<br>+ tags</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#60A5FA;--stop-bg:rgba(96,165,250,.1);--stop-glow:rgba(96,165,250,.2)">🔐<span class="stop-number">4</span></div>
+      <div class="stop-label" style="color:#60A5FA">Lambda Authorizer</div>
+      <div class="stop-sublabel">API Gateway · trust boundary</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#60A5FA;--to-color:#FACC15"></div>
+      <div class="arrow-token">Identity<br>Context</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#FACC15;--stop-bg:rgba(250,204,21,.1);--stop-glow:rgba(250,204,21,.15)">🏷️<span class="stop-number">5</span></div>
+      <div class="stop-label" style="color:#FACC15">IAM Session Tags</div>
+      <div class="stop-sublabel">brand · tenant · role</div>
+    </div>
+  </div>
+
+  <!-- DETAIL ROW -->
+  <div class="detail-row">
+    <div class="detail-card" style="--stop-color:#A78BFA">
+      <div class="detail-title">User</div>
+      <ul class="detail-points">
+        <li>Opens any L5 surface — Chat UI, IDE plugin, Slack bot, API client</li>
+        <li>Initiates <strong>SAML-based SSO login</strong> — redirected to Okta via IAM Identity Center</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Credential at this point</div>
+        <div class="token-value">None yet — unauthenticated</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#C084FC">
+      <div class="detail-title">Okta IdP</div>
+      <ul class="detail-points">
+        <li>Authenticates user via <strong>SSO / MFA</strong> — corporate identity enforced</li>
+        <li>Issues <strong>SAML 2.0 assertion</strong> containing: sub (user), brand membership, role assignments</li>
+        <li>Assertion posted back to <strong>IAM Identity Center ACS endpoint</strong> — Okta does not issue tokens consumed by the platform directly</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Credential at this point</div>
+        <div class="token-value">SAML assertion · sub: g.norton@flutter.com<br>brand: paddy-power · role: agent-user<br>Posted to IAM Identity Center ACS</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#34D399">
+      <div class="detail-title">IAM Identity Center</div>
+      <ul class="detail-points">
+        <li>Receives SAML assertion from Okta, maps attributes to <strong>permission set</strong></li>
+        <li>Calls <strong>STS AssumeRoleWithSAML</strong> — creates short-lived IAM session with <strong>session tags</strong>: tenant_id, brand, role, use-case</li>
+        <li>Session credentials returned to the client — <strong>no JWT issued, no second identity plane</strong></li>
+        <li>Tags are <strong>attached to the STS session itself</strong> — they ride on every AWS API call natively</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Session issued</div>
+        <div class="token-value">STS session · AssumeRoleWithSAML<br>Session tags: brand:paddy-power · tenant:pp-001<br>role:agent-user · use-case:cs-agent<br>TTL: 1hr · refreshable</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#60A5FA">
+      <div class="detail-title">Lambda Authorizer</div>
+      <ul class="detail-points">
+        <li><strong>Trust boundary</strong> — every API Gateway request verified before any platform service is reached</li>
+        <li>Calls <strong>STS GetCallerIdentity</strong> to validate the IAM session and extract session tags</li>
+        <li>Invalid or expired sessions <strong>rejected 403</strong>, event logged to CloudTrail immediately</li>
+        <li><strong>No JWT validation, no JWKS fetch</strong> — identity is the IAM session, not a token</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Identity at this point</div>
+        <div class="token-value">IAM session validated ✓<br>Session tags extracted into Identity Context<br>Raw credentials stop here</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#FACC15">
+      <div class="detail-title">Identity Context — IAM Session Tags (I3)</div>
+      <ul class="detail-points">
+        <li>This is the platform <strong>Identity Context</strong> — established once at session start, immutable for the full duration of the Execution (I3)</li>
+        <li><strong>tenant_id, brand, role, use-case</strong> — these four tags drive all ABAC decisions downstream</li>
+        <li>Attached to every AWS API call made within this session — <strong>cannot be stripped or spoofed</strong></li>
+        <li>ABAC policies at Capability Registry, RAG, and tool bindings all evaluate against these tags</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Session context established</div>
+        <div class="token-value">brand:paddy-power · tenant:pp-001<br>role:agent-user · use-case:cs-agent<br>All downstream ABAC uses these</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DIVIDER -->
+<div class="flow-divider">
+  <div class="divider-line"></div>
+  <div class="divider-content">
+    <div class="divider-heading">Timing relationship</div>
+    <div class="divider-text">Flow 1 completes once at session start and establishes the <em>Identity Context</em> — immutable for the Execution duration (I3). <em>Flow 2 fires inside the Agent Runtime each time the ReAct loop decides to call a tool</em> — potentially multiple times per request, each producing a fresh scoped token.</div>
+  </div>
+  <div class="divider-line"></div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- FLOW 2: OAUTH TOOL AUTHORISATION                   -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="flow">
+  <div class="flow-header">
+    <span class="flow-badge" style="color:#FB923C;border-color:rgba(251,146,60,.3);background:rgba(251,146,60,.06)">Flow 2</span>
+    <div class="flow-title">OAuth Tool Authorisation — <span style="color:#FB923C">What are you allowed to do?</span></div>
+    <div class="flow-timing">Per tool call · inside Agent Runtime · may loop</div>
+  </div>
+
+  <div class="loop-note">
+    <span class="loop-icon">🔁</span>
+    <span class="loop-text">This flow repeats for every tool call within a single request. Each tool call gets its own distinct scoped token — no token reuse across tools or calls.</span>
+  </div>
+
+  <!-- NODE ROW -->
+  <div class="node-row">
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#34D399;--stop-bg:rgba(52,211,153,.1);--stop-glow:rgba(52,211,153,.15)">⚙️<span class="stop-number">1</span></div>
+      <div class="stop-label" style="color:#34D399">Agent Runtime</div>
+      <div class="stop-sublabel">ReAct loop · tool decision</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#34D399;--to-color:#60A5FA"></div>
+      <div class="arrow-token">Tool call<br>intent</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#60A5FA;--stop-bg:rgba(96,165,250,.1);--stop-glow:rgba(96,165,250,.2)">📋<span class="stop-number">2</span></div>
+      <div class="stop-label" style="color:#60A5FA">Capability Registry</div>
+      <div class="stop-sublabel">ABAC · tool permitted?</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#60A5FA;--to-color:#F87171"></div>
+      <div class="arrow-token">Permitted<br>tool schema</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#F87171;--stop-bg:rgba(248,113,113,.1);--stop-glow:rgba(248,113,113,.15)">🔑<span class="stop-number">3</span></div>
+      <div class="stop-label" style="color:#F87171">MCP Gateway</div>
+      <div class="stop-sublabel">RFC 8693 exchange</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#F87171;--to-color:#FB923C"></div>
+      <div class="arrow-token">Scoped OAuth<br>token</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#FB923C;--stop-bg:rgba(251,146,60,.1);--stop-glow:rgba(251,146,60,.15)">🔧<span class="stop-number">4</span></div>
+      <div class="stop-label" style="color:#FB923C">MCP Tool</div>
+      <div class="stop-sublabel">Scoped · min privilege</div>
+    </div>
+    <div class="arrow-col">
+      <div class="arrow-line" style="--from-color:#FB923C;--to-color:#A78BFA"></div>
+      <div class="arrow-token">Authorised<br>request</div>
+    </div>
+    <div class="node-col">
+      <div class="stop-node" style="--stop-color:#A78BFA;--stop-bg:rgba(167,139,250,.1);--stop-glow:rgba(167,139,250,.15)">🗄️<span class="stop-number">5</span></div>
+      <div class="stop-label" style="color:#A78BFA">External System</div>
+      <div class="stop-sublabel">No user identity visible</div>
+    </div>
+  </div>
+
+  <!-- DETAIL ROW -->
+  <div class="detail-row">
+    <div class="detail-card" style="--stop-color:#34D399">
+      <div class="detail-title">Agent Runtime — tool decision</div>
+      <ul class="detail-points">
+        <li>LLM <strong>ReAct loop</strong> decides a tool call is needed to satisfy the request</li>
+        <li>Identifies tool by name from the agent's <strong>Tool Bindings</strong> in its definition</li>
+        <li>Passes tool name + parameters to MCP Gateway — <strong>does not hold credentials itself</strong></li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Context available</div>
+        <div class="token-value">Identity Context (tags) from Flow 1<br>Tool name + call parameters<br>No tool credentials at this stage</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#60A5FA">
+      <div class="detail-title">Capability Registry — ABAC check</div>
+      <ul class="detail-points">
+        <li>Registry evaluates whether the session's <strong>Identity Context tags</strong> match the tool's resource policy — cross-references the active <strong>Capability Definition</strong> Tool Bindings for this Execution</li>
+        <li>If brand, role, or tenant doesn't match — <strong>binding refused</strong>, call never reaches MCP Gateway (I3)</li>
+        <li>Returns the <strong>tool schema</strong> (allowed operations, parameter constraints) on success</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Decision</div>
+        <div class="token-value">ABAC: brand:paddy-power ✓<br>role:agent-user ✓ → tool permitted<br>Schema returned for validation</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#F87171">
+      <div class="detail-title">MCP Gateway — RFC 8693 exchange</div>
+      <ul class="detail-points">
+        <li>Performs <strong>RFC 8693 OAuth token exchange</strong> — IAM session traded for a short-lived tool-scoped OAuth token</li>
+        <li>Token is scoped to <strong>this specific tool and operation only</strong> — nothing broader</li>
+        <li><strong>15 minute TTL maximum</strong> — never reused across tool calls or sessions</li>
+        <li>This is where the <strong>user identity boundary ends</strong> — external systems see only the scoped token</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Token issued</div>
+        <div class="token-value">OAuth2 · grant_type: token-exchange<br>scope: confluence.read · TTL: 15min<br>audience: mcp-tool:confluence</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#FB923C">
+      <div class="detail-title">MCP Tool — scoped execution</div>
+      <ul class="detail-points">
+        <li>Receives scoped OAuth token and <strong>validated parameters</strong> from schema</li>
+        <li>Calls the external system on behalf of the agent — <strong>minimum privilege only</strong></li>
+        <li>Audit event written: tool name, scoped token ID, parameters, response status</li>
+        <li>Result returned to Agent Runtime — <strong>loop may continue</strong> with another tool call</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">Tool executes with</div>
+        <div class="token-value">Scoped token · permitted operation<br>Validated params · audit written<br>→ result back to ReAct loop</div>
+      </div>
+    </div>
+    <div class="detail-spacer"></div>
+    <div class="detail-card" style="--stop-color:#A78BFA">
+      <div class="detail-title">External system — no user context</div>
+      <ul class="detail-points">
+        <li>Sees <strong>only the scoped OAuth token</strong> — no user identity, no IAM session, no brand context</li>
+        <li>Cannot infer who the end user is — <strong>identity is not forwarded beyond the MCP boundary</strong></li>
+        <li>No persistent session — every tool call within a request gets a fresh token</li>
+      </ul>
+      <div class="token-box">
+        <div class="token-label">What the system sees</div>
+        <div class="token-value">Scoped OAuth · one operation only<br>No user identity visible<br>No session · no reuse</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LEGEND STRIP -->
+<div class="legend-strip" id="legend-strip">
+  <div class="legend-inner">
+    <div class="legend-row">
+      <span class="legend-group-label">Invariants cited</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Identity Context propagates to every downstream call — cannot be stripped or spoofed">I3</span><span class="legend-item-label">Identity Context propagation</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Audit Record written synchronously on every Execution — fail-open R0/R1, fail-closed R2/R3, write-ahead R3">I5</span><span class="legend-item-label">Audit Record — every Execution</span></span>
+      </div>
+    </div>
+  </div>
+  <button class="legend-close" onclick="document.getElementById('legend-strip').classList.toggle('legend-collapsed')" title="Toggle legend">
+    <span class="legend-close-icon">⌃</span>
+  </button>
+</div>
+
+<!-- FOOTER -->
+<div class="footer-note">
+  <span>UKI Enterprise AI Platform · Security &amp; Identity Propagation · v7 · INTERNAL</span>
+  <div class="footer-tags">
+    <span class="footer-tag">SAML 2.0 / Okta</span>
+    <span class="footer-tag">IAM Identity Center</span>
+    <span class="footer-tag">RFC 8693</span>
+    <span class="footer-tag">Identity Context</span>
+    <span class="footer-tag">ABAC · I3</span>
+    <span class="footer-tag">AgentCore</span>
+    <span class="footer-tag">MCP Gateway</span>
+  </div>
+</div>
+
+</body>
+</html>

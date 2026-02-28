@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Lifecycle · UKI Enterprise AI Platform · v8</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  :root {
+    --bg:#0F1117; --surface:#181C27; --surface2:#1E2333;
+    --text-primary:#F0F4FF; --text-secondary:#9BA5BE; --text-dim:#4A5270;
+    --border:rgba(255,255,255,0.07); --border-faint:rgba(255,255,255,0.04);
+
+    --col-build:    #34D399;
+    --col-test:     #FACC15;
+    --col-publish:  #F87171;
+    --col-release:  #60A5FA;
+    --col-prod:     #A78BFA;
+    --col-market:   #FB923C;
+
+    --r0: #34D399; --r1: #FACC15; --r2: #FB923C; --r3: #F87171;
+
+    --fs: 1.15;
+  }
+  body {
+    font-family:'Inter',sans-serif; background:var(--bg); color:var(--text-primary);
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    padding:32px 32px 64px;
+  }
+
+  /* ── TOOLBAR ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.3); white-space:nowrap; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; box-shadow:0 2px 12px rgba(0,0,0,.3); }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── PAGE HEADER ── */
+  .page-header { text-align:center; margin-bottom:44px; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); letter-spacing:3px; text-transform:uppercase; color:var(--text-dim); margin-bottom:10px; }
+  .page-title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; letter-spacing:-.5px; }
+  .page-title-accent { background:linear-gradient(90deg,#34D399,#60A5FA); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .page-subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; line-height:1.55; max-width:740px; margin-left:auto; margin-right:auto; }
+  .badge { display:inline-block; font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 10px; border-radius:20px; background:var(--surface); margin-top:14px; }
+
+  /* ── CANVAS ── */
+  .canvas { width:100%; }
+
+  /* ── STAGE ROW — 4-stage: 7-col grid ── */
+  .stage-row {
+    display:grid;
+    grid-template-columns: 1fr 48px 1fr 48px 1fr 48px 1fr;
+    align-items:center;
+    margin-bottom:12px;
+  }
+  .stage-node { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .stage-circle {
+    width:64px; height:64px; border-radius:50%;
+    border:2px solid var(--stage-color); background:var(--stage-bg);
+    display:flex; align-items:center; justify-content:center;
+    font-size:calc(24px * var(--fs));
+    box-shadow:0 0 24px var(--stage-glow); position:relative;
+  }
+  .stage-num {
+    position:absolute; top:-8px; right:-8px;
+    width:22px; height:22px; border-radius:50%;
+    background:var(--stage-color); color:#0F1117;
+    font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .stage-name { font-family:'Syne',sans-serif; font-size:calc(14px * var(--fs)); font-weight:700; color:var(--stage-color); text-align:center; }
+  .stage-sub  { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-secondary); text-align:center; letter-spacing:.3px; }
+
+  /* Publish gate — special styling */
+  .stage-node.gate-node .stage-circle { border-style:dashed; }
+  .stage-node.gate-node .stage-name { opacity:.9; }
+  .inv-badge {
+    font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs));
+    font-weight:700; padding:2px 7px; border-radius:3px;
+    background:rgba(248,113,113,.1); border:1px solid rgba(248,113,113,.2); color:#F87171;
+    white-space:nowrap;
+  }
+
+  /* ── ARROW CONNECTOR ── */
+  .stage-arrow { display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .arrow-line { width:100%; height:2px; background:linear-gradient(90deg,var(--from-col),var(--to-col)); opacity:.35; position:relative; }
+  .arrow-line::after { content:''; position:absolute; right:-1px; top:50%; transform:translateY(-50%); border-left:8px solid var(--to-col); border-top:5px solid transparent; border-bottom:5px solid transparent; opacity:.6; }
+  .arrow-label { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-dim); text-align:center; letter-spacing:.3px; }
+
+  /* ── DETAIL CARD ROW ── */
+  .detail-row {
+    display:grid;
+    grid-template-columns: 1fr 48px 1fr 48px 1fr 48px 1fr;
+    align-items:stretch;
+  }
+  .detail-spacer {}
+  .detail-card {
+    background:var(--surface); border:1px solid var(--border);
+    border-top:3px solid var(--stage-color); border-radius:12px;
+    padding:16px 16px 14px; display:flex; flex-direction:column; gap:10px;
+    animation:fadeUp .35s ease both;
+  }
+  .detail-card:nth-child(1){ animation-delay:.05s; }
+  .detail-card:nth-child(3){ animation-delay:.10s; }
+  .detail-card:nth-child(5){ animation-delay:.15s; }
+  .detail-card:nth-child(7){ animation-delay:.20s; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+  .dc-title { font-family:'Syne',sans-serif; font-size:calc(11.5px * var(--fs)); font-weight:700; color:var(--stage-color); }
+
+  .dc-points { list-style:none; display:flex; flex-direction:column; gap:5px; }
+  .dc-points li { font-size:calc(10.5px * var(--fs)); color:var(--text-secondary); line-height:1.5; padding-left:13px; position:relative; }
+  .dc-points li::before { content:'·'; position:absolute; left:3px; color:var(--stage-color); opacity:.55; }
+  .dc-points li strong { color:var(--text-primary); font-weight:500; }
+
+  /* ── GATE BOX ── */
+  .gate-box {
+    background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07);
+    border-left:2px solid var(--stage-color); border-radius:6px;
+    padding:8px 11px; margin-top:auto;
+  }
+  .gate-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); margin-bottom:4px; }
+  .gate-value { font-family:'JetBrains Mono',monospace; font-size:calc(9.5px * var(--fs)); color:var(--stage-color); opacity:.85; line-height:1.55; }
+
+  /* ── FOUR AUTHORING PATHS (Build card) ── */
+  .path-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .path-box { background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.06); border-radius:8px; padding:9px 11px; }
+  .path-label { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:var(--col-build); opacity:.7; margin-bottom:5px; }
+  .path-persona { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:var(--text-dim); margin-bottom:4px; }
+  .path-points { list-style:none; display:flex; flex-direction:column; gap:3px; }
+  .path-points li { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.4; padding-left:11px; position:relative; }
+  .path-points li::before { content:'›'; position:absolute; left:2px; color:var(--col-build); opacity:.5; }
+  .path-points li strong { color:var(--text-primary); font-weight:500; }
+
+  /* ── RISK TIER PROPORTIONALITY (Test card) ── */
+  .risk-tier-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+  .rt-chip { border-radius:6px; padding:7px 10px; border:1px solid; flex:1; min-width:90px; }
+  .rt-r0 { background:rgba(52,211,153,.04);  border-color:rgba(52,211,153,.2); }
+  .rt-r1 { background:rgba(250,204,21,.04);  border-color:rgba(250,204,21,.2); }
+  .rt-r2 { background:rgba(251,146,60,.04);  border-color:rgba(251,146,60,.2); }
+  .rt-r3 { background:rgba(248,113,113,.05); border-color:rgba(248,113,113,.22); }
+  .rt-badge { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); font-weight:700; margin-bottom:3px; }
+  .rt-r0 .rt-badge { color:var(--r0); }
+  .rt-r1 .rt-badge { color:var(--r1); }
+  .rt-r2 .rt-badge { color:var(--r2); }
+  .rt-r3 .rt-badge { color:var(--r3); }
+  .rt-text { font-size:calc(9px * var(--fs)); color:var(--text-secondary); line-height:1.45; }
+
+  /* ── PUBLISH GATE CARD ── */
+  .inv-row { display:flex; flex-direction:column; gap:5px; }
+  .inv-item { display:flex; align-items:flex-start; gap:8px; padding:6px 10px; border-radius:6px; background:rgba(248,113,113,.04); border:1px solid rgba(248,113,113,.12); }
+  .inv-num-sm { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); font-weight:700; color:#F87171; opacity:.8; flex-shrink:0; padding-top:1px; width:18px; }
+  .inv-text-sm { font-size:calc(9.5px * var(--fs)); color:var(--text-secondary); line-height:1.45; }
+  .inv-text-sm strong { color:#FCA5A5; font-weight:500; }
+  .reject-box { background:rgba(248,113,113,.06); border:1px solid rgba(248,113,113,.18); border-radius:6px; padding:7px 11px; margin-top:auto; }
+  .reject-label { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.5px; text-transform:uppercase; color:#F87171; opacity:.6; margin-bottom:3px; }
+  .reject-value { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-secondary); line-height:1.55; }
+
+  /* ── RELEASE — TWO TRACKS ── */
+  .track-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; }
+  .track-box { border-radius:9px; padding:12px 14px; display:flex; flex-direction:column; gap:7px; }
+  .track-box.prod   { background:rgba(167,139,250,.06); border:1px solid rgba(167,139,250,.2); }
+  .track-box.market { background:rgba(251,146,60,.06);  border:1px solid rgba(251,146,60,.2);  }
+  .track-eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); letter-spacing:1.8px; text-transform:uppercase; opacity:.7; }
+  .track-box.prod   .track-eyebrow { color:var(--col-prod); }
+  .track-box.market .track-eyebrow { color:var(--col-market); }
+  .track-title { font-family:'Syne',sans-serif; font-size:calc(13px * var(--fs)); font-weight:800; line-height:1.1; }
+  .track-box.prod   .track-title { color:var(--col-prod); }
+  .track-box.market .track-title { color:var(--col-market); }
+  .track-points { list-style:none; display:flex; flex-direction:column; gap:4px; }
+  .track-points li { font-size:calc(10px * var(--fs)); color:var(--text-secondary); line-height:1.45; padding-left:12px; position:relative; }
+  .track-box.prod   .track-points li::before { content:'·'; position:absolute; left:3px; color:var(--col-prod);    opacity:.55; }
+  .track-box.market .track-points li::before { content:'·'; position:absolute; left:3px; color:var(--col-market); opacity:.55; }
+  .track-points li strong { color:var(--text-primary); font-weight:500; }
+  .track-approval { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); padding:5px 9px; border-radius:5px; line-height:1.5; margin-top:auto; }
+  .track-box.prod   .track-approval { background:rgba(167,139,250,.1); color:var(--col-prod);    border:1px solid rgba(167,139,250,.25); }
+  .track-box.market .track-approval { background:rgba(251,146,60,.1);  color:var(--col-market); border:1px solid rgba(251,146,60,.25);  }
+
+  /* ── COMPLIANCE BAR ── */
+  .compliance-bar {
+    display:flex; align-items:flex-start; gap:14px;
+    background:rgba(96,165,250,.05); border:1px solid rgba(96,165,250,.2);
+    border-radius:10px; padding:14px 18px; margin-top:24px;
+  }
+  .compliance-icon { font-size:calc(18px * var(--fs)); flex-shrink:0; padding-top:1px; }
+  .compliance-body { flex:1; }
+  .compliance-title { font-family:'Syne',sans-serif; font-size:calc(12px * var(--fs)); font-weight:700; color:var(--col-release); margin-bottom:5px; }
+  .compliance-text  { font-size:calc(11px * var(--fs)); color:var(--text-secondary); line-height:1.55; }
+  .compliance-tags  { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .compliance-tag   { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); padding:2px 9px; border-radius:20px; background:rgba(96,165,250,.1); color:var(--col-release); border:1px solid rgba(96,165,250,.2); }
+
+  /* ── FOOTER ── */
+  .footer-note {
+    margin-top:48px; border-top:1px solid var(--border); padding-top:14px;
+    width:100%;
+    display:flex; justify-content:space-between; align-items:center;
+    font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim);
+  }
+  .footer-tags { display:flex; gap:6px; flex-wrap:wrap; }
+  .footer-tag { font-size:calc(9.5px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 9px; border-radius:20px; background:var(--surface); }
+
+  /* ── LEGEND STRIP ── */
+  .legend-strip {
+    position:fixed; bottom:0; left:0; right:0; z-index:900;
+    background:rgba(15,17,23,0.97);
+    border-top:1px solid rgba(255,255,255,0.09);
+    backdrop-filter:blur(12px);
+    transition:transform .25s ease;
+    box-shadow: 0 -4px 24px rgba(0,0,0,.4);
+  }
+  .legend-strip.legend-collapsed { transform:translateY(calc(100% - 28px)); }
+  .legend-inner {
+    display:grid;
+    grid-template-columns: max-content 1fr;
+    row-gap:4px;
+    padding:7px 52px 7px 20px; max-width:1400px; margin:0 auto;
+  }
+  .legend-row { display:contents; }
+  .legend-group-label {
+    font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:2px;
+    text-transform:uppercase; color:var(--text-dim); white-space:nowrap;
+    padding-right:16px; align-self:center;
+  }
+  .legend-items {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .legend-item {
+    display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; color:var(--text-secondary); white-space:nowrap;
+    cursor:default;
+  }
+  .legend-item-label { font-size:11px; color:var(--text-secondary); }
+  .legend-pill {
+    font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700;
+    padding:2px 7px; border-radius:3px; flex-shrink:0;
+    position:relative; cursor:default;
+  }
+  .legend-pill[data-tip]::after {
+    content: attr(data-tip);
+    position:absolute; bottom:calc(100% + 7px); left:50%; transform:translateX(-50%);
+    background:#1E2333; border:1px solid rgba(255,255,255,.12);
+    color:var(--text-secondary); font-size:10px; font-weight:400;
+    font-family:'Inter',sans-serif; letter-spacing:0;
+    white-space:nowrap; padding:5px 10px; border-radius:6px;
+    pointer-events:none; opacity:0; transition:opacity .15s;
+    box-shadow:0 4px 16px rgba(0,0,0,.5);
+  }
+  .legend-pill[data-tip]:hover::after { opacity:1; }
+  .legend-pill.r0 { background:rgba(52,211,153,.12);  color:var(--r0); border:1px solid rgba(52,211,153,.25); }
+  .legend-pill.r1 { background:rgba(250,204,21,.10);  color:var(--r1); border:1px solid rgba(250,204,21,.22); }
+  .legend-pill.r2 { background:rgba(251,146,60,.10);  color:var(--r2); border:1px solid rgba(251,146,60,.22); }
+  .legend-pill.r3 { background:rgba(248,113,113,.10); color:var(--r3); border:1px solid rgba(248,113,113,.22); }
+  .legend-pill.inv { background:rgba(103,232,249,.08); color:#67E8F9; border:1px solid rgba(103,232,249,.2); }
+  .legend-close {
+    position:absolute; top:0; right:16px;
+    background:none; border:none; cursor:pointer;
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
+    padding:6px 8px; line-height:1;
+    display:flex; align-items:center; gap:4px;
+    transition:color .15s;
+  }
+  .legend-close:hover { color:var(--text-secondary); }
+  .legend-close-icon { display:inline-block; transition:transform .25s ease; font-size:13px; }
+  .legend-strip.legend-collapsed .legend-close-icon { transform:rotate(180deg); }
+  .legend-strip.legend-collapsed .legend-close::before {
+    content:'Reference'; font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s" onclick="setSize(0.85)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.15)">M</button>
+  <button class="sz-btn" id="sz-l" onclick="setSize(1.3)">L</button>
+  <button class="sz-btn" id="sz-xl" onclick="setSize(1.5)">XL</button>
+</div>
+<script>
+var sizes={0.85:'sz-s',1.15:'sz-m',1.3:'sz-l',1.5:'sz-xl'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.15);
+</script>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="eyebrow">UKI Enterprise AI Platform · Capability Operations</div>
+  <div class="page-title">Capability Definition <span class="page-title-accent">Lifecycle</span></div>
+  <div class="page-subtitle">How a Capability Definition moves from authoring to production or marketplace. Four authoring paths — same governed artefact. Registry publish gate enforces I2 and I4 before any invocation is possible.</div>
+</div>
+
+<div class="canvas">
+
+  <!-- ── STAGE NODES — 4 stages ── -->
+  <div class="stage-row">
+
+    <div class="stage-node" style="--stage-color:var(--col-build);--stage-bg:rgba(52,211,153,.1);--stage-glow:rgba(52,211,153,.18)">
+      <div class="stage-circle">🛠️<span class="stage-num">1</span></div>
+      <div class="stage-name">Author</div>
+      <div class="stage-sub">team-owned · four paths</div>
+    </div>
+
+    <div class="stage-arrow" style="--from-col:var(--col-build);--to-col:var(--col-test)">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">submit</div>
+    </div>
+
+    <div class="stage-node" style="--stage-color:var(--col-test);--stage-bg:rgba(250,204,21,.08);--stage-glow:rgba(250,204,21,.15)">
+      <div class="stage-circle">⚗️<span class="stage-num">2</span></div>
+      <div class="stage-name">Evaluate</div>
+      <div class="stage-sub">pipeline gate · Risk Tier-proportionate</div>
+    </div>
+
+    <div class="stage-arrow" style="--from-col:var(--col-test);--to-col:var(--col-publish)">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">pass</div>
+    </div>
+
+    <div class="stage-node gate-node" style="--stage-color:var(--col-publish);--stage-bg:rgba(248,113,113,.06);--stage-glow:rgba(248,113,113,.14)">
+      <div class="stage-circle">🔒<span class="stage-num">3</span></div>
+      <div class="stage-name">Registry Gate</div>
+      <div class="stage-sub">I2 · I4 · Draft → Published</div>
+      <span class="inv-badge">enforces I2 · I4</span>
+    </div>
+
+    <div class="stage-arrow" style="--from-col:var(--col-publish);--to-col:var(--col-release)">
+      <div class="arrow-line"></div>
+      <div class="arrow-label">published</div>
+    </div>
+
+    <div class="stage-node" style="--stage-color:var(--col-release);--stage-bg:rgba(96,165,250,.1);--stage-glow:rgba(96,165,250,.18)">
+      <div class="stage-circle">🚀<span class="stage-num">4</span></div>
+      <div class="stage-name">Release</div>
+      <div class="stage-sub">choose destination · team-owned</div>
+    </div>
+
+  </div>
+
+  <!-- ── DETAIL CARDS ── -->
+  <div class="detail-row">
+
+    <!-- ── 1. AUTHOR ── -->
+    <div class="detail-card" style="--stage-color:var(--col-build)">
+      <div class="dc-title">Four authoring paths — one Capability Definition</div>
+
+      <div class="path-grid">
+        <div class="path-box">
+          <div class="path-label">Guided Assembly</div>
+          <div class="path-persona">Business user · Domain expert</div>
+          <ul class="path-points">
+            <li>Selects from <strong>Registry-approved templates</strong></li>
+            <li>Risk Tier and Safety Envelope <strong>resolved from template</strong> — author makes no governance declarations</li>
+            <li>Reasoning scope only · <strong>Cannot violate invariants</strong></li>
+            <li>UI: Assembly UI (planned)</li>
+          </ul>
+        </div>
+        <div class="path-box">
+          <div class="path-label">Low-code Builder</div>
+          <div class="path-persona">Technical non-engineer</div>
+          <ul class="path-points">
+            <li>Node-graph composition — <strong>tool and RAG source</strong> selection from Registry catalogue</li>
+            <li>Author declares <strong>Safety Envelope and Risk Tier</strong> with design-time validation</li>
+            <li>Reasoning + Coordination scopes available</li>
+            <li>UI: Langflow</li>
+          </ul>
+        </div>
+        <div class="path-box">
+          <div class="path-label">Workflow Studio</div>
+          <div class="path-persona">Process designer · Solutions architect</div>
+          <ul class="path-points">
+            <li>Visual state machine authoring — <strong>Workflow Contract</strong> for R2/R3 Capabilities</li>
+            <li>Produces the Process scope component satisfying <strong>I4</strong></li>
+            <li>Contract versioned independently — may be owned by compliance team</li>
+            <li>UI: Step Functions Workflow Studio</li>
+          </ul>
+        </div>
+        <div class="path-box">
+          <div class="path-label">Pro-code</div>
+          <div class="path-persona">Engineer</div>
+          <ul class="path-points">
+            <li>Full Capability Definition in code — <strong>all three Execution Model scopes</strong> available</li>
+            <li>Submitted via <strong>CI/CD pipeline</strong> or Registry API</li>
+            <li>Maximum expressive power · maximum author responsibility for governance declarations</li>
+            <li>UI: IDE Plugins</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="gate-box">
+        <div class="gate-label">Capability Definition — lifecycle state on save</div>
+        <div class="gate-value">lifecycle: Draft · no invocations possible<br>safety_envelope: declared · risk_tier: declared<br>execution_model: declared · tool_bindings: validated</div>
+      </div>
+    </div>
+
+    <div class="detail-spacer"></div>
+
+    <!-- ── 2. EVALUATE ── -->
+    <div class="detail-card" style="--stage-color:var(--col-test)">
+      <div class="dc-title">Gate rigour proportional to Risk Tier</div>
+
+      <ul class="dc-points">
+        <li>Pipeline requires <strong>evaluation results attached to the version record</strong> before the Registry publish call. Options: Promptfoo, LangSmith, Bedrock Evaluation, pytest against Registry API</li>
+        <li>Test invocations use a <strong>restricted IAM role</strong> — explicit deny on production data store writes. MCP calls hit sandbox endpoints with fixture responses</li>
+        <li>Results <strong>permanently attached to version record</strong> — tamper-evident, cannot be detached</li>
+        <li><strong>Guardrails and ABAC</strong> are platform-enforced at runtime — the evaluation gate covers capability quality, not platform safety</li>
+      </ul>
+
+      <div class="risk-tier-row">
+        <div class="rt-chip rt-r0">
+          <div class="rt-badge">R0</div>
+          <div class="rt-text">Functional quality · RAG retrieval accuracy · edge case coverage</div>
+        </div>
+        <div class="rt-chip rt-r1">
+          <div class="rt-badge">R1</div>
+          <div class="rt-text">Functional + explicit confirmation no customer data in scope</div>
+        </div>
+        <div class="rt-chip rt-r2">
+          <div class="rt-badge">R2</div>
+          <div class="rt-text">Extended suite · InfoSec · Data Compliance review · Workflow Contract validation</div>
+        </div>
+        <div class="rt-chip rt-r3">
+          <div class="rt-badge">R3</div>
+          <div class="rt-text">Maximum rigour · Pen testing · Legal · Compliance sign-off · Write-ahead audit validation</div>
+        </div>
+      </div>
+
+      <div class="gate-box">
+        <div class="gate-label">Lifecycle state after evaluation pass</div>
+        <div class="gate-value">lifecycle: Review<br>evaluation_results: attached · tamper-evident<br>→ ready for Registry publish call</div>
+      </div>
+    </div>
+
+    <div class="detail-spacer"></div>
+
+    <!-- ── 3. REGISTRY GATE ── -->
+    <div class="detail-card" style="--stage-color:var(--col-publish)">
+      <div class="dc-title">Registry enforces invariants — hard block, not warning</div>
+
+      <div class="inv-row">
+        <div class="inv-item">
+          <div class="inv-num-sm">I1</div>
+          <div class="inv-text-sm">Lifecycle must be <strong>Review</strong> state to accept publish call — Draft cannot transition to Published directly</div>
+        </div>
+        <div class="inv-item">
+          <div class="inv-num-sm">I2</div>
+          <div class="inv-text-sm"><strong>Safety Envelope</strong> must be declared and validated. <strong>Risk Tier</strong> must be declared. Registry rejects the publish call without both — no exception path</div>
+        </div>
+        <div class="inv-item">
+          <div class="inv-num-sm">I4</div>
+          <div class="inv-text-sm">R2 or R3 Risk Tier: <strong>Workflow Contract must be declared</strong> referencing a valid Process scope specification. Registry rejects R2/R3 publication without it</div>
+        </div>
+        <div class="inv-item">
+          <div class="inv-num-sm">I6</div>
+          <div class="inv-text-sm"><strong>Safety Envelope becomes immutable</strong> on transition to Published. Changes require a new version — no in-place override path exists</div>
+        </div>
+      </div>
+
+      <div class="reject-box">
+        <div class="reject-label">Registry reject conditions</div>
+        <div class="reject-value">
+          Missing Safety Envelope → 422 reject<br>
+          Missing Risk Tier → 422 reject<br>
+          R2/R3 without Workflow Contract → 422 reject<br>
+          R0 with write tool bindings → 422 reject
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-spacer"></div>
+
+    <!-- ── 4. RELEASE ── -->
+    <div class="detail-card" style="--stage-color:var(--col-release)">
+      <div class="dc-title">Team chooses destination — one or both tracks</div>
+
+      <ul class="dc-points">
+        <li><strong>Capability Definition immutable at Published</strong> — system prompt, Safety Envelope, tool bindings, Risk Tier, Execution Model version-pinned. What was evaluated is what runs (I6)</li>
+        <li>Release is a <strong>Registry API call from the pipeline</strong> — tracks are independent</li>
+        <li>AgentCore resolves the <strong>Published Definition at invocation time</strong> — no runtime override possible (I1)</li>
+      </ul>
+
+      <div class="track-row">
+        <div class="track-box prod">
+          <div class="track-eyebrow">Track A</div>
+          <div class="track-title">Production</div>
+          <ul class="track-points">
+            <li>AgentCore routes to internal surfaces — Chat UI, Slack/Teams, API Clients, IDE Plugins</li>
+            <li>Identity Context established at session start — <strong>ABAC enforced on every tool call</strong> (I3)</li>
+            <li>Every Execution produces an <strong>immutable Audit Record</strong> synchronously (I5)</li>
+            <li>R2/R3: <strong>fail-closed audit semantics</strong> · S3 Object Lock retention</li>
+          </ul>
+          <div class="track-approval">Approval: team lead PR merge<br>No external sign-off required (R0/R1)</div>
+        </div>
+
+        <div class="track-box market">
+          <div class="track-eyebrow">Track B</div>
+          <div class="track-title">Marketplace</div>
+          <ul class="track-points">
+            <li>Published to Registry as a <strong>reusable Capability</strong> — other teams bind as agents-as-tools (Coordination scope)</li>
+            <li>ABAC controls which <strong>tenants can discover and invoke</strong></li>
+            <li><strong>Version pinning</strong> — consuming Capabilities bind to a specific version. Successor required before deprecation</li>
+            <li>Same Audit Record and invariant enforcement as Track A</li>
+          </ul>
+          <div class="track-approval">Approval: one peer reviewer · outside authoring team</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /detail-row -->
+
+  <!-- COMPLIANCE BAR -->
+  <div class="compliance-bar">
+    <div class="compliance-icon">🔒</div>
+    <div class="compliance-body">
+      <div class="compliance-title">Governance is platform-enforced — not process-enforced</div>
+      <div class="compliance-text">Platform invariants I1–I6 hold regardless of which authoring path was used, which release track was chosen, or who approved the release. The Registry gate is a hard block — no governance declaration can be bypassed by a process shortcut. The Safety Envelope is immutable from publish onwards. Every Execution produces a synchronous, immutable Audit Record regardless of Risk Tier — the semantics change at R2/R3 (fail-closed, write-ahead, extended retention), but the record is never optional.</div>
+      <div class="compliance-tags">
+        <span class="compliance-tag">Capability Definition · immutable on publish (I6)</span>
+        <span class="compliance-tag">Registry gate · I2 + I4 hard block</span>
+        <span class="compliance-tag">Audit Record · every Execution · synchronous (I5)</span>
+        <span class="compliance-tag">Identity Context · ABAC · structural (I3)</span>
+        <span class="compliance-tag">R2/R3 · fail-closed · S3 Object Lock</span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /canvas -->
+
+<!-- LEGEND STRIP -->
+<div class="legend-strip" id="legend-strip">
+  <div class="legend-inner">
+    <div class="legend-row">
+      <span class="legend-group-label">Risk Tiers</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill r0" data-tip="Informational — read-only, no customer data">R0</span><span class="legend-item-label">Informational</span></span>
+        <span class="legend-item"><span class="legend-pill r1" data-tip="Operational Write — internal systems, no customer PII">R1</span><span class="legend-item-label">Operational Write</span></span>
+        <span class="legend-item"><span class="legend-pill r2" data-tip="Customer-adjacent — customer data in scope">R2</span><span class="legend-item-label">Customer-adjacent</span></span>
+        <span class="legend-item"><span class="legend-pill r3" data-tip="Regulated / Financial — compliance-grade, write-ahead audit">R3</span><span class="legend-item-label">Regulated / Financial</span></span>
+      </div>
+    </div>
+    <div class="legend-row">
+      <span class="legend-group-label">Invariants cited</span>
+      <div class="legend-items">
+        <span class="legend-item"><span class="legend-pill inv" data-tip="No Execution without a Published Definition — Draft/Review states rejected">I1</span><span class="legend-item-label">Published Definition required</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="No publish without Safety Envelope and Risk Tier — Registry rejects the transition">I2</span><span class="legend-item-label">Safety Envelope + Risk Tier at publish</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Identity Context propagates to every downstream call — cannot be stripped or spoofed">I3</span><span class="legend-item-label">Identity Context propagation</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="R2/R3 Capabilities require a Workflow Contract — Registry rejects without it">I4</span><span class="legend-item-label">Workflow Contract required R2/R3</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Audit Record written synchronously on every Execution — fail-open R0/R1, fail-closed R2/R3, write-ahead R3">I5</span><span class="legend-item-label">Audit Record — every Execution</span></span>
+        <span class="legend-item"><span class="legend-pill inv" data-tip="Safety Envelope immutable on publish — no runtime override possible">I6</span><span class="legend-item-label">Safety Envelope immutable on publish</span></span>
+      </div>
+    </div>
+  </div>
+  <button class="legend-close" onclick="document.getElementById('legend-strip').classList.toggle('legend-collapsed')" title="Toggle legend">
+    <span class="legend-close-icon">⌃</span>
+  </button>
+</div>
+
+<!-- FOOTER -->
+<div class="footer-note">
+  <span>UKI Enterprise AI Platform · Capability Definition Lifecycle · v9 · INTERNAL</span>
+  <div class="footer-tags">
+    <span class="footer-tag">Capability Registry</span>
+    <span class="footer-tag">Risk Tier</span>
+    <span class="footer-tag">Invariants I1–I6</span>
+    <span class="footer-tag">AgentCore</span>
+    <span class="footer-tag">S3 Object Lock</span>
+    <span class="footer-tag">Workflow Contract</span>
+  </div>
+</div>
+
+</body>
+</html>

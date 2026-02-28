@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UKI Enterprise AI Platform · Component Design · v1</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+
+  :root {
+    --bg:#0F1117; --surface:#181C27; --surface2:#1E2333;
+    --text-primary:#F0F4FF; --text-secondary:#9BA5BE; --text-dim:#4A5270;
+    --border:rgba(255,255,255,0.07); --border-faint:rgba(255,255,255,0.04);
+
+    --l5:#A78BFA; --l4:#34D399; --l3:#60A5FA;
+    --l2:#FB923C; --l1:#F472B6;
+    --gov:#67E8F9; --sec:#F87171; --obs:#C084FC;
+
+    /* zone colours */
+    --z-app:   rgba(96,165,250,.07);
+    --z-app-b: rgba(96,165,250,.3);
+    --z-aws:   rgba(255,153,0,.06);
+    --z-aws-b: rgba(255,153,0,.3);
+    --z-ext:   rgba(192,132,252,.06);
+    --z-ext-b: rgba(192,132,252,.25);
+
+    --fs:1.1;
+  }
+
+  body { font-family:'Inter',sans-serif; background:var(--bg); min-height:100vh;
+         display:flex; justify-content:center; padding:32px 32px 100px; }
+  .canvas { width:100%; max-width:1400px; }
+
+  /* ── TOOLBAR ── */
+  .toolbar { position:fixed; top:20px; right:24px; display:flex; align-items:center; gap:8px; z-index:1000; }
+  .tb-label { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); padding:6px 10px; border-radius:8px; }
+  .sz-btn { font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:600; width:34px; height:34px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text-secondary); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; }
+  .sz-btn:hover { color:var(--text-primary); border-color:rgba(255,255,255,.18); }
+  .sz-btn.active { background:var(--surface2); color:var(--text-primary); border-color:rgba(96,165,250,.4); }
+
+  /* ── HEADER ── */
+  .header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:28px; padding-right:180px; }
+  .eyebrow { font-family:'JetBrains Mono',monospace; font-size:calc(11px * var(--fs)); color:var(--text-dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+  .title { font-family:'Syne',sans-serif; font-size:calc(32px * var(--fs)); font-weight:800; color:var(--text-primary); letter-spacing:-.5px; line-height:1; }
+  .title-accent { background:linear-gradient(90deg,#60A5FA,#A78BFA); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  .subtitle { font-size:calc(13px * var(--fs)); color:var(--text-secondary); margin-top:8px; }
+  .badge { font-family:'JetBrains Mono',monospace; font-size:calc(10px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:4px 10px; border-radius:20px; background:var(--surface); white-space:nowrap; }
+
+  /* ── LEGEND ── */
+  .legend-row { display:flex; align-items:center; gap:16px; margin-bottom:22px; padding:9px 16px; background:var(--surface); border:1px solid var(--border); border-radius:8px; flex-wrap:wrap; }
+  .leg { display:flex; align-items:center; gap:7px; font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); color:var(--text-secondary); white-space:nowrap; }
+  .leg-box { width:13px; height:13px; border-radius:3px; border:1.5px dashed; flex-shrink:0; }
+  .leg-svc-app { width:13px; height:13px; border-radius:3px; background:rgba(96,165,250,.15); border:1.5px solid rgba(96,165,250,.5); flex-shrink:0; }
+  .leg-svc-aws { width:13px; height:13px; border-radius:3px; background:rgba(255,153,0,.12); border:1.5px solid rgba(255,153,0,.4); flex-shrink:0; }
+  .leg-svc-ext { width:13px; height:13px; border-radius:3px; background:rgba(192,132,252,.12); border:1.5px solid rgba(192,132,252,.35); flex-shrink:0; }
+  .leg-sep { width:1px; height:16px; background:var(--border); }
+  .leg-call { font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs)); padding:1px 8px; border-radius:3px; border:1px solid; }
+
+  /* ════════════════════════════════════
+     THREE-COLUMN MAIN LAYOUT
+     Col 1: Platform application services  (what we build)
+     Col 2: AWS managed services           (what AWS gives us)
+     Col 3: External / third-party         (Langfuse, Okta, CF)
+  ════════════════════════════════════ */
+  .main-grid {
+    display:grid;
+    grid-template-columns:1fr 1fr 260px;
+    gap:10px;
+    align-items:start;
+  }
+
+  /* ── ZONE WRAPPER ── */
+  .zone {
+    border:1.5px dashed var(--zone-b);
+    background:var(--zone-bg);
+    border-radius:14px;
+    padding:14px;
+    position:relative;
+  }
+  .zone-title {
+    position:absolute; top:-11px; left:14px;
+    font-family:'JetBrains Mono',monospace; font-size:calc(8.5px * var(--fs));
+    font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+    color:var(--zone-c); background:var(--bg); padding:0 8px;
+  }
+  .zone-note {
+    position:absolute; top:-11px; right:14px;
+    font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs));
+    color:var(--text-dim); background:var(--bg); padding:0 8px;
+  }
+
+  /* ── GROUP LABEL (subsection within a zone) ── */
+  .group-lbl {
+    font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs));
+    letter-spacing:2px; text-transform:uppercase; color:var(--text-dim);
+    margin:10px 0 6px; padding-bottom:4px;
+    border-bottom:1px solid var(--border-faint);
+  }
+  .group-lbl:first-child { margin-top:4px; }
+
+  /* ── APPLICATION SERVICE COMPONENT ── */
+  .app-svc {
+    background:rgba(96,165,250,.06);
+    border:1.5px solid rgba(96,165,250,.22);
+    border-radius:10px;
+    padding:10px 12px;
+    margin-bottom:8px;
+    position:relative;
+  }
+  .app-svc::before {
+    content:''; display:block; height:2px; border-radius:2px;
+    background:var(--l3); opacity:.7; margin-bottom:7px;
+  }
+  .app-svc-header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .app-svc-name { font-family:'Syne',sans-serif; font-size:calc(12px * var(--fs)); font-weight:700; color:var(--text-primary); }
+  .app-svc-runtime { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:var(--text-dim); white-space:nowrap; }
+  .app-svc-desc { font-size:calc(9.5px * var(--fs)); color:var(--text-secondary); line-height:1.5; margin-bottom:7px; }
+
+  /* calls list inside an app svc */
+  .calls { display:flex; flex-direction:column; gap:3px; }
+  .call-row { display:flex; align-items:baseline; gap:6px; }
+  .call-arrow { font-family:'JetBrains Mono',monospace; font-size:calc(9px * var(--fs)); flex-shrink:0; }
+  .call-arrow.out  { color:var(--l3); }
+  .call-arrow.in   { color:var(--l4); }
+  .call-arrow.r23  { color:var(--l2); }
+  .call-target { font-family:'JetBrains Mono',monospace; font-size:calc(8px * var(--fs)); font-weight:700; color:var(--text-primary); flex-shrink:0; }
+  .call-desc { font-size:calc(8.5px * var(--fs)); color:var(--text-secondary); line-height:1.4; }
+  .call-sdk { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:var(--text-dim); white-space:nowrap; flex-shrink:0; }
+
+  /* tags row */
+  .stags { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+  .stag { font-family:'JetBrains Mono',monospace; font-size:calc(7px * var(--fs)); padding:1px 6px; border-radius:3px; border:1px solid; white-space:nowrap; }
+  .s-app  { color:var(--l3);  border-color:rgba(96,165,250,.25);  background:rgba(96,165,250,.08); }
+  .s-aws  { color:#FF9900;    border-color:rgba(255,153,0,.25);   background:rgba(255,153,0,.07); }
+  .s-priv { color:var(--gov); border-color:rgba(103,232,249,.25); background:rgba(103,232,249,.07); }
+  .s-ha   { color:var(--l4);  border-color:rgba(52,211,153,.25);  background:rgba(52,211,153,.07); }
+  .s-r23  { color:var(--l2);  border-color:rgba(251,146,60,.25);  background:rgba(251,146,60,.07); }
+  .s-sec  { color:var(--sec); border-color:rgba(248,113,113,.25); background:rgba(248,113,113,.07); }
+  .s-obs  { color:var(--obs); border-color:rgba(192,132,252,.25); background:rgba(192,132,252,.07); }
+
+  /* ── AWS MANAGED SERVICE COMPONENT ── */
+  .aws-svc {
+    background:rgba(255,153,0,.05);
+    border:1.5px solid rgba(255,153,0,.2);
+    border-radius:10px;
+    padding:10px 12px;
+    margin-bottom:8px;
+  }
+  .aws-svc::before { content:''; display:block; height:2px; border-radius:2px; background:#FF9900; opacity:.6; margin-bottom:7px; }
+  .aws-svc-header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .aws-svc-name { font-family:'Syne',sans-serif; font-size:calc(11.5px * var(--fs)); font-weight:700; color:var(--text-primary); }
+  .aws-svc-type { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:rgba(255,153,0,.6); white-space:nowrap; }
+  .aws-svc-desc { font-size:calc(9px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+  .aws-api { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:rgba(255,153,0,.7); margin-top:5px; line-height:1.7; }
+
+  /* ── EXTERNAL SERVICE COMPONENT ── */
+  .ext-svc {
+    background:rgba(192,132,252,.05);
+    border:1.5px solid rgba(192,132,252,.2);
+    border-radius:10px;
+    padding:10px 12px;
+    margin-bottom:8px;
+  }
+  .ext-svc::before { content:''; display:block; height:2px; border-radius:2px; background:var(--obs); opacity:.6; margin-bottom:7px; }
+  .ext-svc-name { font-family:'Syne',sans-serif; font-size:calc(11.5px * var(--fs)); font-weight:700; color:var(--text-primary); margin-bottom:4px; }
+  .ext-svc-desc { font-size:calc(9px * var(--fs)); color:var(--text-secondary); line-height:1.5; }
+  .ext-api { font-family:'JetBrains Mono',monospace; font-size:calc(7.5px * var(--fs)); color:rgba(192,132,252,.7); margin-top:5px; line-height:1.7; }
+
+  /* ── FOOTER ── */
+  .footer { margin-top:40px; border-top:1px solid var(--border); padding-top:14px; display:flex; justify-content:space-between; align-items:center; font-family:'JetBrains Mono',monospace; font-size:calc(9.5px * var(--fs)); color:var(--text-dim); }
+  .footer-tags { display:flex; gap:6px; flex-wrap:wrap; }
+  .footer-tag { font-size:calc(9px * var(--fs)); color:var(--text-dim); border:1px solid var(--border); padding:3px 9px; border-radius:20px; background:var(--surface); }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="tb-label">Text size</div>
+  <button class="sz-btn" id="sz-s"  onclick="setSize(0.9)">S</button>
+  <button class="sz-btn active" id="sz-m" onclick="setSize(1.1)">M</button>
+  <button class="sz-btn" id="sz-l"  onclick="setSize(1.25)">L</button>
+</div>
+<script>
+var sizes={0.9:'sz-s',1.1:'sz-m',1.25:'sz-l'};
+function setSize(v){document.documentElement.style.setProperty('--fs',v);Object.keys(sizes).forEach(function(k){document.getElementById(sizes[k]).classList.remove('active')});document.getElementById(sizes[v]).classList.add('active');}
+setSize(1.1);
+</script>
+
+<div class="canvas">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <div class="eyebrow">UKI Enterprise AI Platform · Engineering</div>
+      <div class="title">Component <span class="title-accent">Design</span></div>
+      <div class="subtitle">Application services · AWS managed service consumption · SDK calls · Runtime dependencies</div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend-row">
+    <span class="leg"><span class="leg-svc-app"></span>Platform application service (we build)</span>
+    <span class="leg-sep"></span>
+    <span class="leg"><span class="leg-svc-aws"></span>AWS managed service (consumed)</span>
+    <span class="leg-sep"></span>
+    <span class="leg"><span class="leg-svc-ext"></span>External / third-party</span>
+    <span class="leg-sep"></span>
+    <span class="leg"><span style="font-family:JetBrains Mono,monospace;color:var(--l3);font-size:12px">→</span> SDK / API call out</span>
+    <span class="leg"><span style="font-family:JetBrains Mono,monospace;color:var(--l4);font-size:12px">←</span> Event / callback in</span>
+    <span class="leg-sep"></span>
+    <span class="leg"><span class="leg-call s-app">ECS Fargate</span></span>
+    <span class="leg"><span class="leg-call s-aws">AWS Managed</span></span>
+    <span class="leg"><span class="leg-call s-r23">R2/R3 only</span></span>
+  </div>
+
+  <div class="main-grid">
+
+    <!-- ════════════════════════════════════
+         COL 1 — PLATFORM APPLICATION SERVICES
+         ════════════════════════════════════ -->
+    <div class="zone" style="--zone-bg:var(--z-app);--zone-b:var(--z-app-b);--zone-c:var(--l3);">
+      <span class="zone-title">Platform Application Services</span>
+      <span class="zone-note">What we build and operate · ECS Fargate · Python / Node</span>
+
+      <!-- EDGE -->
+      <div class="group-lbl">Edge &amp; Authentication</div>
+
+      <div class="app-svc">
+        <div class="app-svc-header">
+          <span class="app-svc-name">Lambda Authorizer</span>
+          <span class="app-svc-runtime">Lambda · Node.js</span>
+        </div>
+        <div class="app-svc-desc">Validates identity on every API Gateway request. Calls STS GetCallerIdentity to verify the IAM session established by IAM Identity Center, then extracts session tags (tenant_id, brand, role, use-case). Establishes the Identity Context for the Execution. Result cached 5 min per session.</div>
+        <div class="calls">
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">IAM STS</span>
+            <span class="call-desc">GetCallerIdentity · verify session · extract session tags</span>
+            <span class="call-sdk">AWS SDK · sts.getCallerIdentity</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">IAM STS</span>
+            <span class="call-desc">AssumeRole with session tags (tenant_id · brand · role · use-case) for downstream ABAC</span>
+            <span class="call-sdk">AWS SDK · sts.assumeRole</span>
+          </div>
+        </div>
+        <div class="stags"><span class="stag s-sec">Identity Context established here</span><span class="stag s-priv">raw credentials stop here</span></div>
+      </div>
+
+      <!-- GOVERNANCE -->
+      <div class="group-lbl">Governance</div>
+
+      <div class="app-svc">
+        <div class="app-svc-header">
+          <span class="app-svc-name">Capability Registry Service</span>
+          <span class="app-svc-runtime">ECS Fargate · Python / FastAPI</span>
+        </div>
+        <div class="app-svc-desc">Owns the Capability Definition lifecycle state machine. Enforces the publish gate — validates Safety Envelope, Risk Tier declaration, and Workflow Contract (R2/R3). Enforces ABAC on Tool Bindings at publish and at resolution time.</div>
+        <div class="calls">
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">DynamoDB</span>
+            <span class="call-desc">Capability Definition store · version index · lifecycle state</span>
+            <span class="call-sdk">boto3 · put_item / query</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">S3</span>
+            <span class="call-desc">Capability Definition artefact storage · evaluation dataset store</span>
+            <span class="call-sdk">boto3 · put_object</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Evaluation Gate</span>
+            <span class="call-desc">Triggers evaluation pipeline on publish attempt — blocks on score threshold</span>
+            <span class="call-sdk">internal REST · async</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">EventBridge</span>
+            <span class="call-desc">Emits lifecycle events (Published · Deprecated) consumed by downstream services</span>
+            <span class="call-sdk">boto3 · put_events</span>
+          </div>
+        </div>
+        <div class="stags"><span class="stag s-app">ECS · multi-AZ</span><span class="stag s-ha">HA</span></div>
+      </div>
+
+      <div class="app-svc">
+        <div class="app-svc-header">
+          <span class="app-svc-name">Evaluation Gate Service</span>
+          <span class="app-svc-runtime">ECS Fargate · Python</span>
+        </div>
+        <div class="app-svc-desc">Runs quality and safety checks on Capability Definition publish. Promptfoo scores agent behaviour regression. Bedrock Evaluation checks RAG faithfulness. Returns pass/fail with scores to Registry — blocks state transition on failure.</div>
+        <div class="calls">
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Bedrock Evaluation</span>
+            <span class="call-desc">RAG faithfulness · correctness · completeness scoring</span>
+            <span class="call-sdk">boto3 · bedrock-agent-runtime</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Promptfoo</span>
+            <span class="call-desc">Agent behaviour regression · prompt injection test suite</span>
+            <span class="call-sdk">Promptfoo CLI / API</span>
+          </div>
+        </div>
+        <div class="stags"><span class="stag s-app">CI/CD triggered</span></div>
+      </div>
+
+      <!-- RUNTIME -->
+      <div class="group-lbl">Runtime Orchestration</div>
+
+      <div class="app-svc">
+        <div class="app-svc-header">
+          <span class="app-svc-name">Agent Orchestration Service</span>
+          <span class="app-svc-runtime">ECS Fargate · Python · Strands SDK</span>
+        </div>
+        <div class="app-svc-desc">Thin application wrapper around AgentCore / Strands. Loads Published Capability Definition from Registry. Constructs the agent session with Identity Context. Passes control to Strands for the reasoning loop. Writes Audit Record on close.</div>
+        <div class="calls">
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Registry Service</span>
+            <span class="call-desc">Resolve Published Capability Definition by ID + version</span>
+            <span class="call-sdk">internal REST GET</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">AgentCore / Strands</span>
+            <span class="call-desc">Delegate agent loop execution — tools, model calls, state</span>
+            <span class="call-sdk">Strands SDK · Python</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">DynamoDB</span>
+            <span class="call-desc">Session state reads/writes · conversation history</span>
+            <span class="call-sdk">boto3 · get/put_item</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">S3 (Audit)</span>
+            <span class="call-desc">Synchronous Audit Record write on Execution close (I5)</span>
+            <span class="call-sdk">boto3 · put_object · Object Lock</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Step Functions</span>
+            <span class="call-desc">Start Process-scope execution for R2/R3 capabilities</span>
+            <span class="call-sdk">boto3 · sfn.start_execution</span>
+          </div>
+        </div>
+        <div class="stags"><span class="stag s-app">ECS</span><span class="stag s-priv">private subnet</span></div>
+      </div>
+
+      <div class="app-svc">
+        <div class="app-svc-header">
+          <span class="app-svc-name">MCP Gateway Service</span>
+          <span class="app-svc-runtime">ECS Fargate · Python</span>
+        </div>
+        <div class="app-svc-desc">Outbound tool call router. Receives tool invocation from Strands agent loop. Performs RFC 8693 token exchange to produce a tool-scoped credential carrying Identity Context. Routes to the target MCP server. ABAC validated against session tags before dispatch.</div>
+        <div class="calls">
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">IAM STS</span>
+            <span class="call-desc">RFC 8693 token exchange — session credential → tool-scoped credential</span>
+            <span class="call-sdk">boto3 · sts.assume_role_with_web_identity</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Secrets Manager</span>
+            <span class="call-desc">Fetch MCP server credentials / API keys per tool target</span>
+            <span class="call-sdk">boto3 · get_secret_value</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Downstream MCP servers</span>
+            <span class="call-desc">HTTP tool invocation under scoped credential — CRM · RG · ITSM · etc.</span>
+            <span class="call-sdk">MCP HTTP transport · mTLS</span>
+          </div>
+        </div>
+        <div class="stags"><span class="stag s-priv">no direct agent egress</span><span class="stag s-sec">RFC 8693</span></div>
+      </div>
+
+      <div class="app-svc">
+        <div class="app-svc-header">
+          <span class="app-svc-name">HITL Service</span>
+          <span class="app-svc-runtime">ECS Fargate · Python</span>
+        </div>
+        <div class="app-svc-desc">Human-in-the-loop approval gate. Receives Step Functions waitForTaskToken callback. Routes approval request to reviewer via SQS queue. Records reviewer identity, decision, and timestamp. Sends task token success/failure back to Step Functions. Non-waivable for R3.</div>
+        <div class="calls">
+          <div class="call-row">
+            <span class="call-arrow in">←</span>
+            <span class="call-target">Step Functions</span>
+            <span class="call-desc">waitForTaskToken activity — blocks execution until decision</span>
+            <span class="call-sdk">sfn activity / task token</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">SQS</span>
+            <span class="call-desc">Approval request enqueued for reviewer notification</span>
+            <span class="call-sdk">boto3 · sqs.send_message</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Step Functions</span>
+            <span class="call-desc">send_task_success / send_task_failure with decision payload</span>
+            <span class="call-sdk">boto3 · sfn.send_task_success</span>
+          </div>
+        </div>
+        <div class="stags"><span class="stag s-r23">R3 mandatory</span><span class="stag s-app">ECS</span></div>
+      </div>
+
+      <!-- SAFETY -->
+      <div class="group-lbl">Safety &amp; Model Access</div>
+
+      <div class="app-svc">
+        <div class="app-svc-header">
+          <span class="app-svc-name">LLM Gateway</span>
+          <span class="app-svc-runtime">ECS Fargate · LiteLLM · Python</span>
+        </div>
+        <div class="app-svc-desc">LiteLLM-based proxy between agent runtime and model providers. Enforces per-tenant quota (burst + sustained window). Manages prompt cache keys. Routes to Bedrock, Anthropic direct, OpenAI, or Google based on Capability Definition declaration. Opens circuit breaker on budget cap breach. Attributes cost per tenant/capability in real time.</div>
+        <div class="calls">
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Bedrock Runtime</span>
+            <span class="call-desc">InvokeModel / InvokeModelWithResponseStream · Claude · Titan · Llama</span>
+            <span class="call-sdk">boto3 · bedrock-runtime</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Bedrock Guardrails</span>
+            <span class="call-desc">ApplyGuardrail on every prompt + response before/after model call</span>
+            <span class="call-sdk">boto3 · bedrock.apply_guardrail</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">ElastiCache (Redis)</span>
+            <span class="call-desc">Quota counter reads/writes · burst window · prompt cache key store</span>
+            <span class="call-sdk">redis-py · INCR / EXPIRE</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">Langfuse</span>
+            <span class="call-desc">LiteLLM callback — emits span per model call with tokens, latency, cost</span>
+            <span class="call-sdk">LiteLLM callback hook · HTTP</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">CloudWatch</span>
+            <span class="call-desc">Per-tenant cost metrics · quota utilisation · circuit breaker state</span>
+            <span class="call-sdk">boto3 · put_metric_data</span>
+          </div>
+        </div>
+        <div class="stags"><span class="stag s-app">ECS · LiteLLM</span><span class="stag s-ha">circuit breaker</span><span class="stag s-priv">private</span></div>
+      </div>
+
+      <!-- OBSERVABILITY -->
+      <div class="group-lbl">Audit &amp; Observability Writes</div>
+
+      <div class="app-svc">
+        <div class="app-svc-header">
+          <span class="app-svc-name">Audit Record Writer</span>
+          <span class="app-svc-runtime">Library · shared by all services</span>
+        </div>
+        <div class="app-svc-desc">Shared library embedded in the Agent Orchestration Service and Step Functions state handlers. Synchronous write — not fire-and-forget. For R2/R3 the calling service blocks until the S3 put_object call returns successfully. For R3 called before any state-changing tool invocation (write-ahead).</div>
+        <div class="calls">
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">S3 (Audit)</span>
+            <span class="call-desc">put_object with Object Lock retention — Governance mode R0/R1 · Compliance R2/R3</span>
+            <span class="call-sdk">boto3 · put_object · object-lock-mode</span>
+          </div>
+          <div class="call-row">
+            <span class="call-arrow out">→</span>
+            <span class="call-target">KMS</span>
+            <span class="call-desc">Encrypt Audit Record with account CMK before write</span>
+            <span class="call-sdk">KMS · server-side encryption</span>
+          </div>
+        </div>
+        <div class="stags"><span class="stag s-sec">I5 · synchronous</span><span class="stag s-r23">fail-closed R2/R3</span><span class="stag s-r23">write-ahead R3</span></div>
+      </div>
+
+    </div><!-- /col 1 -->
+
+    <!-- ════════════════════════════════════
+         COL 2 — AWS MANAGED SERVICES
+         ════════════════════════════════════ -->
+    <div class="zone" style="--zone-bg:var(--z-aws);--zone-b:var(--z-aws-b);--zone-c:#FF9900;">
+      <span class="zone-title">AWS Managed Services</span>
+      <span class="zone-note">Consumed via SDK / VPC Endpoint · no internet egress</span>
+
+      <!-- AI / MODEL -->
+      <div class="group-lbl">AI &amp; Agent Runtime</div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">AgentCore / AWS Strands</span>
+          <span class="aws-svc-type">AWS Managed · SDK</span>
+        </div>
+        <div class="aws-svc-desc">Reasoning-scope agent runtime. Manages the perceive-reason-act loop, tool call orchestration, and memory within a single invocation. Integrated via Strands Python SDK — the application service wraps it, not the other way round.</div>
+        <div class="aws-api">Strands SDK · Python<br>strands.Agent · strands.tool decorator</div>
+        <div class="stags"><span class="stag s-aws">managed runtime</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">Amazon Bedrock Runtime</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Managed model access — Claude (Anthropic), Titan, Llama, and others via cross-region inference. Called exclusively through the LLM Gateway; no application service calls Bedrock directly.</div>
+        <div class="aws-api">bedrock-runtime · InvokeModel<br>bedrock-runtime · InvokeModelWithResponseStream<br>Cross-region inference profiles</div>
+        <div class="stags"><span class="stag s-aws">managed</span><span class="stag s-aws">cross-region inference</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">Bedrock Guardrails</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Enforces the Safety Envelope on every prompt and response. Called by the LLM Gateway before and after each model call. Guardrail configuration is created from the Capability Definition's Safety Envelope at publish time and is immutable for the published version.</div>
+        <div class="aws-api">bedrock · apply_guardrail<br>bedrock · create_guardrail (at publish time)<br>PII detection · prompt injection · denied topics</div>
+        <div class="stags"><span class="stag s-aws">managed</span><span class="stag s-sec">immutable on publish</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">Step Functions</span>
+          <span class="aws-svc-type">AWS Managed · Standard Workflows</span>
+        </div>
+        <div class="aws-svc-desc">Process-scope durable execution for R2/R3 Capabilities. Application code defines the state machine (ASL JSON). Platform services are invoked as Lambda or ECS task states. Provides correlation, idempotency, compensation, and HITL waitForTaskToken natively.</div>
+        <div class="aws-api">sfn · StartExecution<br>sfn · SendTaskSuccess / SendTaskFailure<br>sfn · DescribeExecution (investigation)</div>
+        <div class="stags"><span class="stag s-r23">R2/R3 mandatory</span><span class="stag s-aws">managed</span></div>
+      </div>
+
+      <!-- DATA -->
+      <div class="group-lbl">Data &amp; State</div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">DynamoDB</span>
+          <span class="aws-svc-type">AWS Managed · On-Demand</span>
+        </div>
+        <div class="aws-svc-desc">Conversation state, session store, Capability Definition metadata index, Registry lifecycle state. On-demand capacity. PITR enabled. Global tables for DR in eu-west-2.</div>
+        <div class="aws-api">dynamodb · PutItem / GetItem / Query<br>dynamodb · TransactWriteItems (atomic ops)<br>DynamoDB Streams → Lambda (analytics)</div>
+        <div class="stags"><span class="stag s-aws">managed</span><span class="stag s-ha">PITR · multi-region</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">S3 + Object Lock</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Two logical uses: knowledge base / artefact store (versioned, SSE-KMS), and Audit Record store (Object Lock). Audit bucket uses Compliance mode for R2/R3 — cannot be deleted or overwritten even by account root after retention period set.</div>
+        <div class="aws-api">s3 · PutObject (with ObjectLockMode)<br>s3 · GetObject · HeadObject<br>s3 · PutObjectRetention</div>
+        <div class="stags"><span class="stag s-sec">Compliance lock R2/R3</span><span class="stag s-aws">CRR to eu-west-2</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">OpenSearch Serverless</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Vector retrieval for RAG. tenant_id filter injected on every query — structural isolation. Ingestion via Bedrock Knowledge Bases pipeline or direct document PUT.</div>
+        <div class="aws-api">opensearch · search (kNN vector query)<br>opensearch · index (document ingest)<br>bedrock-agent · retrieve (via KB)</div>
+        <div class="stags"><span class="stag s-aws">serverless</span><span class="stag s-priv">VPC endpoint</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">ElastiCache · Redis</span>
+          <span class="aws-svc-type">AWS Managed · Cluster Mode</span>
+        </div>
+        <div class="aws-svc-desc">LLM Gateway quota counters (burst window, sustained window), prompt cache key registry. Sub-millisecond reads critical for the hot path — sits in the same VPC as the LLM Gateway.</div>
+        <div class="aws-api">redis · INCR / EXPIRE (quota)<br>redis · SET / GET / TTL (cache keys)<br>redis · SETNX (idempotency tokens)</div>
+        <div class="stags"><span class="stag s-aws">managed</span><span class="stag s-ha">cluster HA</span></div>
+      </div>
+
+      <!-- IDENTITY / SECURITY -->
+      <div class="group-lbl">Identity &amp; Security</div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">IAM · STS · Session Tags</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Identity foundation. STS AssumeRole with session tags injects tenant_id, brand, role, and use-case as immutable attributes on the session credential. ABAC policies evaluated against these tags on every AWS API call from the session.</div>
+        <div class="aws-api">sts · AssumeRole (with Tags)<br>sts · AssumeRoleWithWebIdentity (RFC 8693)<br>iam · Policy evaluation (ABAC)</div>
+        <div class="stags"><span class="stag s-sec">ABAC</span><span class="stag s-sec">session tag enforcement</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">Secrets Manager</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Model provider API keys, MCP server credentials, database passwords. Automatic rotation. Accessed at service startup and cached in-process — not fetched per request.</div>
+        <div class="aws-api">secretsmanager · GetSecretValue<br>secretsmanager · RotateSecret (auto)</div>
+        <div class="stags"><span class="stag s-aws">managed</span><span class="stag s-sec">auto-rotate</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">IAM Identity Center</span>
+          <span class="aws-svc-type">AWS Managed · SSO</span>
+        </div>
+        <div class="aws-svc-desc">Single sign-on and identity federation. Okta federated via SAML 2.0 for all user types — end-users and platform operators. Issues STS sessions with session tags (tenant_id, brand, role, use-case) that propagate natively through every AWS API call. Lambda Authorizer validates via GetCallerIdentity. MFA enforced for all access.</div>
+        <div class="aws-api">sso-oidc · CreateTokenWithIAM<br>sts · AssumeRoleWithSAML<br>sts · GetCallerIdentity</div>
+        <div class="stags"><span class="stag s-aws">managed</span><span class="stag s-ha">multi-AZ</span></div>
+      </div>
+
+      <!-- OBSERVABILITY -->
+      <div class="group-lbl">Observability &amp; Audit</div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">CloudWatch</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Platform metrics from every application service. Custom metrics for quota utilisation, circuit breaker state, guardrail block rate, per-tenant cost. Alarms → SNS → PagerDuty. Dashboards per capability and per tenant.</div>
+        <div class="aws-api">cloudwatch · PutMetricData<br>logs · PutLogEvents<br>cloudwatch · PutMetricAlarm</div>
+        <div class="stags"><span class="stag s-obs">always-on</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">CloudTrail</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Automatic capture of all IAM AssumeRole events, Registry API calls (via CloudTrail data events on the Registry ALB), S3 Object Lock puts, and KMS key usage. 7-year retention via S3 Object Lock. No application code writes to CloudTrail — it is passive capture.</div>
+        <div class="aws-api">Automatic — no SDK calls from app<br>cloudtrail · LookupEvents (investigation)<br>Athena query over CloudTrail Lake</div>
+        <div class="stags"><span class="stag s-obs">passive · always-on</span><span class="stag s-sec">7yr S3 Object Lock</span></div>
+      </div>
+
+      <div class="aws-svc">
+        <div class="aws-svc-header">
+          <span class="aws-svc-name">EventBridge</span>
+          <span class="aws-svc-type">AWS Managed</span>
+        </div>
+        <div class="aws-svc-desc">Event bus for capability lifecycle events (Published, Deprecated) emitted by Registry Service. Consumed by downstream services that need to react to definition changes — e.g. cache invalidation in AgentCore.</div>
+        <div class="aws-api">events · PutEvents (from Registry)<br>EventBridge rules → Lambda / SQS targets</div>
+        <div class="stags"><span class="stag s-aws">managed</span></div>
+      </div>
+
+    </div><!-- /col 2 -->
+
+    <!-- ════════════════════════════════════
+         COL 3 — EXTERNAL / THIRD-PARTY
+         ════════════════════════════════════ -->
+    <div class="zone" style="--zone-bg:var(--z-ext);--zone-b:var(--z-ext-b);--zone-c:var(--obs);">
+      <span class="zone-title">External &amp; Third-Party</span>
+
+      <div class="group-lbl">Edge</div>
+      <div class="ext-svc">
+        <div class="ext-svc-name">CloudFlare</div>
+        <div class="ext-svc-desc">Anycast DDoS mitigation, CDN, TLS termination, WAF. All inbound internet traffic transits CloudFlare. API Gateway resource policy restricts inbound to CloudFlare egress IP ranges — direct-to-AWS bypassed.</div>
+        <div class="ext-api">Managed rules · Firewall Rules<br>CF published IP list → API GW policy</div>
+      </div>
+
+      <div class="group-lbl">Identity</div>
+      <div class="ext-svc">
+        <div class="ext-svc-name">Okta</div>
+        <div class="ext-svc-desc">Enterprise IdP. Federated into IAM Identity Center via SAML 2.0 for all user types — end-users, developers, and platform operators. IAM Identity Center issues STS sessions with session tags. MFA enforced for all platform operator roles.</div>
+        <div class="ext-api">SAML 2.0 · OIDC<br>Okta → IAM Identity Center</div>
+      </div>
+
+      <div class="group-lbl">Observability</div>
+      <div class="ext-svc">
+        <div class="ext-svc-name">Langfuse</div>
+        <div class="ext-svc-desc">Self-hosted in Observability Account (ECS + RDS Postgres). Full trace trees per Execution — LiteLLM callback fires on every model call. LLM-as-judge evaluation scoring. Primary investigation tool for production incidents. 90-day retention.</div>
+        <div class="ext-api">LiteLLM callback hook → Langfuse HTTP<br>Langfuse SDK · Python (manual spans)<br>Langfuse API · trace / generation / score</div>
+      </div>
+
+      <div class="group-lbl">Authoring &amp; Evaluation</div>
+      <div class="ext-svc">
+        <div class="ext-svc-name">Promptfoo</div>
+        <div class="ext-svc-desc">Agent behaviour regression testing. Run by Evaluation Gate Service at publish time. Also runs in CI/CD as a PR gate. Test suites include prompt injection attempts, persona drift checks, and safety boundary probes.</div>
+        <div class="ext-api">Promptfoo CLI / REST API<br>Called by Evaluation Gate Service</div>
+      </div>
+      <div class="ext-svc">
+        <div class="ext-svc-name">Langflow</div>
+        <div class="ext-svc-desc">Low-code capability authoring surface for non-engineers. Produces a Capability Definition exported to the Registry API — same lifecycle gates as pro-code path. Not in the runtime path.</div>
+        <div class="ext-api">Registry API · POST /capabilities<br>Design-time only · not runtime</div>
+      </div>
+
+      <div class="group-lbl">LLM Providers</div>
+      <div class="ext-svc">
+        <div class="ext-svc-name">LiteLLM</div>
+        <div class="ext-svc-desc">Embedded in the LLM Gateway service. Provides the unified chat completions interface across Bedrock, Anthropic direct, OpenAI, and Google. Callback hooks emit spans to Langfuse. Not a separate deployed service — library dependency of LLM Gateway.</div>
+        <div class="ext-api">litellm.completion() — unified API<br>Provider routing via Capability Definition model field<br>LiteLLM success_callback → Langfuse</div>
+      </div>
+      <div class="ext-svc">
+        <div class="ext-svc-name">Non-Bedrock Providers</div>
+        <div class="ext-svc-desc">Anthropic direct API, OpenAI, Google Vertex AI — reachable via LLM Gateway only. Credentials in Secrets Manager. Used for capabilities that declare a non-Bedrock model in their Capability Definition.</div>
+        <div class="ext-api">Via LiteLLM routing — no direct app calls<br>Credentials via Secrets Manager</div>
+      </div>
+
+    </div><!-- /col 3 -->
+
+  </div><!-- /main-grid -->
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>UKI Enterprise AI Platform · Component Design · v2 · INTERNAL · DRAFT</span>
+    <div class="footer-tags">
+      <span class="footer-tag">Python / Node application services</span>
+      <span class="footer-tag">ECS Fargate</span>
+      <span class="footer-tag">Strands SDK</span>
+      <span class="footer-tag">LiteLLM</span>
+      <span class="footer-tag">boto3</span>
+      <span class="footer-tag">VPC Endpoints only</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
