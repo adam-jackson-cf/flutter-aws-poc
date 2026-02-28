@@ -14,7 +14,13 @@ if str(REPO_ROOT) not in sys.path:
 
 from evals.aws_pipeline_runner import AwsPipelineRunner
 from evals.cloudwatch_publish import publish_eval_summary_metrics
-from evals.metrics import aggregate_case_metrics, lexical_cosine_similarity
+from evals.judge import BedrockJudge
+from evals.metrics import (
+    aggregate_case_metrics,
+    aggregate_judge_metrics,
+    build_overall_reflection,
+    lexical_cosine_similarity,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,6 +39,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--execution-timeout-seconds", type=int, default=900)
     parser.add_argument("--publish-cloudwatch", action="store_true")
     parser.add_argument("--cloudwatch-namespace", default="FlutterAgentCorePoc/Evals")
+    parser.add_argument("--enable-judge", action="store_true")
+    parser.add_argument("--judge-model-id", default=os.environ.get("BEDROCK_MODEL_ID", "eu.amazon.nova-lite-v1:0"))
+    parser.add_argument("--judge-region", default=os.environ.get("BEDROCK_REGION", os.environ.get("AWS_REGION", "")))
     return parser.parse_args()
 
 
@@ -92,6 +101,8 @@ def _case_result_from_payload(
     selected_tool = "jira_get_issue_by_key"
     if flow == "mcp":
         selected_tool = str(run_payload.get("mcp_selection", {}).get("selected_tool", ""))
+    elif flow == "native":
+        selected_tool = str(run_payload.get("native_selection", {}).get("selected_tool", ""))
 
     total_latency_ms = float(run_metrics.get("total_latency_ms", 0.0) or 0.0)
     if total_latency_ms <= 0:
@@ -136,6 +147,7 @@ def evaluate_flow(
     iterations: int,
     scope: str,
     runner: AwsPipelineRunner,
+    judge: BedrockJudge | None = None,
 ) -> Dict[str, Any]:
     results = []
 
@@ -159,8 +171,13 @@ def evaluate_flow(
                     artifact_s3_uri=run.artifact_s3_uri,
                 )
             )
+            if judge is not None:
+                results[-1]["judge"] = judge.score_case(results[-1], scope=scope)
+                results[-1]["metrics"]["judge_overall_score"] = float(results[-1]["judge"]["overall_score"])
 
     summary = aggregate_case_metrics(results)
+    judge_summary = aggregate_judge_metrics(results)
+    composite_reflection = build_overall_reflection(summary=summary, judge_summary=judge_summary)
     failure_reason_counts: Dict[str, int] = {}
     for row in results:
         reason = str(row["metrics"].get("failure_reason", "")).strip()
@@ -173,6 +190,8 @@ def evaluate_flow(
         "scope": scope,
         "iterations": iterations,
         "summary": summary,
+        "judge_summary": judge_summary,
+        "composite_reflection": composite_reflection,
         "failure_reasons": failure_reason_counts,
         "cases": results,
     }
@@ -184,6 +203,8 @@ def main() -> int:
         raise ValueError("STATE_MACHINE_ARN is required (set env var or pass --state-machine-arn)")
     if not args.aws_region:
         raise ValueError("AWS_REGION is required (set env var or pass --aws-region)")
+    if args.enable_judge and not args.judge_region:
+        raise ValueError("judge region is required when --enable-judge is set")
 
     dataset = load_dataset(args.dataset)
     flows = [args.flow] if args.flow != "both" else ["native", "mcp"]
@@ -196,6 +217,7 @@ def main() -> int:
         poll_interval_seconds=args.poll_interval_seconds,
         execution_timeout_seconds=args.execution_timeout_seconds,
     )
+    judge = BedrockJudge(model_id=args.judge_model_id, region=args.judge_region) if args.enable_judge else None
 
     run_at = datetime.now(timezone.utc).isoformat()
     payload = {
@@ -207,6 +229,11 @@ def main() -> int:
         "iterations": args.iterations,
         "state_machine_arn": args.state_machine_arn,
         "aws_region": args.aws_region,
+        "judge": {
+            "enabled": bool(args.enable_judge),
+            "model_id": args.judge_model_id if args.enable_judge else "",
+            "region": args.judge_region if args.enable_judge else "",
+        },
         "results": [
             evaluate_flow(
                 flow=flow,
@@ -215,6 +242,7 @@ def main() -> int:
                 iterations=args.iterations,
                 scope=args.scope,
                 runner=runner,
+                judge=judge,
             )
             for flow in flows
         ],
@@ -223,10 +251,17 @@ def main() -> int:
     if args.flow == "both":
         native_summary = payload["results"][0]["summary"]
         mcp_summary = payload["results"][1]["summary"]
+        native_composite = payload["results"][0]["composite_reflection"]
+        mcp_composite = payload["results"][1]["composite_reflection"]
         payload["comparison"] = {
             "tool_failure_delta": mcp_summary["tool_failure_rate"] - native_summary["tool_failure_rate"],
             "latency_delta_ms": mcp_summary["mean_latency_ms"] - native_summary["mean_latency_ms"],
             "response_similarity_delta": mcp_summary["mean_response_similarity"] - native_summary["mean_response_similarity"],
+            "deterministic_release_score_delta": mcp_composite["deterministic_release_score"] - native_composite["deterministic_release_score"],
+            "judge_diagnostic_score_delta": (
+                float(mcp_composite["judge_diagnostic_score"] or 0.0) - float(native_composite["judge_diagnostic_score"] or 0.0)
+            ),
+            "overall_reflection_score_delta": mcp_composite["overall_reflection_score"] - native_composite["overall_reflection_score"],
         }
 
     default_output = f"reports/runs/{run_id}/eval/eval-{args.flow}-{args.scope}.json"
