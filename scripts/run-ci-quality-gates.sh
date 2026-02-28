@@ -4,6 +4,7 @@ set -euo pipefail
 RUNNER_PATH="scripts/run-ci-quality-gates.sh"
 MODE="check"
 STAGE="false"
+PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-25}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -57,7 +58,14 @@ if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; 
 fi
 
 if [[ -d "tests" ]] && [[ -f "requirements.txt" ]] && grep -qi '^pytest' "requirements.txt"; then
-  run_step "Python tests" python3 -m pytest
+  run_step \
+    "Python tests + coverage gate (${PYTEST_COVERAGE_TARGET}%)" \
+    python3 -m pytest \
+      --cov=evals \
+      --cov=runtime \
+      --cov=aws/lambda \
+      --cov-report=term-missing \
+      --cov-fail-under="$PYTEST_COVERAGE_TARGET"
 fi
 
 if [[ "$MODE" == "fix" ]]; then
@@ -67,4 +75,3 @@ fi
 if [[ "$MODE" == "fix" ]] && [[ "$STAGE" == "true" ]]; then
   echo "Stage mode enabled: no files to stage because no auto-fixers ran."
 fi
-
