@@ -15,6 +15,29 @@ from botocore.awsrequest import AWSRequest
 
 ISSUE_KEY_PATTERN = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
 
+MCP_TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
+    # Capability-style scoped tool bindings to minimize context bloat in Reasoning scope.
+    "bug_triage": [
+        "jira_get_issue_by_key",
+        "jira_get_issue_priority_context",
+        "jira_get_issue_risk_flags",
+    ],
+    "status_update": [
+        "jira_get_issue_by_key",
+        "jira_get_issue_status_snapshot",
+        "jira_get_issue_update_timestamp",
+    ],
+    "feature_request": [
+        "jira_get_issue_by_key",
+        "jira_get_issue_labels",
+        "jira_get_issue_project_key",
+    ],
+    "general_triage": [
+        "jira_get_issue_by_key",
+        "jira_get_issue_status_snapshot",
+    ],
+}
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -216,6 +239,74 @@ def strip_gateway_tool_prefix(tool_name: str) -> str:
     return re.split(r"__+", tool_name, maxsplit=1)[1]
 
 
+def scoped_tool_suffixes_for_intent(intent: str) -> List[str]:
+    return MCP_TOOL_SCOPE_BY_INTENT.get(intent, MCP_TOOL_SCOPE_BY_INTENT["general_triage"])
+
+
+def scope_gateway_tools_by_intent(tools: List[Dict[str, Any]], intent: str) -> List[Dict[str, Any]]:
+    allowed_suffixes = set(scoped_tool_suffixes_for_intent(intent))
+    scoped = [tool for tool in tools if strip_gateway_tool_prefix(str(tool.get("name", ""))) in allowed_suffixes]
+    if not scoped:
+        raise RuntimeError(f"empty_scoped_tool_catalog:intent={intent}")
+    return scoped
+
+
+def build_failure_issue(issue_key: str, failure_reason: str) -> Dict[str, Any]:
+    return {
+        "key": issue_key,
+        "summary": "",
+        "status": "Unknown",
+        "issue_type": "Unknown",
+        "priority": "None",
+        "labels": [],
+        "updated": "",
+        "description": "",
+        "comment_count": 0,
+        "failure_reason": failure_reason,
+    }
+
+
+def _tool_prompt_lines(tools: List[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    for tool in tools:
+        tool_name = str(tool.get("name", ""))
+        tool_description = str(tool.get("description", "")).strip()
+        lines.append(f"- {tool_name}: {tool_description[:220]}")
+    return "\n".join(lines)
+
+
+def select_tool_with_model(
+    request_text: str,
+    issue_key: str,
+    tools: List[Dict[str, Any]],
+    model_id: str,
+    region: str,
+    default_tool: str,
+    dry_run: bool = False,
+    selector_name: str = "agent_selector",
+) -> Dict[str, Any]:
+    if dry_run:
+        return {"selected_tool": default_tool, "reason": "dry_run"}
+
+    prompt = (
+        "You are a reasoning-scope orchestration agent.\n"
+        "The tool catalog is pre-filtered by capability bindings and task scope.\n"
+        f"Selector: {selector_name}\n"
+        f"Request: {request_text}\n"
+        f"Issue key: {issue_key}\n"
+        "Choose exactly one tool name from the provided list.\n"
+        "Return strict JSON only: {\"tool\":\"<name>\",\"reason\":\"<short reason>\"}.\n"
+        "Scoped tool list:\n"
+        f"{_tool_prompt_lines(tools)}"
+    )
+    raw = _call_bedrock(model_id=model_id, prompt=prompt, region=region)
+    parsed = _extract_json_object(raw)
+    return {
+        "selected_tool": str(parsed.get("tool", "")),
+        "reason": str(parsed.get("reason", "")),
+    }
+
+
 def select_mcp_tool(
     request_text: str,
     issue_key: str,
@@ -225,25 +316,16 @@ def select_mcp_tool(
     region: str,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
-    if dry_run:
-        return {"selected_tool": expected_tool, "reason": "dry_run"}
-
-    tool_list = "\n".join([f"- {tool['name']}: {tool.get('description', '')}" for tool in tools])
-    prompt = (
-        "You are selecting one MCP tool for a Jira workflow.\n"
-        f"Request: {request_text}\n"
-        f"Issue key: {issue_key}\n"
-        "Choose exactly one tool name from the provided list.\n"
-        "Return strict JSON: {\"tool\":\"<name>\",\"reason\":\"<short reason>\"}.\n"
-        "Tool list:\n"
-        f"{tool_list}"
+    return select_tool_with_model(
+        request_text=request_text,
+        issue_key=issue_key,
+        tools=tools,
+        model_id=model_id,
+        region=region,
+        default_tool=expected_tool,
+        dry_run=dry_run,
+        selector_name="mcp_gateway_selector",
     )
-    raw = _call_bedrock(model_id=model_id, prompt=prompt, region=region)
-    parsed = _extract_json_object(raw)
-    return {
-        "selected_tool": parsed.get("tool", ""),
-        "reason": parsed.get("reason", ""),
-    }
 
 
 def find_expected_gateway_tool(tools: List[Dict[str, Any]], unprefixed_tool_name: str = "jira_get_issue_by_key") -> str:
