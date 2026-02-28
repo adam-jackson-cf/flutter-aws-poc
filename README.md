@@ -11,6 +11,42 @@ It also includes AWS CDK infrastructure for:
 - AgentCore Gateway with Jira tool target
 - Step Functions automation pipeline with scheduled execution
 
+## Business journey flow
+
+```mermaid
+flowchart TD
+    A["Support lead defines customer scenarios and success criteria"]
+    B["Each scenario sets expected intent issue key and expected tool for native and mcp"]
+    C["Evaluation run starts and validates cloud identity for live mode"]
+    D["For each scenario both routes run with the same model and same task"]
+
+    subgraph P["Parallel business trial"]
+      E1["Native route agent chooses from tightly scoped native tools"]
+      E2["MCP route agent chooses from tightly scoped mcp tools"]
+      F1["Agent gathers Jira evidence and drafts customer safe update"]
+      F2["Agent gathers Jira evidence and drafts customer safe update"]
+      E1 --> F1
+      E2 --> F2
+    end
+
+    G["Deterministic scoring checks intent issue key tool match payload quality and business success"]
+    H["Judge scoring checks tool choice execution reliability and response quality"]
+    I["Composite reflection combines deterministic truth with judge diagnostics and flags divergence"]
+    J["Results are published to cloudwatch and agentcore evaluation views"]
+    K{"Deterministic release gate passed"}
+    L["Share client ready outcome and route recommendation"]
+    M["Hold for review tune scope or prompts and rerun"]
+
+    A --> B --> C --> D
+    D --> E1
+    D --> E2
+    F1 --> G
+    F2 --> G
+    G --> H --> I --> J --> K
+    K -->|Yes| L
+    K -->|No| M
+```
+
 ## Quick start
 
 1. Install Python dependencies:
@@ -18,6 +54,7 @@ It also includes AWS CDK infrastructure for:
 2. Install infra dependencies:
    - `cd infra && npm install`
 3. Load project AWS context:
+   - start from `.envrc.example` for local environment values
    - `direnv allow` (uses `.envrc` with sandbox profile + Bedrock inference profile)
    - ensure `MCP_GATEWAY_URL` and `STATE_MACHINE_ARN` are set for live runs
 4. Run synthesis:

@@ -1,0 +1,10 @@
+# Set values for your local environment and run `direnv allow`.
+# Use a named profile only (do not place raw credentials here).
+export AWS_PROFILE=<your_named_profile>
+export AWS_REGION=eu-west-1
+export BEDROCK_REGION=eu-west-1
+export BEDROCK_MODEL_ID=eu.amazon.nova-lite-v1:0
+
+# Deployed resources for live eval runs.
+export MCP_GATEWAY_URL=https://<your-gateway-id>.gateway.bedrock-agentcore.eu-west-1.amazonaws.com/mcp
+export STATE_MACHINE_ARN=arn:aws:states:eu-west-1:<account-id>:stateMachine:<state-machine-name>
