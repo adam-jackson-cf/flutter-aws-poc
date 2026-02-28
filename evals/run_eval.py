@@ -70,6 +70,15 @@ class CaseRunContext:
     iteration: int
 
 
+@dataclass(frozen=True)
+class EvaluationConfig:
+    dry_run: bool
+    scope: str
+    iterations: int
+    runner: AwsPipelineRunner
+    judge: BedrockJudge | None
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run SOP evaluation through deployed AWS pipeline")
     parser.add_argument("--dataset", required=True)
@@ -196,6 +205,58 @@ def _response_text_and_similarity(scope: str, generated_response: Dict[str, Any]
     return generated, lexical_cosine_similarity(generated, expected_response_anchor)
 
 
+def _expected_payload(case: Dict[str, Any], expected_tool: str) -> Dict[str, str]:
+    return {
+        "intent": case["expected_intent"],
+        "issue_key": case["expected_issue_key"],
+        "tool": expected_tool,
+        "response_anchor": case["expected_response_anchor"],
+    }
+
+
+def _actual_payload(
+    intent_actual: str,
+    issue_key_actual: str,
+    selected_tool: str,
+    failure_reason: str,
+    generated: str,
+    run: PipelineRunResult,
+) -> Dict[str, str]:
+    return {
+        "intent": intent_actual,
+        "issue_key": issue_key_actual,
+        "selected_tool": selected_tool,
+        "failure_reason": failure_reason,
+        "customer_response": generated,
+        "execution_arn": run.execution_arn,
+        "artifact_s3_uri": run.artifact_s3_uri,
+    }
+
+
+def _case_metrics_payload(
+    intent_match: bool,
+    issue_key_match: bool,
+    tool_failure: bool,
+    tool_match: bool,
+    issue_payload_complete: bool,
+    business_success: bool,
+    failure_reason: str,
+    total_latency_ms: float,
+    similarity: float,
+) -> Dict[str, Any]:
+    return {
+        "intent_match": intent_match,
+        "issue_key_match": issue_key_match,
+        "tool_failure": tool_failure,
+        "tool_match": tool_match,
+        "issue_payload_complete": issue_payload_complete,
+        "business_success": business_success,
+        "failure_reason": failure_reason,
+        "latency_ms": total_latency_ms,
+        "response_similarity": similarity,
+    }
+
+
 def _case_result_from_payload(case: Dict[str, Any], run: PipelineRunResult, context: CaseRunContext) -> Dict[str, Any]:
     run_payload = run.payload
     intake = run_payload.get("intake", {})
@@ -227,32 +288,26 @@ def _case_result_from_payload(case: Dict[str, Any], run: PipelineRunResult, cont
         "iteration": context.iteration,
         "case_id": case["case_id"],
         "request_text": case["request_text"],
-        "expected": {
-            "intent": case["expected_intent"],
-            "issue_key": case["expected_issue_key"],
-            "tool": expected_tool,
-            "response_anchor": case["expected_response_anchor"],
-        },
-        "actual": {
-            "intent": intent_actual,
-            "issue_key": issue_key_actual,
-            "selected_tool": selected_tool,
-            "failure_reason": failure_reason,
-            "customer_response": generated,
-            "execution_arn": run.execution_arn,
-            "artifact_s3_uri": run.artifact_s3_uri,
-        },
-        "metrics": {
-            "intent_match": intent_match,
-            "issue_key_match": issue_key_match,
-            "tool_failure": tool_failure,
-            "tool_match": tool_match,
-            "issue_payload_complete": issue_payload_complete,
-            "business_success": business_success,
-            "failure_reason": failure_reason,
-            "latency_ms": total_latency_ms,
-            "response_similarity": similarity,
-        },
+        "expected": _expected_payload(case=case, expected_tool=expected_tool),
+        "actual": _actual_payload(
+            intent_actual=intent_actual,
+            issue_key_actual=issue_key_actual,
+            selected_tool=selected_tool,
+            failure_reason=failure_reason,
+            generated=generated,
+            run=run,
+        ),
+        "metrics": _case_metrics_payload(
+            intent_match=intent_match,
+            issue_key_match=issue_key_match,
+            tool_failure=tool_failure,
+            tool_match=tool_match,
+            issue_payload_complete=issue_payload_complete,
+            business_success=business_success,
+            failure_reason=failure_reason,
+            total_latency_ms=total_latency_ms,
+            similarity=similarity,
+        ),
     }
 
 
@@ -260,23 +315,20 @@ def _evaluate_single_case(
     flow: str,
     case: Dict[str, Any],
     iteration: int,
-    dry_run: bool,
-    scope: str,
-    runner: AwsPipelineRunner,
-    judge: BedrockJudge | None,
+    config: EvaluationConfig,
 ) -> Dict[str, Any]:
     case_id = f"{case['case_id']}_it{iteration}"
-    run = runner.run_case(
+    run = config.runner.run_case(
         flow=flow,
         request_text=case["request_text"],
         case_id=case_id,
         expected_tool=expected_tool_for_flow(case, flow),
-        dry_run=dry_run,
+        dry_run=config.dry_run,
     )
-    context = CaseRunContext(flow=flow, scope=scope, iteration=iteration)
+    context = CaseRunContext(flow=flow, scope=config.scope, iteration=iteration)
     result = _case_result_from_payload(case=case, run=run, context=context)
-    if judge is not None:
-        result["judge"] = judge.score_case(result, scope=scope)
+    if config.judge is not None:
+        result["judge"] = config.judge.score_case(result, scope=config.scope)
         result["metrics"]["judge_overall_score"] = float(result["judge"]["overall_score"])
     return result
 
@@ -291,28 +343,17 @@ def _count_failure_reasons(results: List[Dict[str, Any]]) -> Dict[str, int]:
     return failure_reason_counts
 
 
-def evaluate_flow(
-    flow: str,
-    cases: List[Dict[str, Any]],
-    dry_run: bool,
-    iterations: int,
-    scope: str,
-    runner: AwsPipelineRunner,
-    judge: BedrockJudge | None = None,
-) -> Dict[str, Any]:
+def evaluate_flow(flow: str, cases: List[Dict[str, Any]], config: EvaluationConfig) -> Dict[str, Any]:
     results = []
 
-    for iteration in range(iterations):
+    for iteration in range(config.iterations):
         for case in cases:
             results.append(
                 _evaluate_single_case(
                     flow=flow,
                     case=case,
                     iteration=iteration + 1,
-                    dry_run=dry_run,
-                    scope=scope,
-                    runner=runner,
-                    judge=judge,
+                    config=config,
                 )
             )
 
@@ -323,8 +364,8 @@ def evaluate_flow(
 
     return {
         "flow": flow,
-        "scope": scope,
-        "iterations": iterations,
+        "scope": config.scope,
+        "iterations": config.iterations,
         "summary": summary,
         "judge_summary": judge_summary,
         "composite_reflection": composite_reflection,
@@ -389,6 +430,33 @@ def _write_eval_payload(payload: Dict[str, Any], output_path: str) -> None:
     Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
+def _maybe_add_comparison(payload: Dict[str, Any], selected_flow: str) -> None:
+    if selected_flow != "both":
+        return
+    payload["comparison"] = _build_comparison_payload(payload["results"])
+
+
+def _maybe_publish_cloudwatch(args: argparse.Namespace, payload: Dict[str, Any], run_id: str) -> None:
+    if not args.publish_cloudwatch:
+        return
+    publish_eval_summary_metrics(
+        summaries=payload["results"],
+        namespace=args.cloudwatch_namespace,
+        run_id=run_id,
+        dataset=args.dataset,
+        scope=args.scope,
+        aws_region=args.aws_region,
+        aws_profile=args.aws_profile or None,
+    )
+    print(f"PUBLISHED_CLOUDWATCH_NAMESPACE={args.cloudwatch_namespace}")
+
+
+def _emit_run_output(output_path: str, dry_run: bool) -> None:
+    print(f"WROTE_EVAL={output_path}")
+    if dry_run:
+        print("SMOKE_OK")
+
+
 def main() -> int:
     args = parse_args()
     _validate_runtime_args(args)
@@ -400,6 +468,13 @@ def main() -> int:
     runner = _build_runner(args)
     aws_identity = _resolve_aws_identity(runner=runner, dry_run=args.dry_run)
     judge = BedrockJudge(model_id=args.judge_model_id, region=args.judge_region) if args.enable_judge else None
+    evaluation = EvaluationConfig(
+        dry_run=args.dry_run,
+        scope=args.scope,
+        iterations=args.iterations,
+        runner=runner,
+        judge=judge,
+    )
 
     payload = {
         "run_id": run_id,
@@ -420,38 +495,19 @@ def main() -> int:
             evaluate_flow(
                 flow=flow,
                 cases=dataset,
-                dry_run=args.dry_run,
-                iterations=args.iterations,
-                scope=args.scope,
-                runner=runner,
-                judge=judge,
+                config=evaluation,
             )
             for flow in flows
         ],
     }
 
-    if args.flow == "both":
-        payload["comparison"] = _build_comparison_payload(payload["results"])
+    _maybe_add_comparison(payload=payload, selected_flow=args.flow)
 
     default_output = f"reports/runs/{run_id}/eval/eval-{args.flow}-{args.scope}.json"
     output_path = args.output or default_output
     _write_eval_payload(payload=payload, output_path=output_path)
-
-    if args.publish_cloudwatch:
-        publish_eval_summary_metrics(
-            summaries=payload["results"],
-            namespace=args.cloudwatch_namespace,
-            run_id=run_id,
-            dataset=args.dataset,
-            scope=args.scope,
-            aws_region=args.aws_region,
-            aws_profile=args.aws_profile or None,
-        )
-        print(f"PUBLISHED_CLOUDWATCH_NAMESPACE={args.cloudwatch_namespace}")
-
-    print(f"WROTE_EVAL={output_path}")
-    if args.dry_run:
-        print("SMOKE_OK")
+    _maybe_publish_cloudwatch(args=args, payload=payload, run_id=run_id)
+    _emit_run_output(output_path=output_path, dry_run=args.dry_run)
     return 0
 
 
