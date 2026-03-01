@@ -22,6 +22,11 @@ from evals.metrics import (
     build_overall_reflection,
     lexical_cosine_similarity,
 )
+from runtime.sop_agent.domain.tooling import (
+    canonical_tool_operation as _domain_canonical_tool_operation,
+    issue_payload_complete_for_tool as _domain_issue_payload_complete_for_tool,
+    strip_target_prefix as _domain_strip_target_prefix,
+)
 
 REQUIRED_CASE_KEYS = {
     "case_id",
@@ -51,17 +56,6 @@ EXPECTED_TOOLS_BY_FLOW = {
         "jira_get_issue_risk_flags",
     },
 }
-
-TOOL_COMPLETENESS_FIELDS_BY_OPERATION = {
-    "get_issue_by_key": ["key", "summary", "status"],
-    "get_issue_status_snapshot": ["key", "status", "updated"],
-    "get_issue_priority_context": ["key", "priority"],
-    "get_issue_labels": ["key", "labels"],
-    "get_issue_project_key": ["key", "project_key"],
-    "get_issue_update_timestamp": ["key", "updated"],
-    "get_issue_risk_flags": ["key"],
-}
-
 
 @dataclass(frozen=True)
 class CaseRunContext:
@@ -190,39 +184,15 @@ def load_dataset(path: str) -> List[Dict[str, Any]]:
 
 
 def _strip_gateway_tool_prefix(tool_name: str) -> str:
-    if "__" not in tool_name:
-        return tool_name
-    return re.split(r"__+", tool_name, maxsplit=1)[1]
+    return _domain_strip_target_prefix(tool_name)
 
 
 def _canonical_tool_operation(tool_name: str) -> str:
-    name = _strip_gateway_tool_prefix(tool_name).strip()
-    if name.startswith("jira_api_"):
-        return name[len("jira_api_") :]
-    if name.startswith("jira_"):
-        return name[len("jira_") :]
-    return name
+    return _domain_canonical_tool_operation(tool_name)
 
 
 def _issue_payload_complete_for_tool(tool_result: Dict[str, Any], tool_name: str) -> bool:
-    if not isinstance(tool_result, dict):
-        return False
-
-    operation = _canonical_tool_operation(tool_name)
-    required_fields = TOOL_COMPLETENESS_FIELDS_BY_OPERATION.get(operation, ["key"])
-    for field in required_fields:
-        value = tool_result.get(field)
-        if field == "labels":
-            if not isinstance(value, list):
-                return False
-            continue
-
-        text = str(value).strip()
-        if not text:
-            return False
-        if field == "status" and text.lower() in {"unknown", "none"}:
-            return False
-    return True
+    return _domain_issue_payload_complete_for_tool(tool_result=tool_result, tool_name=tool_name)
 
 
 def expected_tool_for_flow(case: Dict[str, Any], flow: str) -> str:

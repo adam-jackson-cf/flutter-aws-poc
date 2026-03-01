@@ -51,6 +51,14 @@ run_lizard_complexity_check() {
   python3 -m lizard -C "$COMPLEXITY_MAX" aws/lambda evals runtime scripts infra/bin infra/lib
 }
 
+run_semantic_contract_ownership_check() {
+  python3 scripts/check-semantic-contract-ownership.py
+}
+
+run_architecture_boundary_check() {
+  python3 scripts/check-architecture-boundaries.py
+}
+
 build_duplication_artifact_root() {
   local ts
   ts="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -154,6 +162,10 @@ fi
 run_step "Python complexity lint (ruff <= ${COMPLEXITY_MAX})" run_ruff_complexity_check
 
 run_step "Cross-runtime complexity lint (lizard <= ${COMPLEXITY_MAX})" run_lizard_complexity_check
+
+run_step "Semantic contract ownership guard" run_semantic_contract_ownership_check
+
+run_step "Architecture boundary guard" run_architecture_boundary_check
 
 if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; then
   run_step "CDK synth (infra)" npm --prefix infra run cdk:synth
