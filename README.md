@@ -90,6 +90,11 @@ Evaluations:
 - Live + CloudWatch: `python evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 10 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --publish-cloudwatch`
 - Live + judge: append `--enable-judge`
 
+Quality gates:
+- Default (coverage + lint + synth): `bash scripts/run-ci-quality-gates.sh`
+- Include mutation gate locally: `RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
+- Tune mutation threshold: `MUTATION_SCORE_TARGET=80 RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
+
 Dashboard:
 - Create/update dashboard for a run: `./scripts/create-cloudwatch-dashboard.sh --run-id 20260227T220000Z --region "$AWS_REGION"`
 
