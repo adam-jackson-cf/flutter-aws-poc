@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import json
 import re
 import sys
@@ -22,6 +23,15 @@ def _import_lambda_module(module_name: str) -> Any:
 def _load_contract() -> dict[str, Any]:
     contract_path = Path(__file__).resolve().parents[1] / "contracts" / "jira_tools.contract.json"
     return json.loads(contract_path.read_text(encoding="utf-8"))
+
+
+def _load_contract_generator() -> Any:
+    generator_path = Path(__file__).resolve().parents[1] / "scripts" / "generate_tool_contract_artifacts.py"
+    spec = importlib.util.spec_from_file_location("generate_tool_contract_artifacts", generator_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.mark.parametrize(
@@ -90,3 +100,21 @@ def test_cdk_tool_name_snapshot() -> None:
             names.append(match.group(1))
 
     assert names == [tool["name"] for tool in contract["gateway_tools"]]
+
+
+def test_generated_artifacts_lockstep_with_contract_source() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    contract = _load_contract()
+    generator = _load_contract_generator()
+
+    expected_runtime = "\n".join(generator._runtime_lines(contract))
+    expected_lambda = "\n".join(generator._lambda_lines(contract))
+    expected_infra = "\n".join(generator._infra_lines(contract))
+
+    runtime_contract = repo_root / "runtime" / "sop_agent" / "domain" / "contracts.py"
+    lambda_contract = repo_root / "aws" / "lambda" / "contract_values.py"
+    infra_contract = repo_root / "infra" / "lib" / "generated" / "jira-tool-contract.ts"
+
+    assert runtime_contract.read_text(encoding="utf-8") == expected_runtime
+    assert lambda_contract.read_text(encoding="utf-8") == expected_lambda
+    assert infra_contract.read_text(encoding="utf-8") == expected_infra
