@@ -1,26 +1,21 @@
 import re
 from typing import Any, Dict, List
 
+from contract_values import INTENT_KEYWORDS, RISK_HINT_TOKENS
+
 ISSUE_KEY_PATTERN = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
 
 
 def classify_intent(request_text: str) -> str:
     text = request_text.lower()
-    if any(token in text for token in ["bug", "incident", "error", "outage", "failure", "broken"]):
-        return "bug_triage"
-    if any(token in text for token in ["feature", "suggestion", "roadmap", "improvement"]):
-        return "feature_request"
-    if any(token in text for token in ["status", "progress", "update", "latest"]):
-        return "status_update"
+    for intent in ("bug_triage", "feature_request", "status_update"):
+        if any(token in text for token in INTENT_KEYWORDS[intent]):
+            return intent
     return "general_triage"
 
 
 def extract_risk_hints(request_text: str) -> List[str]:
-    return [
-        token
-        for token in ["accessibility", "security", "compliance", "customer", "incident", "escalation"]
-        if token in request_text.lower()
-    ]
+    return [token for token in RISK_HINT_TOKENS if token in request_text.lower()]
 
 
 def extract_intake(request_text: str) -> Dict[str, Any]:

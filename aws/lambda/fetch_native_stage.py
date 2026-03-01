@@ -2,49 +2,20 @@ import os
 import time
 from typing import Any, Dict, List
 
+from contract_values import NATIVE_TOOL_DESCRIPTIONS, NATIVE_TOOL_SCOPE_BY_INTENT
 from jira_client import fetch_jira_issue
 from runtime_config import selected_model_id, selected_region
 from stage_metrics import append_stage_metric
 from tool_selection import ToolSelectionRequest, ToolSelectorConfig, select_tool_with_model
 from tooling_domain import build_failure_issue, issue_payload_complete_for_tool
 
-NATIVE_TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
-    "bug_triage": [
-        "jira_api_get_issue_by_key",
-        "jira_api_get_issue_priority_context",
-        "jira_api_get_issue_status_snapshot",
-    ],
-    "status_update": [
-        "jira_api_get_issue_by_key",
-        "jira_api_get_issue_status_snapshot",
-        "jira_api_get_issue_update_timestamp",
-    ],
-    "feature_request": [
-        "jira_api_get_issue_by_key",
-        "jira_api_get_issue_labels",
-        "jira_api_get_issue_project_key",
-    ],
-    "general_triage": [
-        "jira_api_get_issue_by_key",
-        "jira_api_get_issue_status_snapshot",
-    ],
-}
-
 
 def _native_tool_catalog(intent: str) -> List[Dict[str, Any]]:
     tool_names = NATIVE_TOOL_SCOPE_BY_INTENT.get(intent, NATIVE_TOOL_SCOPE_BY_INTENT["general_triage"])
-    descriptions = {
-        "jira_api_get_issue_by_key": "Fetch complete issue payload from Jira REST API by issue key.",
-        "jira_api_get_issue_status_snapshot": "Fetch status and update timestamp for an issue key.",
-        "jira_api_get_issue_priority_context": "Fetch issue priority and derived risk band from Jira.",
-        "jira_api_get_issue_labels": "Fetch issue labels for classification context.",
-        "jira_api_get_issue_project_key": "Fetch project key derived from issue key.",
-        "jira_api_get_issue_update_timestamp": "Fetch issue update timestamp for freshness checks.",
-    }
     return [
         {
             "name": name,
-            "description": descriptions[name],
+            "description": NATIVE_TOOL_DESCRIPTIONS[name],
             "inputSchema": {"required": ["issue_key"]},
         }
         for name in tool_names

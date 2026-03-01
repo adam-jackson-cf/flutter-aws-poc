@@ -1,0 +1,233 @@
+{
+  "version": "1.0.0",
+  "intent_keywords": {
+    "bug_triage": ["bug", "incident", "error", "outage", "failure", "broken"],
+    "feature_request": ["feature", "suggestion", "roadmap", "improvement"],
+    "status_update": ["status", "progress", "update", "latest"]
+  },
+  "risk_hint_tokens": [
+    "accessibility",
+    "security",
+    "compliance",
+    "customer",
+    "incident",
+    "escalation"
+  ],
+  "mcp_expected_tool": "jira_get_issue_by_key",
+  "native_expected_tool": "jira_api_get_issue_by_key",
+  "mcp_tool_scope_by_intent": {
+    "bug_triage": ["jira_get_issue_by_key", "jira_get_issue_priority_context", "jira_get_issue_risk_flags"],
+    "status_update": ["jira_get_issue_by_key", "jira_get_issue_status_snapshot", "jira_get_issue_update_timestamp"],
+    "feature_request": ["jira_get_issue_by_key", "jira_get_issue_labels", "jira_get_issue_project_key"],
+    "general_triage": ["jira_get_issue_by_key", "jira_get_issue_status_snapshot"]
+  },
+  "native_tool_scope_by_intent": {
+    "bug_triage": ["jira_api_get_issue_by_key", "jira_api_get_issue_priority_context", "jira_api_get_issue_status_snapshot"],
+    "status_update": ["jira_api_get_issue_by_key", "jira_api_get_issue_status_snapshot", "jira_api_get_issue_update_timestamp"],
+    "feature_request": ["jira_api_get_issue_by_key", "jira_api_get_issue_labels", "jira_api_get_issue_project_key"],
+    "general_triage": ["jira_api_get_issue_by_key", "jira_api_get_issue_status_snapshot"]
+  },
+  "native_tool_descriptions": {
+    "jira_api_get_issue_by_key": "Fetch complete issue payload from Jira REST API by issue key.",
+    "jira_api_get_issue_status_snapshot": "Fetch status and update timestamp for an issue key.",
+    "jira_api_get_issue_priority_context": "Fetch issue priority and derived risk band from Jira.",
+    "jira_api_get_issue_labels": "Fetch issue labels for classification context.",
+    "jira_api_get_issue_project_key": "Fetch project key derived from issue key.",
+    "jira_api_get_issue_update_timestamp": "Fetch issue update timestamp for freshness checks."
+  },
+  "tool_completeness_fields_by_operation": {
+    "get_issue_by_key": ["key", "summary", "status"],
+    "get_issue_status_snapshot": ["key", "status", "updated"],
+    "get_issue_priority_context": ["key", "priority"],
+    "get_issue_labels": ["key", "labels"],
+    "get_issue_project_key": ["key", "project_key"],
+    "get_issue_update_timestamp": ["key", "updated"],
+    "get_issue_risk_flags": ["key"]
+  },
+  "gateway_tools": [
+    {
+      "name": "jira_get_issue_by_key",
+      "description": "Fetch a public Jira issue by key, including summary, status, priority and labels.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "summary": {"type": "string"},
+          "status": {"type": "string"}
+        },
+        "required": ["key", "summary", "status"]
+      }
+    },
+    {
+      "name": "jira_get_issue_status_snapshot",
+      "description": "Get current status and update timestamp for an issue.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "status": {"type": "string"},
+          "updated": {"type": "string"}
+        },
+        "required": ["key", "status", "updated"]
+      }
+    },
+    {
+      "name": "jira_get_issue_priority_context",
+      "description": "Get issue priority and derived risk band.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "priority": {"type": "string"},
+          "risk_band": {"type": "string"}
+        },
+        "required": ["key", "priority", "risk_band"]
+      }
+    },
+    {
+      "name": "jira_get_issue_labels",
+      "description": "Get labels attached to an issue.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "labels": {"type": "array_string"}
+        },
+        "required": ["key", "labels"]
+      }
+    },
+    {
+      "name": "jira_get_issue_project_key",
+      "description": "Get the Jira project key extracted from an issue key.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "project_key": {"type": "string"}
+        },
+        "required": ["key", "project_key"]
+      }
+    },
+    {
+      "name": "jira_get_issue_update_timestamp",
+      "description": "Get the most recent update timestamp for an issue.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "updated": {"type": "string"}
+        },
+        "required": ["key", "updated"]
+      }
+    },
+    {
+      "name": "jira_get_issue_risk_flags",
+      "description": "Get risk-related flags derived from issue labels.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "risk_flags": {"type": "array_string"}
+        },
+        "required": ["key", "risk_flags"]
+      }
+    },
+    {
+      "name": "jira_get_customer_sentiment",
+      "description": "Get a sentiment signal for customer communication readiness.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "sentiment": {"type": "string"},
+          "status": {"type": "string"}
+        },
+        "required": ["key", "sentiment", "status"]
+      }
+    },
+    {
+      "name": "jira_get_issue_customer_message_seed",
+      "description": "Get a short message seed based on the issue summary.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          }
+        },
+        "required": ["issue_key"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "seed_message": {"type": "string"}
+        },
+        "required": ["key", "seed_message"]
+      }
+    }
+  ]
+}

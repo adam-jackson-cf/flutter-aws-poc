@@ -1,36 +1,6 @@
 from typing import Any, Dict, List
 
-MCP_TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
-    "bug_triage": [
-        "jira_get_issue_by_key",
-        "jira_get_issue_priority_context",
-        "jira_get_issue_risk_flags",
-    ],
-    "status_update": [
-        "jira_get_issue_by_key",
-        "jira_get_issue_status_snapshot",
-        "jira_get_issue_update_timestamp",
-    ],
-    "feature_request": [
-        "jira_get_issue_by_key",
-        "jira_get_issue_labels",
-        "jira_get_issue_project_key",
-    ],
-    "general_triage": [
-        "jira_get_issue_by_key",
-        "jira_get_issue_status_snapshot",
-    ],
-}
-
-TOOL_COMPLETENESS_FIELDS_BY_OPERATION: Dict[str, List[str]] = {
-    "get_issue_by_key": ["key", "summary", "status"],
-    "get_issue_status_snapshot": ["key", "status", "updated"],
-    "get_issue_priority_context": ["key", "priority"],
-    "get_issue_labels": ["key", "labels"],
-    "get_issue_project_key": ["key", "project_key"],
-    "get_issue_update_timestamp": ["key", "updated"],
-    "get_issue_risk_flags": ["key"],
-}
+from contract_values import MCP_TOOL_SCOPE_BY_INTENT, TOOL_COMPLETENESS_FIELDS_BY_OPERATION
 
 
 def strip_gateway_tool_prefix(tool_name: str) -> str:

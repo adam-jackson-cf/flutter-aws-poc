@@ -16,6 +16,70 @@ import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as sfnTasks from "aws-cdk-lib/aws-stepfunctions-tasks";
 import * as agentcore from "@aws-cdk/aws-bedrock-agentcore-alpha";
+import {
+  ContractProperty,
+  ContractSchema,
+  GATEWAY_TOOLS,
+} from "./generated/jira-tool-contract";
+
+type InlineToolSchema = Parameters<typeof agentcore.ToolSchema.fromInline>[0];
+
+type AgentCoreSchemaProperty =
+  | {
+      type: agentcore.SchemaDefinitionType.STRING;
+      description?: string;
+    }
+  | {
+      type: agentcore.SchemaDefinitionType.ARRAY;
+      description?: string;
+      items: {
+        type: agentcore.SchemaDefinitionType.STRING;
+      };
+    };
+
+type AgentCoreSchema = {
+  type: agentcore.SchemaDefinitionType.OBJECT;
+  properties: Record<string, AgentCoreSchemaProperty>;
+  required: string[];
+};
+
+const toSchemaProperty = (
+  property: ContractProperty,
+): AgentCoreSchemaProperty => {
+  const base = property.description
+    ? { description: property.description }
+    : {};
+  if (property.type === "array_string") {
+    return {
+      ...base,
+      type: agentcore.SchemaDefinitionType.ARRAY,
+      items: { type: agentcore.SchemaDefinitionType.STRING },
+    };
+  }
+  return {
+    ...base,
+    type: agentcore.SchemaDefinitionType.STRING,
+  };
+};
+
+const toAgentCoreSchema = (schema: ContractSchema): AgentCoreSchema => ({
+  type: agentcore.SchemaDefinitionType.OBJECT,
+  properties: Object.fromEntries(
+    Object.entries(schema.properties).map(([name, property]) => [
+      name,
+      toSchemaProperty(property),
+    ]),
+  ),
+  required: [...schema.required],
+});
+
+const buildGatewayToolSchema = (): InlineToolSchema =>
+  GATEWAY_TOOLS.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: toAgentCoreSchema(tool.input_schema),
+    outputSchema: toAgentCoreSchema(tool.output_schema),
+  }));
 
 export class FlutterAgentCorePocStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -142,218 +206,7 @@ export class FlutterAgentCorePocStack extends Stack {
       gatewayTargetName: "jira-issue-tools",
       description: "Anonymous Jira issue retrieval target for evaluation flow",
       lambdaFunction: jiraToolLambda,
-      toolSchema: agentcore.ToolSchema.fromInline([
-        {
-          name: "jira_get_issue_by_key",
-          description:
-            "Fetch a public Jira issue by key, including summary, status, priority and labels.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              summary: { type: agentcore.SchemaDefinitionType.STRING },
-              status: { type: agentcore.SchemaDefinitionType.STRING },
-            },
-            required: ["key", "summary", "status"],
-          },
-        },
-        {
-          name: "jira_get_issue_status_snapshot",
-          description: "Get current status and update timestamp for an issue.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              status: { type: agentcore.SchemaDefinitionType.STRING },
-              updated: { type: agentcore.SchemaDefinitionType.STRING },
-            },
-            required: ["key", "status", "updated"],
-          },
-        },
-        {
-          name: "jira_get_issue_priority_context",
-          description: "Get issue priority and derived risk band.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              priority: { type: agentcore.SchemaDefinitionType.STRING },
-              risk_band: { type: agentcore.SchemaDefinitionType.STRING },
-            },
-            required: ["key", "priority", "risk_band"],
-          },
-        },
-        {
-          name: "jira_get_issue_labels",
-          description: "Get labels attached to an issue.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              labels: {
-                type: agentcore.SchemaDefinitionType.ARRAY,
-                items: { type: agentcore.SchemaDefinitionType.STRING },
-              },
-            },
-            required: ["key", "labels"],
-          },
-        },
-        {
-          name: "jira_get_issue_project_key",
-          description: "Get the Jira project key extracted from an issue key.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              project_key: { type: agentcore.SchemaDefinitionType.STRING },
-            },
-            required: ["key", "project_key"],
-          },
-        },
-        {
-          name: "jira_get_issue_update_timestamp",
-          description: "Get the most recent update timestamp for an issue.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              updated: { type: agentcore.SchemaDefinitionType.STRING },
-            },
-            required: ["key", "updated"],
-          },
-        },
-        {
-          name: "jira_get_issue_risk_flags",
-          description: "Get risk-related flags derived from issue labels.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              risk_flags: {
-                type: agentcore.SchemaDefinitionType.ARRAY,
-                items: { type: agentcore.SchemaDefinitionType.STRING },
-              },
-            },
-            required: ["key", "risk_flags"],
-          },
-        },
-        {
-          name: "jira_get_customer_sentiment",
-          description:
-            "Get a sentiment signal for customer communication readiness.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              sentiment: { type: agentcore.SchemaDefinitionType.STRING },
-              status: { type: agentcore.SchemaDefinitionType.STRING },
-            },
-            required: ["key", "sentiment", "status"],
-          },
-        },
-        {
-          name: "jira_get_issue_customer_message_seed",
-          description: "Get a short message seed based on the issue summary.",
-          inputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              issue_key: {
-                type: agentcore.SchemaDefinitionType.STRING,
-                description: "Issue key such as JRASERVER-79286",
-              },
-            },
-            required: ["issue_key"],
-          },
-          outputSchema: {
-            type: agentcore.SchemaDefinitionType.OBJECT,
-            properties: {
-              key: { type: agentcore.SchemaDefinitionType.STRING },
-              seed_message: { type: agentcore.SchemaDefinitionType.STRING },
-            },
-            required: ["key", "seed_message"],
-          },
-        },
-      ]),
+      toolSchema: agentcore.ToolSchema.fromInline(buildGatewayToolSchema()),
     });
 
     gateway.grantInvoke(mcpLambda);

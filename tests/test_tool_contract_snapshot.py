@@ -1,10 +1,13 @@
 import importlib
+import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from runtime.sop_agent.domain import contracts as runtime_contracts
 from runtime.sop_agent.stages import intake_stage
 from runtime.sop_agent.tools import jira_mcp_flow, strands_native_flow
 
@@ -14,6 +17,11 @@ def _import_lambda_module(module_name: str) -> Any:
     if str(lambda_path) not in sys.path:
         sys.path.insert(0, str(lambda_path))
     return importlib.import_module(module_name)
+
+
+def _load_contract() -> dict[str, Any]:
+    contract_path = Path(__file__).resolve().parents[1] / "contracts" / "jira_tools.contract.json"
+    return json.loads(contract_path.read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize(
@@ -42,87 +50,43 @@ def test_intake_risk_hint_parity() -> None:
 def test_scope_maps_snapshot() -> None:
     tooling_domain = _import_lambda_module("tooling_domain")
     fetch_native_stage = _import_lambda_module("fetch_native_stage")
+    contract = _load_contract()
 
-    expected_mcp_scope = {
-        "bug_triage": [
-            "jira_get_issue_by_key",
-            "jira_get_issue_priority_context",
-            "jira_get_issue_risk_flags",
-        ],
-        "status_update": [
-            "jira_get_issue_by_key",
-            "jira_get_issue_status_snapshot",
-            "jira_get_issue_update_timestamp",
-        ],
-        "feature_request": [
-            "jira_get_issue_by_key",
-            "jira_get_issue_labels",
-            "jira_get_issue_project_key",
-        ],
-        "general_triage": [
-            "jira_get_issue_by_key",
-            "jira_get_issue_status_snapshot",
-        ],
-    }
+    expected_mcp_scope = contract["mcp_tool_scope_by_intent"]
     assert jira_mcp_flow.TOOL_SCOPE_BY_INTENT == expected_mcp_scope
     assert tooling_domain.MCP_TOOL_SCOPE_BY_INTENT == expected_mcp_scope
+    assert runtime_contracts.MCP_TOOL_SCOPE_BY_INTENT == expected_mcp_scope
 
-    expected_native_scope = {
-        "bug_triage": [
-            "jira_api_get_issue_by_key",
-            "jira_api_get_issue_priority_context",
-            "jira_api_get_issue_status_snapshot",
-        ],
-        "status_update": [
-            "jira_api_get_issue_by_key",
-            "jira_api_get_issue_status_snapshot",
-            "jira_api_get_issue_update_timestamp",
-        ],
-        "feature_request": [
-            "jira_api_get_issue_by_key",
-            "jira_api_get_issue_labels",
-            "jira_api_get_issue_project_key",
-        ],
-        "general_triage": [
-            "jira_api_get_issue_by_key",
-            "jira_api_get_issue_status_snapshot",
-        ],
-    }
+    expected_native_scope = contract["native_tool_scope_by_intent"]
     assert strands_native_flow.TOOL_SCOPE_BY_INTENT == expected_native_scope
     assert fetch_native_stage.NATIVE_TOOL_SCOPE_BY_INTENT == expected_native_scope
+    assert runtime_contracts.NATIVE_TOOL_SCOPE_BY_INTENT == expected_native_scope
 
 
 def test_completeness_mapping_snapshot() -> None:
     tooling_domain = _import_lambda_module("tooling_domain")
-    expected = {
-        "get_issue_by_key": ["key", "summary", "status"],
-        "get_issue_status_snapshot": ["key", "status", "updated"],
-        "get_issue_priority_context": ["key", "priority"],
-        "get_issue_labels": ["key", "labels"],
-        "get_issue_project_key": ["key", "project_key"],
-        "get_issue_update_timestamp": ["key", "updated"],
-        "get_issue_risk_flags": ["key"],
-    }
+    contract = _load_contract()
+    expected = contract["tool_completeness_fields_by_operation"]
     assert tooling_domain.TOOL_COMPLETENESS_FIELDS_BY_OPERATION == expected
+    assert runtime_contracts.TOOL_COMPLETENESS_FIELDS_BY_OPERATION == expected
 
 
 def test_cdk_tool_name_snapshot() -> None:
+    contract = _load_contract()
     infra_stack = Path(__file__).resolve().parents[1] / "infra" / "lib" / "flutter-agentcore-poc-stack.ts"
-    text = infra_stack.read_text(encoding="utf-8")
-    names = []
-    for line in text.splitlines():
-        line = line.strip()
-        if line.startswith('name: "jira_'):
-            names.append(line.split('"')[1])
+    generated_contract = Path(__file__).resolve().parents[1] / "infra" / "lib" / "generated" / "jira-tool-contract.ts"
 
-    assert names == [
-        "jira_get_issue_by_key",
-        "jira_get_issue_status_snapshot",
-        "jira_get_issue_priority_context",
-        "jira_get_issue_labels",
-        "jira_get_issue_project_key",
-        "jira_get_issue_update_timestamp",
-        "jira_get_issue_risk_flags",
-        "jira_get_customer_sentiment",
-        "jira_get_issue_customer_message_seed",
-    ]
+    stack_text = infra_stack.read_text(encoding="utf-8")
+    assert 'from "./generated/jira-tool-contract"' in stack_text
+    assert "toolSchema: agentcore.ToolSchema.fromInline(buildGatewayToolSchema())" in stack_text
+    assert 'name: "jira_' not in stack_text
+
+    generated_text = generated_contract.read_text(encoding="utf-8")
+    names = []
+    for line in generated_text.splitlines():
+        line = line.strip()
+        match = re.match(r'^"name":\s*"(jira_[^"]+)",?$', line)
+        if match:
+            names.append(match.group(1))
+
+    assert names == [tool["name"] for tool in contract["gateway_tools"]]
