@@ -1,36 +1,38 @@
-# Executive Brief
+# Executive Brief (Post-Deploy)
 
-The refactored PoC remains valuable, but its strongest supported claim is narrower than "full architecture validation".
+The PoC has improved evidence integrity, but current reliability outcomes are still below production expectations.
 
-## What this PoC can credibly claim today
+## What this PoC can credibly claim now
 
-- It demonstrates real MCP Gateway versus native-path behavior on the same SOP dataset and model context.
-- It exercises AgentCore alpha CDK resources in a live deployment (`Runtime`, `Gateway`, `StateMachine`).
-- It now has stronger source-level quality controls (contract ownership, architecture boundaries, decomposition) than earlier versions.
+- It runs a real AgentCore MCP gateway path and a native path on the same evaluation harness.
+- It deploys and updates AgentCore alpha CDK resources successfully in `eu-west-1`.
+- Earlier contract/drift issues have been remediated:
+  - nightly scheduler now includes `expected_tool`
+  - eval runner now fails fast on artifact schema drift
+  - MCP delimiter normalization regression fixed (`__` and `___`)
 
-## What it should not claim yet
+## What remains true
 
-- Full conformity with Flutter’s target architecture semantics (identity context propagation, risk-tier workflow contract, fail-closed immutable audit behavior).
-- Protocol-only causality for all observed MCP-path failure outcomes.
+- Full Flutter architecture conformance is still not validated (workflow-contract semantics, HITL, immutable audit, end-to-end identity/ABAC observability).
+- Protocol-only causality remains unproven without ablation.
 
-## Immediate blockers to decision-grade evidence
+## Current blocker profile
 
-- Scheduled input contract bug (`expected_tool` missing in nightly rule).
-- Deployed/eval schema drift for native selection fields.
-- MCP tool-name normalization edge causing misclassification (`___` prefix form).
+- Reliability is low in both routes on post-deploy runs.
+  - Native tool failure remains high.
+  - MCP tool failure remains higher and includes catalog/availability-related failure classes.
 
 ## Bid recommendation
 
-Propose this as a two-phase delivery:
+Propose a two-phase follow-on:
 
-1. **Validation hardening tranche (short):** remove confounders and regenerate statistically stable comparative evidence.
-2. **Architecture conformance tranche (follow-on):** add R2/R3 workflow contract, HITL/compensation semantics, identity/audit observability proofs.
+1. **Reliability optimization + ablation (short tranche):**
+   - isolate selector vs transport effects
+   - reduce wrong-tool failures on both paths
+   - produce confidence-bounded comparative metrics
+2. **Architecture-conformance tranche:**
+   - implement and evidence R2/R3 workflow contract semantics (compensation/HITL)
+   - add immutable audit posture and identity-context observability proofs
 
-This framing is technically accurate, shows credible progress, and positions follow-on work as risk reduction rather than rework.
-
-## Commercially useful message
-
-- The team has already improved engineering quality and can move quickly.
-- Remaining work is now primarily about architecture-complete evidence, not foundational cleanup.
-- Funding the follow-on tranche directly increases confidence in production design decisions and reduces downstream re-architecture risk.
+This positions current work as a solid measurement foundation while keeping architecture claims technically accurate.
 

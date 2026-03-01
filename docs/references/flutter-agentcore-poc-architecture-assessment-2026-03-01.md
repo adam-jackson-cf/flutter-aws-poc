@@ -1,5 +1,11 @@
 # Flutter AgentCore PoC Assessment (2026-03-01)
 
+> Historical snapshot retained for traceability.  
+> Current, post-deploy assessment is in:
+> - `docs/references/flutter-agentcore-poc-architecture-assessment-2026-03-01-rebased.md`
+> - `docs/references/bid-companion-2026-03-01/`
+> - Historical `reports/*` references in this file are pre-cleanup paths and may no longer exist.
+
 ## Scope
 
 Assessed:

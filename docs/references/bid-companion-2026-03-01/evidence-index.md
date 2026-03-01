@@ -1,4 +1,4 @@
-# Evidence Index
+# Evidence Index (Post-Deploy)
 
 ## Refactored source anchors
 
@@ -16,30 +16,28 @@
 - `docs/flutter-uki-ai-platform-arch/view-request-trace-v10.html`
 - `docs/flutter-uki-ai-platform-arch/component-design-v2.html`
 
-## Fresh run artifacts
+## Current run artifacts used for conclusions
 
-- Route run: `reports/runs/rebased-live-route-20260301T193550Z/eval/eval-both-route.json`
-- Full run: `reports/runs/rebased-live-full-20260301T193821Z/eval/eval-both-full.json`
-- Post-deploy route run: `reports/runs/postdeploy-route-20260301T200250Z/eval/eval-both-route.json`
-- Post-deploy full run: `reports/runs/postdeploy-full-20260301T200729Z/eval/eval-both-full.json`
+- `reports/runs/postdeploy-route-20260301T200250Z/eval/eval-both-route.json`
+- `reports/runs/postdeploy-full-20260301T200729Z/eval/eval-both-full.json`
 
-## Post-deploy chart artifacts
+## Chart artifacts
 
 - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison.md`
 - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.json`
 - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.csv`
 
-## Prior artifacts used for stale-delta analysis
+## Historical snapshots retained for traceability
 
-- `reports/eval-comparison-live-route-100.json`
-- `reports/eval-comparison-live.json`
-- `reports/runs/20260227T220500Z/eval/eval-both-route.json`
+- `docs/references/flutter-agentcore-poc-architecture-assessment-2026-03-01.md`
+- `docs/references/flutter-agentcore-poc-architecture-assessment-2026-03-01-rebased.md`
 
-## Live AWS read probes executed
+## Live AWS probe classes executed
 
 - STS identity check (`aws sts get-caller-identity`) in `eu-west-1`
 - Step Functions state machine status/definition inspection
 - EventBridge nightly rule target inspection
 - AgentCore runtime and gateway status/details inspection
-- S3 object lock configuration check on artifact bucket
+- S3 Object Lock configuration check on artifact bucket
 - Lambda function metadata inspection (LastModified/CodeSha256)
+

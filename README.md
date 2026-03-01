@@ -75,9 +75,16 @@ Infrastructure deployment:
 ```
 
 Notes:
-- live evals require `MCP_GATEWAY_URL` and `STATE_MACHINE_ARN`
+- live evals through Step Functions require `STATE_MACHINE_ARN`
+- direct runtime MCP checks require `MCP_GATEWAY_URL`
 - non-dry-run evals perform AWS identity preflight (`sts:GetCallerIdentity`)
 - dataset rows must include `expected_tool.native` and `expected_tool.mcp`
+- runtime execution input must include `expected_tool` for each case (manual or scheduled)
+- eval runner validates artifact schema per flow and fails fast on drift (`artifact_schema_invalid:*`)
+
+Reference reports:
+- bid companion and assessment artifacts live in `docs/references/bid-companion-2026-03-01/`
+- generated eval outputs remain under `reports/runs/<RUN_ID>/...`
 
 ## Commands / Actions
 Bootstrap and infra:
