@@ -39,7 +39,7 @@ class _FakeBody:
 
 class _FakeS3:
     def __init__(self, payload: Dict[str, Any] | None = None) -> None:
-        self.payload = payload or {"ok": True}
+        self.payload = payload or _valid_artifact_payload(flow="native")
 
     def get_object(self, Bucket: str, Key: str) -> Dict[str, Any]:  # noqa: N803
         assert Bucket == "bucket-a"
@@ -73,6 +73,20 @@ class _FakeSession:
 
     def client(self, service_name: str) -> Any:
         return self._clients[service_name]
+
+
+def _valid_artifact_payload(flow: str) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "flow": flow,
+        "intake": {"intent": "status_update", "issue_key": "JRASERVER-1"},
+        "tool_result": {"key": "JRASERVER-1"},
+        "run_metrics": {"tool_failure": False, "business_success": True},
+    }
+    if flow == "native":
+        payload["native_selection"] = {"selected_tool": "jira_api_get_issue_by_key"}
+    elif flow == "mcp":
+        payload["mcp_selection"] = {"selected_tool": "jira_get_issue_by_key"}
+    return payload
 
 
 def _install_boto3_session(monkeypatch: pytest.MonkeyPatch, descriptions: list[Dict[str, Any]], s3_payload: Dict[str, Any] | None = None) -> None:
@@ -128,7 +142,7 @@ def test_runner_run_case_success(monkeypatch: pytest.MonkeyPatch) -> None:
             {"status": "RUNNING"},
             {"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})},
         ],
-        s3_payload={"result": "ok"},
+        s3_payload=_valid_artifact_payload(flow="native"),
     )
     monkeypatch.setattr(aws_pipeline_runner.time, "sleep", lambda *_args: None)
     times = iter([0.0, 0.2, 0.4])
@@ -152,7 +166,7 @@ def test_runner_run_case_success(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert result.execution_arn == "arn:exec:1"
     assert result.artifact_s3_uri == "s3://bucket-a/artifact.json"
-    assert result.payload["result"] == "ok"
+    assert result.payload["run_metrics"]["business_success"] is True
 
 
 def test_runner_run_case_failure_modes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -169,6 +183,63 @@ def test_runner_run_case_failure_modes(monkeypatch: pytest.MonkeyPatch) -> None:
                 expected_tool="tool",
                 dry_run=False,
             )
+        )
+
+
+def test_runner_run_case_fails_on_artifact_schema_drift(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_boto3_session(
+        monkeypatch,
+        descriptions=[
+            {"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})},
+        ],
+        s3_payload={
+            "flow": "native",
+            "intake": {"intent": "status_update", "issue_key": "JRASERVER-1"},
+            "tool_result": {"key": "JRASERVER-1"},
+            "run_metrics": {"tool_failure": False, "business_success": True},
+        },
+    )
+    runner = aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
+    )
+    with pytest.raises(RuntimeError, match="artifact_schema_invalid:native_selection_missing_or_not_object"):
+        runner.run_case(
+            aws_pipeline_runner.PipelineRunRequest(
+                flow="native",
+                request_text="x",
+                case_id="c",
+                expected_tool="tool",
+                dry_run=False,
+            )
+        )
+
+
+def test_artifact_validation_errors_for_payload_shape() -> None:
+    with pytest.raises(RuntimeError, match="artifact_schema_invalid:payload_not_object"):
+        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(payload=[], flow="native")  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="artifact_schema_invalid:native_selection.selected_tool_not_string"):
+        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
+            payload={
+                "flow": "native",
+                "intake": {"intent": "status_update"},
+                "tool_result": {"key": "JRASERVER-1"},
+                "run_metrics": {"tool_failure": False},
+                "native_selection": {"selected_tool": 123},
+            },
+            flow="native",
+        )
+
+    with pytest.raises(RuntimeError, match="artifact_schema_invalid:flow_mismatch:expected=native:actual=mcp"):
+        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
+            payload={
+                "flow": "mcp",
+                "intake": {"intent": "status_update"},
+                "tool_result": {"key": "JRASERVER-1"},
+                "run_metrics": {"tool_failure": False},
+                "native_selection": {"selected_tool": "jira_api_get_issue_by_key"},
+            },
+            flow="native",
         )
 
 

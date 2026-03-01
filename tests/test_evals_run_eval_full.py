@@ -171,6 +171,7 @@ def test_load_dataset_validation(tmp_path: Path) -> None:
 
 def test_tool_operation_and_payload_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     assert run_eval._strip_gateway_tool_prefix("x__jira_get_issue_by_key") == "jira_get_issue_by_key"
+    assert run_eval._strip_gateway_tool_prefix("x___jira_get_issue_by_key") == "jira_get_issue_by_key"
     assert run_eval._canonical_tool_operation("jira_api_get_issue_by_key") == "get_issue_by_key"
     assert run_eval._canonical_tool_operation("jira_get_issue_by_key") == "get_issue_by_key"
     assert run_eval._canonical_tool_operation("plain") == "plain"

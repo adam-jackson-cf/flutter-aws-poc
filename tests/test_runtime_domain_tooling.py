@@ -9,6 +9,7 @@ from runtime.sop_agent.domain.tooling import (
 
 def test_strip_and_canonical_tool_operations() -> None:
     assert strip_target_prefix("x__jira_get_issue_by_key") == "jira_get_issue_by_key"
+    assert strip_target_prefix("x___jira_get_issue_by_key") == "jira_get_issue_by_key"
     assert strip_target_prefix("jira_get_issue_by_key") == "jira_get_issue_by_key"
     assert canonical_tool_operation("jira_api_get_issue_by_key") == "get_issue_by_key"
     assert canonical_tool_operation("jira_get_issue_status_snapshot") == "get_issue_status_snapshot"

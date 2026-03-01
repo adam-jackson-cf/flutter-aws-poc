@@ -105,6 +105,7 @@ class AwsPipelineRunner:
                     raise RuntimeError(f"State machine output missing artifact_s3_uri: {execution_arn}")
 
                 artifact_payload = self._read_artifact(artifact_s3_uri)
+                self._validate_artifact_payload(payload=artifact_payload, flow=request.flow)
                 return PipelineRunResult(
                     execution_arn=execution_arn,
                     payload=artifact_payload,
@@ -126,6 +127,42 @@ class AwsPipelineRunner:
         response = self._s3.get_object(Bucket=bucket, Key=key)
         body = response["Body"].read().decode("utf-8")
         return json.loads(body)
+
+    @staticmethod
+    def _require_dict_field(payload: Dict[str, Any], key: str) -> Dict[str, Any]:
+        value = payload.get(key)
+        if not isinstance(value, dict):
+            raise RuntimeError(f"artifact_schema_invalid:{key}_missing_or_not_object")
+        return value
+
+    @staticmethod
+    def _selection_key_for_flow(flow: str) -> Optional[str]:
+        return {"native": "native_selection", "mcp": "mcp_selection"}.get(flow)
+
+    @staticmethod
+    def _validate_selection_payload(payload: Dict[str, Any], selection_key: str) -> None:
+        selection_payload = AwsPipelineRunner._require_dict_field(payload, selection_key)
+        selected_tool = selection_payload.get("selected_tool", "")
+        if not isinstance(selected_tool, str):
+            raise RuntimeError(f"artifact_schema_invalid:{selection_key}.selected_tool_not_string")
+
+    @staticmethod
+    def _validate_artifact_payload(payload: Dict[str, Any], flow: str) -> None:
+        if not isinstance(payload, dict):
+            raise RuntimeError("artifact_schema_invalid:payload_not_object")
+
+        for key in ("intake", "tool_result", "run_metrics"):
+            AwsPipelineRunner._require_dict_field(payload, key)
+
+        selection_key = AwsPipelineRunner._selection_key_for_flow(flow)
+        if selection_key is not None:
+            AwsPipelineRunner._validate_selection_payload(payload, selection_key)
+
+        payload_flow = str(payload.get("flow", "")).strip()
+        if payload_flow and payload_flow != flow:
+            raise RuntimeError(
+                f"artifact_schema_invalid:flow_mismatch:expected={flow}:actual={payload_flow}"
+            )
 
     @staticmethod
     def _build_execution_name(flow: str, case_id: str) -> str:

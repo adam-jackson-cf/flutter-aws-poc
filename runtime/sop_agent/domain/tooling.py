@@ -4,6 +4,8 @@ from .contracts import TOOL_COMPLETENESS_FIELDS_BY_OPERATION
 
 
 def strip_target_prefix(tool_name: str) -> str:
+    if "___" in tool_name:
+        return tool_name.split("___", 1)[1]
     if "__" not in tool_name:
         return tool_name
     return tool_name.split("__", 1)[1]

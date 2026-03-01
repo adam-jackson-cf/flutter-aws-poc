@@ -156,6 +156,7 @@ def test_tooling_and_selection_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     tooling_domain = _import_lambda_module("tooling_domain")
 
     assert tooling_domain.strip_gateway_tool_prefix("x__jira_get_issue_by_key") == "jira_get_issue_by_key"
+    assert tooling_domain.strip_gateway_tool_prefix("x___jira_get_issue_by_key") == "jira_get_issue_by_key"
     assert tooling_domain.canonical_tool_operation("jira_api_get_issue_by_key") == "get_issue_by_key"
     assert tooling_domain.canonical_tool_operation("jira_get_issue_by_key") == "get_issue_by_key"
     assert tooling_domain.canonical_tool_operation("plain") == "plain"

@@ -319,6 +319,7 @@ export class FlutterAgentCorePocStack extends Stack {
             request_text:
               "Please triage JRASERVER-79286 and draft a customer-safe response update.",
             case_id: "scheduled_jira_case",
+            expected_tool: "jira_get_issue_priority_context",
           }),
         }),
       ],
