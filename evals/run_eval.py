@@ -14,7 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from evals.aws_pipeline_runner import AwsPipelineRunner, PipelineRunResult
-from evals.cloudwatch_publish import publish_eval_summary_metrics
+from evals.cloudwatch_publish import CloudWatchPublishConfig, publish_eval_summary_metrics
 from evals.judge import BedrockJudge
 from evals.metrics import (
     aggregate_case_metrics,
@@ -506,12 +506,14 @@ def _maybe_publish_cloudwatch(args: argparse.Namespace, payload: Dict[str, Any],
         return
     publish_eval_summary_metrics(
         summaries=payload["results"],
-        namespace=args.cloudwatch_namespace,
-        run_id=run_id,
-        dataset=args.dataset,
-        scope=args.scope,
-        aws_region=args.aws_region,
-        aws_profile=args.aws_profile or None,
+        config=CloudWatchPublishConfig(
+            namespace=args.cloudwatch_namespace,
+            run_id=run_id,
+            dataset=args.dataset,
+            scope=args.scope,
+            aws_region=args.aws_region,
+            aws_profile=args.aws_profile or None,
+        ),
     )
     print(f"PUBLISHED_CLOUDWATCH_NAMESPACE={args.cloudwatch_namespace}")
 

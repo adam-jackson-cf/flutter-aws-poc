@@ -96,6 +96,12 @@ def _read_json_from_url(url: str) -> Dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _coerced_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    return str(value or "")
+
+
 def fetch_jira_issue(issue_key: str, jira_base_url: str) -> Dict[str, Any]:
     validate_endpoint_url(
         url=jira_base_url,
@@ -117,13 +123,8 @@ def fetch_jira_issue(issue_key: str, jira_base_url: str) -> Dict[str, Any]:
     issue_type = issue_fields.get("issuetype") or {}
     comments = issue_fields.get("comment") or {}
 
-    description = issue_fields.get("description") or ""
-    if not isinstance(description, str):
-        description = str(description)
-
-    summary = issue_fields.get("summary", "")
-    if not isinstance(summary, str):
-        summary = str(summary)
+    description = _coerced_text(issue_fields.get("description"))
+    summary = _coerced_text(issue_fields.get("summary"))
 
     return {
         "key": payload.get("key", issue_key),
@@ -330,6 +331,39 @@ class ToolSelectorConfig:
     model_id: str
     region: str
     dry_run: bool = False
+
+
+@dataclass(frozen=True)
+class StageToolScope:
+    intent: str
+    scoped_tool_count: int
+    catalog_tool_count: int = 0
+
+
+@dataclass(frozen=True)
+class StageToolOutcome:
+    selection: Dict[str, Any]
+    tool_failure: bool
+    tool_result: Dict[str, Any]
+    scope: StageToolScope
+
+
+def stage_tool_failure(issue_key: str, reason: str, selection: Dict[str, Any], scope: StageToolScope) -> StageToolOutcome:
+    return StageToolOutcome(
+        selection=selection,
+        tool_failure=True,
+        tool_result=build_failure_issue(issue_key=issue_key, failure_reason=reason),
+        scope=scope,
+    )
+
+
+def stage_tool_success(tool_result: Dict[str, Any], selection: Dict[str, Any], scope: StageToolScope) -> StageToolOutcome:
+    return StageToolOutcome(
+        selection=selection,
+        tool_failure=False,
+        tool_result=tool_result,
+        scope=scope,
+    )
 
 
 def select_tool_with_model(selection: ToolSelectionRequest, config: ToolSelectorConfig) -> Dict[str, Any]:

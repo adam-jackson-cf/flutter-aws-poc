@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence, TypedDict
+from typing import Any, Dict, List, Mapping, Sequence, TypedDict
 
 import boto3
 
@@ -51,6 +51,16 @@ class MetricContext:
     flow: str
     scope: str
     dataset: str
+
+
+@dataclass(frozen=True)
+class CloudWatchPublishConfig:
+    namespace: str
+    run_id: str
+    dataset: str
+    scope: str
+    aws_region: str
+    aws_profile: str | None = None
 
 
 Dimensions = Sequence[Dict[str, str]]
@@ -203,23 +213,18 @@ def _build_composite_reflection_metrics(composite_reflection: object, dimensions
 def publish_eval_summary_metrics(
     *,
     summaries: List[EvalSummaryRow],
-    namespace: str,
-    run_id: str,
-    dataset: str,
-    scope: str,
-    aws_region: str,
-    aws_profile: Optional[str] = None,
+    config: CloudWatchPublishConfig,
 ) -> None:
     if not summaries:
         raise ValueError("summaries must not be empty")
-    if not namespace:
+    if not config.namespace:
         raise ValueError("namespace is required")
-    if not aws_region:
+    if not config.aws_region:
         raise ValueError("aws_region is required")
 
-    session_kwargs = {"region_name": aws_region}
-    if aws_profile:
-        session_kwargs["profile_name"] = aws_profile
+    session_kwargs = {"region_name": config.aws_region}
+    if config.aws_profile:
+        session_kwargs["profile_name"] = config.aws_profile
     session = boto3.Session(**session_kwargs)
     cloudwatch = session.client("cloudwatch")
 
@@ -229,7 +234,14 @@ def publish_eval_summary_metrics(
         summary = row["summary"]
         if not isinstance(summary, dict):
             raise ValueError("summary must be a dict")
-        dimensions = _build_dimensions(MetricContext(run_id=run_id, flow=flow, scope=scope, dataset=dataset))
+        dimensions = _build_dimensions(
+            MetricContext(
+                run_id=config.run_id,
+                flow=flow,
+                scope=config.scope,
+                dataset=config.dataset,
+            )
+        )
         metric_data.extend(_build_base_summary_metrics(summary=summary, dimensions=dimensions))
         metric_data.extend(_build_judge_metrics(judge_summary=row.get("judge_summary"), dimensions=dimensions))
         metric_data.extend(
@@ -240,4 +252,4 @@ def publish_eval_summary_metrics(
         )
 
     for batch in _chunk(metric_data, 20):
-        cloudwatch.put_metric_data(Namespace=namespace, MetricData=batch)
+        cloudwatch.put_metric_data(Namespace=config.namespace, MetricData=batch)

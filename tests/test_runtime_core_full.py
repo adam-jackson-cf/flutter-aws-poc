@@ -46,6 +46,10 @@ def test_sop_cli_helpers_and_main_guard(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert parsed_args.request_text == "from-cli"
     assert parsed_args.dry_run is True
 
+    monkeypatch.setattr(sys, "argv", ["main.py", "--request-text", "from-cli"])
+    with pytest.raises(SystemExit):
+        main_mod.parse_args()
+
     args = Namespace(request_text="a", input_file="")
     assert main_mod.load_request_text(args) == "a"
 

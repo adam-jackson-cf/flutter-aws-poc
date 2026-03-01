@@ -2,6 +2,7 @@ import importlib
 import json
 import subprocess
 import sys
+from dataclasses import FrozenInstanceError
 from argparse import Namespace
 from pathlib import Path
 from typing import Any, Dict
@@ -44,6 +45,79 @@ def test_parse_args_and_simple_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     assert args.flow == "native"
     assert run_eval.utc_compact_now().endswith("Z")
     assert run_eval.sanitize_run_id(" bad id ") == "bad-id"
+
+    monkeypatch.setattr(sys, "argv", ["run_eval.py", "--dataset", "d.jsonl"])
+    with pytest.raises(SystemExit):
+        run_eval.parse_args()
+
+    monkeypatch.setattr(sys, "argv", ["run_eval.py", "--flow", "native"])
+    with pytest.raises(SystemExit):
+        run_eval.parse_args()
+
+
+def test_eval_input_dataclasses_are_frozen() -> None:
+    context = run_eval.CaseRunContext(flow="native", scope="route", iteration=1)
+    with pytest.raises(FrozenInstanceError):
+        context.flow = "mcp"  # type: ignore[misc]
+
+    config = run_eval.EvaluationConfig(dry_run=True, scope="route", iterations=1, runner=object(), judge=None)
+    with pytest.raises(FrozenInstanceError):
+        config.dry_run = False  # type: ignore[misc]
+
+    payload = run_eval.ActualPayloadInput(
+        intent_actual="status_update",
+        issue_key_actual="JRASERVER-1",
+        selected_tool="jira_get_issue_by_key",
+        failure_reason="",
+        generated_response="ok",
+        run=PipelineRunResult(execution_arn="arn", payload={}, artifact_s3_uri="s3://bucket/key"),
+    )
+    with pytest.raises(FrozenInstanceError):
+        payload.selected_tool = "jira_get_issue_status_snapshot"  # type: ignore[misc]
+
+    metrics = run_eval.CaseMetricsPayloadInput(
+        intent_match=True,
+        issue_key_match=True,
+        tool_failure=False,
+        tool_match=True,
+        issue_payload_complete=True,
+        business_success=True,
+        failure_reason="",
+        total_latency_ms=1.0,
+        response_similarity=1.0,
+    )
+    with pytest.raises(FrozenInstanceError):
+        metrics.tool_failure = True  # type: ignore[misc]
+
+    outcome = run_eval.CaseOutcome(
+        intent_actual="status_update",
+        issue_key_actual="JRASERVER-1",
+        selected_tool="jira_get_issue_by_key",
+        failure_reason="",
+        issue_payload_complete=True,
+        tool_failure=False,
+        intent_match=True,
+        issue_key_match=True,
+        tool_match=True,
+        business_success=True,
+        total_latency_ms=1.0,
+        response_similarity=1.0,
+    )
+    with pytest.raises(FrozenInstanceError):
+        outcome.business_success = False  # type: ignore[misc]
+
+    outcome_input = run_eval.CaseOutcomeInput(
+        case=_sample_case(),
+        context=run_eval.CaseRunContext(flow="native", scope="route", iteration=1),
+        run_payload=_sample_run_payload(),
+        run_metrics={"tool_failure": False},
+        tool_result={"key": "JRASERVER-1", "summary": "ok", "status": "Done"},
+        expected_tool="jira_api_get_issue_by_key",
+        total_latency_ms=1.0,
+        response_similarity=1.0,
+    )
+    with pytest.raises(FrozenInstanceError):
+        outcome_input.expected_tool = "jira_get_issue_status_snapshot"  # type: ignore[misc]
 
 
 def test_repo_root_added_to_sys_path_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,6 +185,9 @@ def test_tool_operation_and_payload_helpers(monkeypatch: pytest.MonkeyPatch) -> 
     case = _sample_case()
     assert run_eval.expected_tool_for_flow(case, "native") == "jira_api_get_issue_by_key"
     assert run_eval.expected_tool_for_flow(case, "mcp") == "jira_get_issue_by_key"
+    prefixed_native = dict(case)
+    prefixed_native["expected_tool"] = {"native": "x__jira_api_get_issue_by_key", "mcp": "jira_get_issue_by_key"}
+    assert run_eval.expected_tool_for_flow(prefixed_native, "native") == "x__jira_api_get_issue_by_key"
 
     assert run_eval._selected_tool_for_flow("native", {"native_selection": {"selected_tool": "n"}}) == "n"
     assert run_eval._selected_tool_for_flow("mcp", {"mcp_selection": {"selected_tool": "m"}}) == "m"
@@ -185,6 +262,24 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
             {"metrics": {"failure_reason": ""}},
         ]
     ) == {"mcp_timeout": 2}
+
+    outcome = run_eval._derive_case_outcome(
+        run_eval.CaseOutcomeInput(
+            case=case,
+            context=run_eval.CaseRunContext(flow="native", scope="route", iteration=1),
+            run_payload={
+                "intake": {"intent": case["expected_intent"]},
+                "native_selection": {"selected_tool": "jira_api_get_issue_by_key"},
+            },
+            run_metrics={},
+            tool_result={"key": case["expected_issue_key"], "summary": "s", "status": "Done"},
+            expected_tool="jira_api_get_issue_by_key",
+            total_latency_ms=1.0,
+            response_similarity=1.0,
+        )
+    )
+    assert outcome.tool_failure is False
+    assert outcome.business_success is True
 
 
 def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -272,7 +367,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
     assert called == {}
     args.publish_cloudwatch = True
     run_eval._maybe_publish_cloudwatch(args, {"results": []}, "run")
-    assert called["namespace"] == "ns"
+    assert called["config"].namespace == "ns"
 
     run_eval._emit_run_output("out.json", dry_run=True)
     out = capsys.readouterr().out

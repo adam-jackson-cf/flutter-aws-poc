@@ -9,6 +9,7 @@
     "cdk:diff": "cdk diff",
     "cdk:deploy": "cdk deploy --require-approval never",
     "lint": "tsc --noEmit -p tsconfig.json",
+    "lint:eslint": "eslint --max-warnings 0 .",
     "test": "npm run lint"
   },
   "dependencies": {
@@ -18,8 +19,11 @@
     "source-map-support": "0.5.21"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
     "@types/node": "24.3.0",
     "aws-cdk": "2.1108.0",
+    "eslint": "^9.38.0",
     "ts-node": "10.9.2",
     "typescript": "5.9.2"
   }

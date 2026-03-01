@@ -6,6 +6,7 @@ from strands import Agent, tool
 from strands.models import BedrockModel
 
 from .jira_native_sdk import JiraSdkClient
+from .tool_flow_result import ToolFlowScope, flow_failure, flow_success
 
 
 class StrandsNativeFlowError(RuntimeError):
@@ -34,40 +35,13 @@ def _extract_json(raw_text: str) -> Dict[str, Any]:
         return json.loads(repaired)
 
 
-def _failure_issue(issue_key: str, reason: str) -> Dict[str, Any]:
-    return {
-        "key": issue_key,
-        "summary": "",
-        "status": "Unknown",
-        "issue_type": "Unknown",
-        "priority": "None",
-        "labels": [],
-        "updated": "",
-        "description": "",
-        "comment_count": 0,
-        "failure_reason": reason,
-    }
-
-
 class StrandsNativeFlow:
     def __init__(self, jira_client: JiraSdkClient, model_id: str, region: str) -> None:
         self._jira_client = jira_client
         self._model_id = model_id
         self._region = region
 
-    def fetch_issue_with_agent(self, intake: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
-        issue_key = intake["issue_key"]
-        intent = str(intake.get("intent", "general_triage"))
-        scoped_names = TOOL_SCOPE_BY_INTENT.get(intent, TOOL_SCOPE_BY_INTENT["general_triage"])
-        if dry_run:
-            issue = self._jira_client.get_issue(issue_key)
-            return {
-                "selection": {"tool": EXPECTED_TOOL, "reason": "dry_run"},
-                "tool_failure": False,
-                "issue": issue,
-                "scope": {"intent": intent, "scoped_tool_count": len(scoped_names)},
-            }
-
+    def _scoped_native_tools(self, scoped_names: List[str]) -> List[Any]:
         @tool
         def jira_api_get_issue_by_key(issue_key: str) -> dict:
             """Fetch full public Jira issue payload by issue key via native API client."""
@@ -115,8 +89,9 @@ class StrandsNativeFlow:
             "jira_api_get_issue_project_key": jira_api_get_issue_project_key,
             "jira_api_get_issue_update_timestamp": jira_api_get_issue_update_timestamp,
         }
-        scoped_tools = [tool_functions[name] for name in scoped_names]
+        return [tool_functions[name] for name in scoped_names]
 
+    def _run_selection_agent(self, intake: Dict[str, Any], scoped_tools: List[Any]) -> Dict[str, Any]:
         model = BedrockModel(
             model_id=self._model_id,
             region_name=self._region,
@@ -141,46 +116,56 @@ class StrandsNativeFlow:
             f"Intake: {json.dumps(intake)}"
         )
 
-        try:
-            result = agent(prompt)
-            payload = result.to_dict()
-            text_blocks = [block.get("text", "") for block in payload["message"]["content"] if "text" in block]
-            parsed = _extract_json("\n".join(text_blocks))
-        except Exception as exc:  # noqa: BLE001
-            return {
-                "selection": {"tool": "", "reason": f"native_agent_error:{exc}"},
-                "tool_failure": True,
-                "issue": _failure_issue(issue_key, f"native_agent_error:{exc}"),
-                "scope": {"intent": intent, "scoped_tool_count": len(scoped_names)},
-            }
+        result = agent(prompt)
+        payload = result.to_dict()
+        text_blocks = [block.get("text", "") for block in payload["message"]["content"] if "text" in block]
+        return _extract_json("\n".join(text_blocks))
 
+    @staticmethod
+    def _validate_agent_result(parsed: Dict[str, Any], *, issue_key: str, scoped_names: List[str], scope: ToolFlowScope) -> Dict[str, Any]:
         selected_tool = str(parsed.get("selected_tool", ""))
         issue = parsed.get("issue")
         if selected_tool not in scoped_names:
-            return {
-                "selection": {"tool": selected_tool, "reason": str(parsed.get("reason", ""))},
-                "tool_failure": True,
-                "issue": _failure_issue(issue_key, f"selected_unknown_tool:{selected_tool}"),
-                "scope": {"intent": intent, "scoped_tool_count": len(scoped_names)},
-            }
+            return flow_failure(
+                selection={"tool": selected_tool, "reason": str(parsed.get("reason", ""))},
+                issue_key=issue_key,
+                reason=f"selected_unknown_tool:{selected_tool}",
+                scope=scope,
+            )
         if selected_tool != EXPECTED_TOOL:
-            return {
-                "selection": {"tool": selected_tool, "reason": str(parsed.get("reason", ""))},
-                "tool_failure": True,
-                "issue": _failure_issue(issue_key, f"selected_wrong_tool:{selected_tool}"),
-                "scope": {"intent": intent, "scoped_tool_count": len(scoped_names)},
-            }
+            return flow_failure(
+                selection={"tool": selected_tool, "reason": str(parsed.get("reason", ""))},
+                issue_key=issue_key,
+                reason=f"selected_wrong_tool:{selected_tool}",
+                scope=scope,
+            )
         if not isinstance(issue, dict) or not issue.get("key"):
-            return {
-                "selection": {"tool": selected_tool, "reason": str(parsed.get("reason", ""))},
-                "tool_failure": True,
-                "issue": _failure_issue(issue_key, "native_missing_issue_payload"),
-                "scope": {"intent": intent, "scoped_tool_count": len(scoped_names)},
-            }
+            return flow_failure(
+                selection={"tool": selected_tool, "reason": str(parsed.get("reason", ""))},
+                issue_key=issue_key,
+                reason="native_missing_issue_payload",
+                scope=scope,
+            )
 
-        return {
-            "selection": {"tool": selected_tool, "reason": str(parsed.get("reason", "native_agent_tool_choice"))},
-            "tool_failure": False,
-            "issue": issue,
-            "scope": {"intent": intent, "scoped_tool_count": len(scoped_names)},
-        }
+        return flow_success(
+            selection={"tool": selected_tool, "reason": str(parsed.get("reason", "native_agent_tool_choice"))},
+            issue=issue,
+            scope=scope,
+        )
+
+    def fetch_issue_with_agent(self, intake: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
+        issue_key = intake["issue_key"]
+        intent = str(intake.get("intent", "general_triage"))
+        scoped_names = TOOL_SCOPE_BY_INTENT.get(intent, TOOL_SCOPE_BY_INTENT["general_triage"])
+        scope = ToolFlowScope(intent=intent, scoped_tool_count=len(scoped_names))
+        if dry_run:
+            issue = self._jira_client.get_issue(issue_key)
+            return flow_success(selection={"tool": EXPECTED_TOOL, "reason": "dry_run"}, issue=issue, scope=scope)
+
+        scoped_tools = self._scoped_native_tools(scoped_names)
+        try:
+            parsed = self._run_selection_agent(intake=intake, scoped_tools=scoped_tools)
+        except Exception as exc:  # noqa: BLE001
+            reason = f"native_agent_error:{exc}"
+            return flow_failure(selection={"tool": "", "reason": reason}, issue_key=issue_key, reason=reason, scope=scope)
+        return self._validate_agent_result(parsed=parsed, issue_key=issue_key, scoped_names=scoped_names, scope=scope)

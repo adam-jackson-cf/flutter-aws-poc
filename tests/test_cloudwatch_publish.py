@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from evals.cloudwatch_publish import publish_eval_summary_metrics
+from evals.cloudwatch_publish import CloudWatchPublishConfig, publish_eval_summary_metrics
 
 
 class _DummyCloudWatch:
@@ -71,12 +71,14 @@ def test_publish_eval_summary_metrics_includes_judge_and_composite(monkeypatch: 
                 },
             }
         ],
-        namespace="FlutterAgentCorePoc/Evals",
-        run_id="run-1",
-        dataset="evals/golden/sop_cases.jsonl",
-        scope="route",
-        aws_region="eu-west-1",
-        aws_profile="profile-a",
+        config=CloudWatchPublishConfig(
+            namespace="FlutterAgentCorePoc/Evals",
+            run_id="run-1",
+            dataset="evals/golden/sop_cases.jsonl",
+            scope="route",
+            aws_region="eu-west-1",
+            aws_profile="profile-a",
+        ),
     )
 
     assert created["kwargs"]["region_name"] == "eu-west-1"
@@ -141,11 +143,13 @@ def test_publish_eval_summary_metrics_skips_judge_metrics_when_no_cases(monkeypa
                 },
             }
         ],
-        namespace="FlutterAgentCorePoc/Evals",
-        run_id="run-1",
-        dataset="evals/golden/sop_cases.jsonl",
-        scope="route",
-        aws_region="eu-west-1",
+        config=CloudWatchPublishConfig(
+            namespace="FlutterAgentCorePoc/Evals",
+            run_id="run-1",
+            dataset="evals/golden/sop_cases.jsonl",
+            scope="route",
+            aws_region="eu-west-1",
+        ),
     )
 
     all_metric_names = [
@@ -179,11 +183,13 @@ def test_publish_eval_summary_metrics_rejects_missing_metric_field(monkeypatch: 
                     },
                 }
             ],
-            namespace="FlutterAgentCorePoc/Evals",
-            run_id="run-1",
-            dataset="evals/golden/sop_cases.jsonl",
-            scope="route",
-            aws_region="eu-west-1",
+            config=CloudWatchPublishConfig(
+                namespace="FlutterAgentCorePoc/Evals",
+                run_id="run-1",
+                dataset="evals/golden/sop_cases.jsonl",
+                scope="route",
+                aws_region="eu-west-1",
+            ),
         )
 
 
@@ -211,9 +217,11 @@ def test_publish_eval_summary_metrics_rejects_invalid_metric_value(monkeypatch: 
                     },
                 }
             ],
-            namespace="FlutterAgentCorePoc/Evals",
-            run_id="run-1",
-            dataset="evals/golden/sop_cases.jsonl",
-            scope="route",
-            aws_region="eu-west-1",
+            config=CloudWatchPublishConfig(
+                namespace="FlutterAgentCorePoc/Evals",
+                run_id="run-1",
+                dataset="evals/golden/sop_cases.jsonl",
+                scope="route",
+                aws_region="eu-west-1",
+            ),
         )

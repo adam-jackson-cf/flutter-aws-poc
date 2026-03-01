@@ -38,6 +38,13 @@ class MutationResult:
     exit_code: int
 
 
+@dataclass(frozen=True)
+class MutationGateConfig:
+    max_mutants_per_file: int
+    mutation_score_target: float
+    timeout_seconds: int
+
+
 COMPARISON_SWAP: dict[type[ast.cmpop], Callable[[], ast.cmpop]] = {
     ast.Eq: ast.NotEq,
     ast.NotEq: ast.Eq,
@@ -285,58 +292,62 @@ def run_mutant(
         return ("killed", completed.returncode)
 
 
-def main() -> int:
-    root = repo_root()
-    max_mutants_per_file = int(os.environ.get("MUTATION_MAX_MUTANTS_PER_FILE", "40"))
-    mutation_score_target = float(os.environ.get("MUTATION_SCORE_TARGET", "80"))
-    timeout_seconds = int(os.environ.get("MUTATION_TEST_TIMEOUT_SECONDS", "60"))
+def _selected_candidates(candidates: list[MutationCandidate], covered_lines: set[int], max_mutants_per_file: int) -> list[MutationCandidate]:
+    return [candidate for candidate in candidates if candidate.lineno in covered_lines][:max_mutants_per_file]
 
-    all_results: list[MutationResult] = []
-    for target in TARGETS:
-        target_path = root / target.file_path
-        source = target_path.read_text(encoding="utf-8")
-        candidates = collect_candidates(source)
-        covered_lines = covered_lines_for_target(root=root, target=target, timeout_seconds=timeout_seconds)
-        selected = [candidate for candidate in candidates if candidate.lineno in covered_lines][:max_mutants_per_file]
-        if not selected:
-            print(f"No mutation candidates found for {target.file_path}", file=sys.stderr)
-            return 1
 
-        run_baseline_tests(root=root, target=target, timeout_seconds=timeout_seconds)
+def _run_target_mutations(root: Path, target: MutationTarget, config: MutationGateConfig) -> list[MutationResult]:
+    target_path = root / target.file_path
+    source = target_path.read_text(encoding="utf-8")
+    candidates = collect_candidates(source)
+    covered_lines = covered_lines_for_target(root=root, target=target, timeout_seconds=config.timeout_seconds)
+    selected = _selected_candidates(candidates=candidates, covered_lines=covered_lines, max_mutants_per_file=config.max_mutants_per_file)
+    if not selected:
+        raise RuntimeError(f"No mutation candidates found for {target.file_path}")
 
-        print(f"Mutating {target.file_path}: {len(selected)} candidate(s)")
-        for candidate in selected:
-            mutated_content = apply_mutation(source=source, candidate_index=candidate.index)
-            status, exit_code = run_mutant(
-                root=root,
-                target=target,
-                mutated_content=mutated_content,
-                timeout_seconds=timeout_seconds,
+    run_baseline_tests(root=root, target=target, timeout_seconds=config.timeout_seconds)
+    print(f"Mutating {target.file_path}: {len(selected)} candidate(s)")
+
+    results: list[MutationResult] = []
+    for candidate in selected:
+        mutated_content = apply_mutation(source=source, candidate_index=candidate.index)
+        status, exit_code = run_mutant(
+            root=root,
+            target=target,
+            mutated_content=mutated_content,
+            timeout_seconds=config.timeout_seconds,
+        )
+        results.append(
+            MutationResult(
+                file_path=target.file_path,
+                kind=candidate.kind,
+                lineno=candidate.lineno,
+                status=status,
+                exit_code=exit_code,
             )
-            all_results.append(
-                MutationResult(
-                    file_path=target.file_path,
-                    kind=candidate.kind,
-                    lineno=candidate.lineno,
-                    status=status,
-                    exit_code=exit_code,
-                )
-            )
+        )
+    return results
 
-    killed = sum(1 for result in all_results if result.status == "killed")
-    survived = sum(1 for result in all_results if result.status == "survived")
-    timeout = sum(1 for result in all_results if result.status == "timeout")
-    total = len(all_results)
+
+def _result_counts(results: list[MutationResult]) -> tuple[int, int, int, int]:
+    killed = sum(1 for result in results if result.status == "killed")
+    survived = sum(1 for result in results if result.status == "survived")
+    timeout = sum(1 for result in results if result.status == "timeout")
+    total = len(results)
+    return killed, survived, timeout, total
+
+
+def _summary_payload(results: list[MutationResult], config: MutationGateConfig) -> dict[str, object]:
+    killed, survived, timeout, total = _result_counts(results)
     score = 0.0 if total == 0 else (killed / total) * 100.0
-
-    summary = {
-        "target_score": mutation_score_target,
+    return {
+        "target_score": config.mutation_score_target,
         "score": score,
         "total": total,
         "killed": killed,
         "survived": survived,
         "timeout": timeout,
-        "max_mutants_per_file": max_mutants_per_file,
+        "max_mutants_per_file": config.max_mutants_per_file,
         "results": [
             {
                 "file_path": result.file_path,
@@ -345,31 +356,60 @@ def main() -> int:
                 "status": result.status,
                 "exit_code": result.exit_code,
             }
-            for result in all_results
+            for result in results
         ],
     }
 
+
+def _write_summary(root: Path, summary: dict[str, object]) -> Path:
     output_path = root / "reports" / "mutation-gate-summary.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return output_path
 
+
+def _print_summary(summary: dict[str, object], output_path: Path) -> None:
     print(
         "Mutation summary:",
-        f"score={score:.2f}%",
-        f"target={mutation_score_target:.2f}%",
-        f"killed={killed}",
-        f"survived={survived}",
-        f"timeout={timeout}",
-        f"total={total}",
+        f"score={summary['score']:.2f}%",
+        f"target={summary['target_score']:.2f}%",
+        f"killed={summary['killed']}",
+        f"survived={summary['survived']}",
+        f"timeout={summary['timeout']}",
+        f"total={summary['total']}",
     )
     print(f"Mutation summary JSON: {output_path}")
 
-    if timeout > 0:
-        print(f"Mutation gate failed: {timeout} mutant runs timed out", file=sys.stderr)
+
+def _load_config() -> MutationGateConfig:
+    return MutationGateConfig(
+        max_mutants_per_file=int(os.environ.get("MUTATION_MAX_MUTANTS_PER_FILE", "40")),
+        mutation_score_target=float(os.environ.get("MUTATION_SCORE_TARGET", "80")),
+        timeout_seconds=int(os.environ.get("MUTATION_TEST_TIMEOUT_SECONDS", "60")),
+    )
+
+
+def main() -> int:
+    root = repo_root()
+    config = _load_config()
+    all_results: list[MutationResult] = []
+    for target in TARGETS:
+        try:
+            all_results.extend(_run_target_mutations(root=root, target=target, config=config))
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    summary = _summary_payload(all_results, config)
+    output_path = _write_summary(root=root, summary=summary)
+    _print_summary(summary=summary, output_path=output_path)
+
+    if summary["timeout"] > 0:
+        print(f"Mutation gate failed: {summary['timeout']} mutant runs timed out", file=sys.stderr)
         return 1
-    if score < mutation_score_target:
+    if summary["score"] < config.mutation_score_target:
         print(
-            f"Mutation gate failed: score {score:.2f}% is below target {mutation_score_target:.2f}%",
+            f"Mutation gate failed: score {summary['score']:.2f}% is below target {config.mutation_score_target:.2f}%",
             file=sys.stderr,
         )
         return 1

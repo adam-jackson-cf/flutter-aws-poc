@@ -156,7 +156,8 @@ def test_strands_native_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     assert mod._extract_json('x {"a":"b\\q"} y')["a"] == "b\\q"
     with pytest.raises(mod.StrandsNativeFlowError):
         mod._extract_json("bad")
-    assert mod._failure_issue("JRASERVER-1", "x")["failure_reason"] == "x"
+    tool_result = importlib.import_module("runtime.sop_agent.tools.tool_flow_result")
+    assert tool_result.failure_issue("JRASERVER-1", "x")["failure_reason"] == "x"
 
     jira_client = SimpleNamespace(get_issue=lambda issue_key: {"key": issue_key, "status": "Done", "summary": "ok"})
     flow = mod.StrandsNativeFlow(jira_client=jira_client, model_id="model", region="eu-west-1")

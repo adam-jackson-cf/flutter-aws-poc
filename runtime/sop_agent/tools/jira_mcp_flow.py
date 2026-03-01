@@ -7,6 +7,7 @@ import boto3
 
 from .agentcore_mcp_client import AgentCoreMcpClient
 from .jira_native_sdk import JiraSdkClient
+from .tool_flow_result import ToolFlowScope, flow_failure, flow_success
 
 EXPECTED_TOOL = "jira_get_issue_by_key"
 TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
@@ -112,21 +113,6 @@ class McpJiraFlow:
             "scoped_tool_count": len(catalog.scoped_tools),
         }
 
-    @staticmethod
-    def _failure_issue(issue_key: str, failure_reason: str) -> Dict[str, Any]:
-        return {
-            "key": issue_key,
-            "summary": "",
-            "status": "Unknown",
-            "issue_type": "Unknown",
-            "priority": "None",
-            "labels": [],
-            "updated": "",
-            "description": "",
-            "comment_count": 0,
-            "failure_reason": failure_reason,
-        }
-
     def _failure_result(
         self,
         *,
@@ -136,12 +122,24 @@ class McpJiraFlow:
         catalog: ScopedCatalog | None = None,
         tool_payload: Dict[str, Any] | None = None,
     ) -> FailureResult:
-        result: FailureResult = {
-            "selection": selection,
-            "tool_failure": True,
-            "issue": self._failure_issue(issue_key=intake["issue_key"], failure_reason=failure_reason),
-        }
-        if catalog is not None:
+        scope = (
+            ToolFlowScope(
+                intent=catalog.intent,
+                scoped_tool_count=len(catalog.scoped_tools),
+                catalog_tool_count=len(catalog.all_tools),
+            )
+            if catalog is not None
+            else ToolFlowScope(intent=str(intake.get("intent", "general_triage")), scoped_tool_count=0)
+        )
+        result: FailureResult = flow_failure(
+            selection=selection,
+            issue_key=intake["issue_key"],
+            reason=failure_reason,
+            scope=scope,
+        )
+        if catalog is None:
+            result.pop("scope", None)
+        else:
             result["scope"] = self._scope_context(catalog)
         if tool_payload is not None:
             result["tool_payload"] = tool_payload
@@ -239,9 +237,11 @@ class McpJiraFlow:
                 tool_payload=tool_payload,
             )
 
-        return {
-            "selection": selection,
-            "tool_failure": False,
-            "issue": issue,
-            "scope": self._scope_context(catalog),
-        }
+        scope = ToolFlowScope(
+            intent=catalog.intent,
+            scoped_tool_count=len(catalog.scoped_tools),
+            catalog_tool_count=len(catalog.all_tools),
+        )
+        success = flow_success(selection=selection, issue=issue, scope=scope)
+        success["scope"] = self._scope_context(catalog)
+        return success

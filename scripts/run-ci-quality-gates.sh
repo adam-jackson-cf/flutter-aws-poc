@@ -8,6 +8,7 @@ PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-100}"
 RUN_DUPLICATION_SIGNALS="${RUN_DUPLICATION_SIGNALS:-1}"
 DUPLICATION_SIGNAL_TARGET="${DUPLICATION_SIGNAL_TARGET:-.}"
 DUPLICATION_SIGNAL_MIN_SEVERITY="${DUPLICATION_SIGNAL_MIN_SEVERITY:-medium}"
+COMPLEXITY_MAX="${COMPLEXITY_MAX:-10}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -29,6 +30,25 @@ run_step() {
   shift
   echo "==> $step"
   "$@"
+}
+
+run_prettier_check() {
+  npm exec -- prettier --check \
+    package.json \
+    infra/package.json \
+    infra/tsconfig.json \
+    infra/bin/app.ts \
+    infra/lib/flutter-agentcore-poc-stack.ts \
+    .pre-commit-config.yaml \
+    .github/workflows/ci-quality-gates.yml
+}
+
+run_ruff_complexity_check() {
+  python3 -m ruff check aws/lambda evals runtime scripts --select C901 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX"
+}
+
+run_lizard_complexity_check() {
+  python3 -m lizard -C "$COMPLEXITY_MAX" aws/lambda evals runtime scripts infra/bin infra/lib
 }
 
 build_duplication_artifact_root() {
@@ -121,9 +141,19 @@ parity_guard() {
 
 run_step "Parity guard" parity_guard
 
+run_step "Prettier formatting check" run_prettier_check
+
 if [[ -f "infra/package.json" ]] && grep -q '"lint"' "infra/package.json"; then
   run_step "TypeScript lint (infra)" npm --prefix infra run lint
 fi
+
+if [[ -f "infra/package.json" ]] && grep -q '"lint:eslint"' "infra/package.json"; then
+  run_step "TypeScript complexity lint (eslint <= ${COMPLEXITY_MAX})" npm --prefix infra run lint:eslint
+fi
+
+run_step "Python complexity lint (ruff <= ${COMPLEXITY_MAX})" run_ruff_complexity_check
+
+run_step "Cross-runtime complexity lint (lizard <= ${COMPLEXITY_MAX})" run_lizard_complexity_check
 
 if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; then
   run_step "CDK synth (infra)" npm --prefix infra run cdk:synth

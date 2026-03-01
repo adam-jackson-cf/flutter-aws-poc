@@ -83,6 +83,12 @@ def test_read_json_and_fetch_jira_issue(monkeypatch: pytest.MonkeyPatch) -> None
     assert issue["summary"] == "999"
     assert issue["comment_count"] == 5
 
+    issue_payload["fields"]["summary"] = "already text"
+    issue_payload["fields"]["description"] = "already text"
+    issue = common.fetch_jira_issue("JRASERVER-1", "https://jira.atlassian.com")
+    assert issue["summary"] == "already text"
+    assert issue["description"] == "already text"
+
     monkeypatch.setattr(common, "_read_json_from_url", lambda _url: (_ for _ in ()).throw(HTTPError("u", 404, "x", hdrs=None, fp=None)))
     with pytest.raises(RuntimeError):
         common.fetch_jira_issue("JRASERVER-1", "https://jira.atlassian.com")

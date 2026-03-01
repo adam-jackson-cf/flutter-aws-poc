@@ -222,29 +222,35 @@ def test_cloudwatch_publish_input_validation_and_chunking(monkeypatch: pytest.Mo
     with pytest.raises(ValueError):
         cloudwatch_publish.publish_eval_summary_metrics(
             summaries=[],
-            namespace="x",
-            run_id="r",
-            dataset="d",
-            scope="s",
-            aws_region="eu-west-1",
+            config=cloudwatch_publish.CloudWatchPublishConfig(
+                namespace="x",
+                run_id="r",
+                dataset="d",
+                scope="s",
+                aws_region="eu-west-1",
+            ),
         )
     with pytest.raises(ValueError):
         cloudwatch_publish.publish_eval_summary_metrics(
             summaries=[{"flow": "x", "summary": {}}],
-            namespace="",
-            run_id="r",
-            dataset="d",
-            scope="s",
-            aws_region="eu-west-1",
+            config=cloudwatch_publish.CloudWatchPublishConfig(
+                namespace="",
+                run_id="r",
+                dataset="d",
+                scope="s",
+                aws_region="eu-west-1",
+            ),
         )
     with pytest.raises(ValueError):
         cloudwatch_publish.publish_eval_summary_metrics(
             summaries=[{"flow": "x", "summary": {}}],
-            namespace="ns",
-            run_id="r",
-            dataset="d",
-            scope="s",
-            aws_region="",
+            config=cloudwatch_publish.CloudWatchPublishConfig(
+                namespace="ns",
+                run_id="r",
+                dataset="d",
+                scope="s",
+                aws_region="",
+            ),
         )
 
     sent_batches: list[int] = []
@@ -278,20 +284,24 @@ def test_cloudwatch_publish_input_validation_and_chunking(monkeypatch: pytest.Mo
     rows = [{"flow": f"flow{i}", "summary": summary} for i in range(2)]
     cloudwatch_publish.publish_eval_summary_metrics(
         summaries=rows,
-        namespace="ns",
-        run_id="run",
-        dataset="dataset",
-        scope="route",
-        aws_region="eu-west-1",
+        config=cloudwatch_publish.CloudWatchPublishConfig(
+            namespace="ns",
+            run_id="run",
+            dataset="dataset",
+            scope="route",
+            aws_region="eu-west-1",
+        ),
     )
     assert sent_batches
 
     with pytest.raises(ValueError):
         cloudwatch_publish.publish_eval_summary_metrics(
             summaries=[{"flow": "native", "summary": "bad"}],
-            namespace="ns",
-            run_id="run",
-            dataset="dataset",
-            scope="route",
-            aws_region="eu-west-1",
+            config=cloudwatch_publish.CloudWatchPublishConfig(
+                namespace="ns",
+                run_id="run",
+                dataset="dataset",
+                scope="route",
+                aws_region="eu-west-1",
+            ),
         )

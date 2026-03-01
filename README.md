@@ -91,9 +91,10 @@ Evaluations:
 - Live + judge: append `--enable-judge`
 
 Quality gates:
-- Default (coverage + lint + synth): `bash scripts/run-ci-quality-gates.sh`
+- Default (prettier + eslint + ruff + lizard + coverage + lint + synth): `bash scripts/run-ci-quality-gates.sh`
 - Include mutation gate locally: `RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
 - Tune mutation threshold: `MUTATION_SCORE_TARGET=80 RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
+- Tune complexity threshold (eslint/ruff/lizard): `COMPLEXITY_MAX=10 bash scripts/run-ci-quality-gates.sh`
 - Disable duplication signals temporarily: `RUN_DUPLICATION_SIGNALS=0 bash scripts/run-ci-quality-gates.sh`
 - Tune duplication severity threshold: `DUPLICATION_SIGNAL_MIN_SEVERITY=high bash scripts/run-ci-quality-gates.sh`
 
