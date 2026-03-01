@@ -27,6 +27,24 @@ class ScopedCatalog:
     tool_map: Dict[str, Dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class FailureInput:
+    intake: Dict[str, Any]
+    failure_reason: str
+    selection: Dict[str, str]
+    catalog: ScopedCatalog | None = None
+    tool_payload: Dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class SelectionInput:
+    request_text: str
+    issue_key: str
+    tools: List[Dict[str, Any]]
+    expected_tool_name: str
+    dry_run: bool = False
+
+
 class FailureResult(TypedDict, total=False):
     selection: Dict[str, str]
     tool_failure: bool
@@ -103,52 +121,40 @@ class McpJiraFlow:
 
     def _failure_result(
         self,
-        *,
-        intake: Dict[str, Any],
-        failure_reason: str,
-        selection: Dict[str, str],
-        catalog: ScopedCatalog | None = None,
-        tool_payload: Dict[str, Any] | None = None,
+        failure: FailureInput,
     ) -> FailureResult:
         scope = (
             ToolFlowScope(
-                intent=catalog.intent,
-                scoped_tool_count=len(catalog.scoped_tools),
-                catalog_tool_count=len(catalog.all_tools),
+                intent=failure.catalog.intent,
+                scoped_tool_count=len(failure.catalog.scoped_tools),
+                catalog_tool_count=len(failure.catalog.all_tools),
             )
-            if catalog is not None
-            else ToolFlowScope(intent=str(intake.get("intent", "general_triage")), scoped_tool_count=0)
+            if failure.catalog is not None
+            else ToolFlowScope(intent=str(failure.intake.get("intent", "general_triage")), scoped_tool_count=0)
         )
         result: FailureResult = flow_failure(
-            selection=selection,
-            issue_key=intake["issue_key"],
-            reason=failure_reason,
+            selection=failure.selection,
+            issue_key=failure.intake["issue_key"],
+            reason=failure.failure_reason,
             scope=scope,
         )
-        if catalog is None:
+        if failure.catalog is None:
             result.pop("scope", None)
         else:
-            result["scope"] = self._scope_context(catalog)
-        if tool_payload is not None:
-            result["tool_payload"] = tool_payload
+            result["scope"] = self._scope_context(failure.catalog)
+        if failure.tool_payload is not None:
+            result["tool_payload"] = failure.tool_payload
         return result
 
-    def _select_tool(
-        self,
-        request_text: str,
-        issue_key: str,
-        tools: List[Dict[str, Any]],
-        expected_tool_name: str,
-        dry_run: bool = False,
-    ) -> Dict[str, str]:
-        if dry_run:
-            return {"tool": expected_tool_name, "reason": "dry_run"}
+    def _select_tool(self, selection_input: SelectionInput) -> Dict[str, str]:
+        if selection_input.dry_run:
+            return {"tool": selection_input.expected_tool_name, "reason": "dry_run"}
 
-        tool_list = "\n".join([f"- {tool['name']}: {tool.get('description', '')}" for tool in tools])
+        tool_list = "\n".join([f"- {tool['name']}: {tool.get('description', '')}" for tool in selection_input.tools])
         prompt = (
             "You are selecting one MCP tool for a Jira workflow.\n"
-            f"Request: {request_text}\n"
-            f"Issue key: {issue_key}\n"
+            f"Request: {selection_input.request_text}\n"
+            f"Issue key: {selection_input.issue_key}\n"
             "Choose exactly one tool name from the provided list.\n"
             "Return strict JSON: {\"tool\":\"<name>\",\"reason\":\"<short reason>\"}.\n"
             "Tool list:\n"
@@ -172,26 +178,32 @@ class McpJiraFlow:
         except Exception as exc:  # noqa: BLE001 - failure should be scored, not throw
             failure_reason = f"mcp_catalog_error:{exc}"
             return self._failure_result(
-                intake=intake,
-                failure_reason=failure_reason,
-                selection={"tool": "", "reason": failure_reason},
+                FailureInput(
+                    intake=intake,
+                    failure_reason=failure_reason,
+                    selection={"tool": "", "reason": failure_reason},
+                )
             )
 
         selection = self._select_tool(
-            request_text=intake["request_text"],
-            issue_key=intake["issue_key"],
-            tools=catalog.scoped_tools,
-            expected_tool_name=catalog.expected_tool_name,
-            dry_run=dry_run,
+            SelectionInput(
+                request_text=intake["request_text"],
+                issue_key=intake["issue_key"],
+                tools=catalog.scoped_tools,
+                expected_tool_name=catalog.expected_tool_name,
+                dry_run=dry_run,
+            )
         )
 
         selected_tool = selection["tool"]
         if selected_tool not in catalog.tool_map:
             return self._failure_result(
-                intake=intake,
-                failure_reason=f"selected_unknown_tool:{selected_tool}",
-                selection=selection,
-                catalog=catalog,
+                FailureInput(
+                    intake=intake,
+                    failure_reason=f"selected_unknown_tool:{selected_tool}",
+                    selection=selection,
+                    catalog=catalog,
+                )
             )
 
         args = self._build_tool_arguments(selected_tool=catalog.tool_map[selected_tool], intake=intake)
@@ -200,29 +212,35 @@ class McpJiraFlow:
             tool_payload = self._mcp_client.extract_json_payload(call_result)
         except Exception as exc:  # noqa: BLE001 - failure should be scored, not throw
             return self._failure_result(
-                intake=intake,
-                failure_reason=f"mcp_invocation_error:{exc}",
-                selection=selection,
-                catalog=catalog,
+                FailureInput(
+                    intake=intake,
+                    failure_reason=f"mcp_invocation_error:{exc}",
+                    selection=selection,
+                    catalog=catalog,
+                )
             )
 
         if selected_tool != catalog.expected_tool_name:
             return self._failure_result(
-                intake=intake,
-                failure_reason=f"selected_wrong_tool:{selected_tool}",
-                selection=selection,
-                catalog=catalog,
-                tool_payload=tool_payload,
+                FailureInput(
+                    intake=intake,
+                    failure_reason=f"selected_wrong_tool:{selected_tool}",
+                    selection=selection,
+                    catalog=catalog,
+                    tool_payload=tool_payload,
+                )
             )
 
         issue = tool_payload.get("result", tool_payload)
         if not isinstance(issue, dict) or not issue.get("key"):
             return self._failure_result(
-                intake=intake,
-                failure_reason="mcp_missing_issue_payload",
-                selection=selection,
-                catalog=catalog,
-                tool_payload=tool_payload,
+                FailureInput(
+                    intake=intake,
+                    failure_reason="mcp_missing_issue_payload",
+                    selection=selection,
+                    catalog=catalog,
+                    tool_payload=tool_payload,
+                )
             )
 
         scope = ToolFlowScope(

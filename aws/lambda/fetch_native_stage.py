@@ -1,5 +1,6 @@
 import os
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from contract_values import NATIVE_TOOL_DESCRIPTIONS, NATIVE_TOOL_SCOPE_BY_INTENT
@@ -8,6 +9,14 @@ from runtime_config import selected_model_id, selected_region
 from stage_metrics import append_stage_metric
 from tool_selection import ToolSelectionRequest, ToolSelectorConfig, select_tool_with_model
 from tooling_domain import build_failure_issue, issue_payload_complete_for_tool
+
+
+@dataclass(frozen=True)
+class NativeStageMetric:
+    issue_key: str
+    selected_tool: str
+    scoped_tool_count: int
+    tool_failure: bool
 
 
 def _native_tool_catalog(intent: str) -> List[Dict[str, Any]]:
@@ -58,20 +67,17 @@ def _set_native_context(event: Dict[str, Any], selection: Dict[str, Any], intent
 def _finish_native_stage(
     event: Dict[str, Any],
     started: float,
-    issue_key: str,
-    selected_tool: str,
-    scoped_tool_count: int,
-    tool_failure: bool,
+    stage_metric: NativeStageMetric,
 ) -> Dict[str, Any]:
     return append_stage_metric(
         event,
         "fetch_native",
         started,
         {
-            "issue_key": issue_key,
-            "selected_tool": selected_tool,
-            "tool_failure": tool_failure,
-            "scoped_tool_count": scoped_tool_count,
+            "issue_key": stage_metric.issue_key,
+            "selected_tool": stage_metric.selected_tool,
+            "tool_failure": stage_metric.tool_failure,
+            "scoped_tool_count": stage_metric.scoped_tool_count,
         },
     )
 
@@ -83,6 +89,15 @@ def _apply_failure(
 ) -> None:
     event["tool_failure"] = True
     event["tool_result"] = build_failure_issue(issue_key, reason)
+
+
+def _native_stage_metric(issue_key: str, selected_tool: str, scoped_tool_count: int, tool_failure: bool) -> NativeStageMetric:
+    return NativeStageMetric(
+        issue_key=issue_key,
+        selected_tool=selected_tool,
+        scoped_tool_count=scoped_tool_count,
+        tool_failure=tool_failure,
+    )
 
 
 def _select_native_tool(event: Dict[str, Any], issue_key: str, intake: Dict[str, Any], scoped_tools: List[Dict[str, Any]], expected_tool: str) -> Dict[str, Any]:
@@ -113,6 +128,20 @@ def _finalize_native_result(event: Dict[str, Any], issue_key: str, selected_tool
     event["tool_failure"] = False
 
 
+def _finalize_native_failure(
+    event: Dict[str, Any],
+    started: float,
+    failure_metric: NativeStageMetric,
+    reason: str,
+) -> Dict[str, Any]:
+    _apply_failure(event, failure_metric.issue_key, reason)
+    return _finish_native_stage(
+        event,
+        started,
+        failure_metric,
+    )
+
+
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     started = time.time()
     intake = event["intake"]
@@ -124,22 +153,34 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
 
     if not expected_tool:
         _set_native_context(event, {"selected_tool": "", "reason": "expected_tool_missing"}, intent, 0)
-        _apply_failure(event, issue_key, "expected_tool_missing")
-        return _finish_native_stage(event, started, issue_key, "", 0, True)
+        return _finalize_native_failure(
+            event,
+            started,
+            _native_stage_metric(issue_key, "", 0, True),
+            "expected_tool_missing",
+        )
 
     tool_map = {str(tool["name"]): tool for tool in scoped_tools}
     if expected_tool not in tool_map:
         _set_native_context(event, {"selected_tool": "", "reason": f"expected_tool_not_in_scope:{expected_tool}"}, intent, scoped_tool_count)
-        _apply_failure(event, issue_key, f"expected_tool_not_in_scope:{expected_tool}")
-        return _finish_native_stage(event, started, issue_key, "", scoped_tool_count, True)
+        return _finalize_native_failure(
+            event,
+            started,
+            _native_stage_metric(issue_key, "", scoped_tool_count, True),
+            f"expected_tool_not_in_scope:{expected_tool}",
+        )
 
     selection = _select_native_tool(event, issue_key, intake, scoped_tools, expected_tool)
     selected_tool = str(selection.get("selected_tool", ""))
     _set_native_context(event, selection, intent, scoped_tool_count)
 
     if selected_tool not in tool_map:
-        _apply_failure(event, issue_key, f"selected_unknown_tool:{selected_tool}")
-        return _finish_native_stage(event, started, issue_key, selected_tool, scoped_tool_count, True)
+        return _finalize_native_failure(
+            event,
+            started,
+            _native_stage_metric(issue_key, selected_tool, scoped_tool_count, True),
+            f"selected_unknown_tool:{selected_tool}",
+        )
 
     try:
         native_payload = _invoke_native_tool(
@@ -148,8 +189,16 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             jira_base_url=os.environ.get("JIRA_BASE_URL", "https://jira.atlassian.com"),
         )
     except Exception as exc:  # noqa: BLE001 - failure should be scored, not crash the pipeline
-        _apply_failure(event, issue_key, f"native_tool_call_error:{exc}")
-        return _finish_native_stage(event, started, issue_key, selected_tool, scoped_tool_count, True)
+        return _finalize_native_failure(
+            event,
+            started,
+            _native_stage_metric(issue_key, selected_tool, scoped_tool_count, True),
+            f"native_tool_call_error:{exc}",
+        )
 
     _finalize_native_result(event, issue_key, selected_tool, expected_tool, native_payload)
-    return _finish_native_stage(event, started, issue_key, selected_tool, scoped_tool_count, bool(event["tool_failure"]))
+    return _finish_native_stage(
+        event,
+        started,
+        _native_stage_metric(issue_key, selected_tool, scoped_tool_count, bool(event["tool_failure"])),
+    )

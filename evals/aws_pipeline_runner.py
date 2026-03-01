@@ -28,6 +28,15 @@ class PipelineRunResult:
 
 
 @dataclass(frozen=True)
+class PipelineRunRequest:
+    flow: str
+    request_text: str
+    case_id: str
+    expected_tool: str
+    dry_run: bool
+
+
+@dataclass(frozen=True)
 class AwsPipelineRunnerConfig:
     state_machine_arn: str
     aws_region: str
@@ -63,15 +72,18 @@ class AwsPipelineRunner:
             "user_id": str(response.get("UserId", "")),
         }
 
-    def run_case(self, flow: str, request_text: str, case_id: str, expected_tool: str, dry_run: bool) -> PipelineRunResult:
+    def run_case(self, request: PipelineRunRequest) -> PipelineRunResult:
         started = time.time()
-        execution_name = self._build_execution_name(flow=flow, case_id=case_id)
+        execution_name = self._build_execution_name(
+            flow=request.flow,
+            case_id=request.case_id,
+        )
         execution_input = {
-            "flow": flow,
-            "request_text": request_text,
-            "case_id": case_id,
-            "expected_tool": expected_tool,
-            "dry_run": dry_run,
+            "flow": request.flow,
+            "request_text": request.request_text,
+            "case_id": request.case_id,
+            "expected_tool": request.expected_tool,
+            "dry_run": request.dry_run,
         }
         started_response = self._sfn.start_execution(
             stateMachineArn=self._state_machine_arn,

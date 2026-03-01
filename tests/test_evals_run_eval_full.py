@@ -241,7 +241,7 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     assert row["actual"]["execution_arn"] == "arn:1"
 
     class _Runner:
-        def run_case(self, **_kwargs: Any) -> PipelineRunResult:
+        def run_case(self, _request: Any) -> PipelineRunResult:
             return PipelineRunResult(execution_arn="arn:1", payload=_sample_run_payload(), artifact_s3_uri="s3://bucket/a")
 
     class _Judge:
@@ -380,7 +380,7 @@ def test_main_and_module_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     dataset_path.write_text(json.dumps(_sample_case()) + "\n", encoding="utf-8")
 
     class _Runner:
-        def run_case(self, **_kwargs: Any) -> PipelineRunResult:
+        def run_case(self, _request: Any) -> PipelineRunResult:
             payload = _sample_run_payload()
             payload["metrics"] = {"stages": [{"latency_ms": 1.5}]}
             return PipelineRunResult(execution_arn="arn:exec", payload=payload, artifact_s3_uri="s3://bucket/key")

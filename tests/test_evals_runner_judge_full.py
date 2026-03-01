@@ -141,7 +141,15 @@ def test_runner_run_case_success(monkeypatch: pytest.MonkeyPatch) -> None:
             execution_timeout_seconds=5,
         )
     )
-    result = runner.run_case(flow="native", request_text="check JRASERVER-1", case_id="case", expected_tool="jira_get_issue_by_key", dry_run=True)
+    result = runner.run_case(
+        aws_pipeline_runner.PipelineRunRequest(
+            flow="native",
+            request_text="check JRASERVER-1",
+            case_id="case",
+            expected_tool="jira_get_issue_by_key",
+            dry_run=True,
+        )
+    )
     assert result.execution_arn == "arn:exec:1"
     assert result.artifact_s3_uri == "s3://bucket-a/artifact.json"
     assert result.payload["result"] == "ok"
@@ -153,7 +161,15 @@ def test_runner_run_case_failure_modes(monkeypatch: pytest.MonkeyPatch) -> None:
         aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
     )
     with pytest.raises(RuntimeError):
-        runner.run_case(flow="native", request_text="x", case_id="c", expected_tool="tool", dry_run=False)
+        runner.run_case(
+            aws_pipeline_runner.PipelineRunRequest(
+                flow="native",
+                request_text="x",
+                case_id="c",
+                expected_tool="tool",
+                dry_run=False,
+            )
+        )
 
 
 def test_runner_run_case_missing_output_and_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -162,14 +178,30 @@ def test_runner_run_case_missing_output_and_artifact(monkeypatch: pytest.MonkeyP
         aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
     )
     with pytest.raises(RuntimeError):
-        runner.run_case(flow="native", request_text="x", case_id="c", expected_tool="tool", dry_run=False)
+        runner.run_case(
+            aws_pipeline_runner.PipelineRunRequest(
+                flow="native",
+                request_text="x",
+                case_id="c",
+                expected_tool="tool",
+                dry_run=False,
+            )
+        )
 
     _install_boto3_session(monkeypatch, descriptions=[{"status": "SUCCEEDED", "output": "{}"}])
     runner = aws_pipeline_runner.AwsPipelineRunner(
         aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
     )
     with pytest.raises(RuntimeError):
-        runner.run_case(flow="native", request_text="x", case_id="c", expected_tool="tool", dry_run=False)
+        runner.run_case(
+            aws_pipeline_runner.PipelineRunRequest(
+                flow="native",
+                request_text="x",
+                case_id="c",
+                expected_tool="tool",
+                dry_run=False,
+            )
+        )
 
 
 def test_runner_run_case_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -185,7 +217,15 @@ def test_runner_run_case_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     )
     with pytest.raises(TimeoutError):
-        runner.run_case(flow="native", request_text="x", case_id="c", expected_tool="tool", dry_run=False)
+        runner.run_case(
+            aws_pipeline_runner.PipelineRunRequest(
+                flow="native",
+                request_text="x",
+                case_id="c",
+                expected_tool="tool",
+                dry_run=False,
+            )
+        )
 
 
 def test_build_execution_name_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:

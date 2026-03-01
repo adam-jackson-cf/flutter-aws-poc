@@ -28,6 +28,94 @@ class McpCatalog:
     scope: StageToolScope
 
 
+@dataclass(frozen=True)
+class McpRunContext:
+    event: Dict[str, Any]
+    started: float
+    issue_key: str
+    selected_tool: str
+    set_scope: bool
+
+
+@dataclass(frozen=True)
+class ValidationInput:
+    selected_tool: str
+    expected_tool_unprefixed: str
+    tool_payload: Dict[str, Any]
+    issue_key: str
+    scope: StageToolScope
+    selection: Dict[str, Any]
+
+
+def _run_context(
+    event: Dict[str, Any],
+    started: float,
+    issue_key: str,
+    selected_tool: str,
+    set_scope: bool,
+) -> McpRunContext:
+    return McpRunContext(
+        event=event,
+        started=started,
+        issue_key=issue_key,
+        selected_tool=selected_tool,
+        set_scope=set_scope,
+    )
+
+
+def _empty_scope(intent: str) -> StageToolScope:
+    return StageToolScope(intent=intent, scoped_tool_count=0, catalog_tool_count=0)
+
+
+def _missing_expected_tool_result(run_context: McpRunContext, intent: str) -> Dict[str, Any]:
+    return _failed_result(
+        run_context,
+        reason="expected_tool_missing",
+        selection={"selected_tool": "", "reason": "expected_tool_missing"},
+        scope=_empty_scope(intent),
+    )
+
+
+def _gateway_unavailable_result(
+    run_context: McpRunContext,
+    intent: str,
+    exc: Exception,
+) -> Dict[str, Any]:
+    return _failed_result(
+        run_context,
+        reason=f"mcp_gateway_unavailable:{exc}",
+        selection={"selected_tool": "", "reason": f"mcp_gateway_error:{exc}"},
+        scope=_empty_scope(intent),
+    )
+
+
+def _unknown_selected_tool_result(
+    run_context: McpRunContext,
+    selection: Dict[str, Any],
+    scope: StageToolScope,
+) -> Dict[str, Any]:
+    return _failed_result(
+        run_context,
+        reason=f"selected_unknown_tool:{run_context.selected_tool}",
+        selection=selection,
+        scope=scope,
+    )
+
+
+def _tool_call_error_result(
+    run_context: McpRunContext,
+    selection: Dict[str, Any],
+    scope: StageToolScope,
+    exc: Exception,
+) -> Dict[str, Any]:
+    return _failed_result(
+        run_context,
+        reason=f"mcp_tool_call_error:{exc}",
+        selection=selection,
+        scope=scope,
+    )
+
+
 def _scope_from_catalog(intent: str, scoped_tools: list[Dict[str, Any]], all_tools: list[Dict[str, Any]]) -> StageToolScope:
     return StageToolScope(intent=intent, scoped_tool_count=len(scoped_tools), catalog_tool_count=len(all_tools))
 
@@ -77,26 +165,26 @@ def _invoke_tool(gateway_url: str, region: str, selected_tool: str, intake: Dict
     return extract_gateway_tool_payload(call_response)
 
 
-def _validate_tool_payload(selected_tool: str, expected_tool_unprefixed: str, tool_payload: Dict[str, Any], issue_key: str, scope: StageToolScope, selection: Dict[str, Any]) -> StageToolOutcome:
-    if strip_gateway_tool_prefix(selected_tool) != expected_tool_unprefixed:
+def _validate_tool_payload(validation: ValidationInput) -> StageToolOutcome:
+    if strip_gateway_tool_prefix(validation.selected_tool) != validation.expected_tool_unprefixed:
         return stage_tool_failure(
-            issue_key=issue_key,
-            reason=f"selected_wrong_tool:{selected_tool}",
-            selection=selection,
-            scope=scope,
+            issue_key=validation.issue_key,
+            reason=f"selected_wrong_tool:{validation.selected_tool}",
+            selection=validation.selection,
+            scope=validation.scope,
         )
-    issue = tool_payload.get("result", tool_payload)
-    if not issue_payload_complete_for_tool(issue, expected_tool_unprefixed):
+    issue = validation.tool_payload.get("result", validation.tool_payload)
+    if not issue_payload_complete_for_tool(issue, validation.expected_tool_unprefixed):
         return stage_tool_failure(
-            issue_key=issue_key,
+            issue_key=validation.issue_key,
             reason="mcp_gateway_missing_issue_payload",
-            selection=selection,
-            scope=scope,
+            selection=validation.selection,
+            scope=validation.scope,
         )
     return stage_tool_success(
         tool_result=issue,
-        selection=selection,
-        scope=scope,
+        selection=validation.selection,
+        scope=validation.scope,
     )
 
 
@@ -129,43 +217,32 @@ def _apply_outcome(event: Dict[str, Any], outcome: StageToolOutcome, set_scope: 
 
 
 def _finalize(
-    event: Dict[str, Any],
-    started: float,
-    issue_key: str,
-    selected_tool: str,
+    run_context: McpRunContext,
     outcome: StageToolOutcome,
-    *,
-    set_scope: bool,
 ) -> Dict[str, Any]:
-    _apply_outcome(event, outcome, set_scope=set_scope)
-    return _metric_result(event, started, issue_key, selected_tool, outcome)
+    _apply_outcome(run_context.event, outcome, set_scope=run_context.set_scope)
+    return _metric_result(
+        run_context.event,
+        run_context.started,
+        run_context.issue_key,
+        run_context.selected_tool,
+        outcome,
+    )
 
 
 def _failed_result(
-    event: Dict[str, Any],
-    started: float,
-    *,
-    issue_key: str,
-    selected_tool: str,
+    run_context: McpRunContext,
     reason: str,
     selection: Dict[str, Any],
     scope: StageToolScope,
-    set_scope: bool,
 ) -> Dict[str, Any]:
     outcome = stage_tool_failure(
-        issue_key=issue_key,
+        issue_key=run_context.issue_key,
         reason=reason,
         selection=selection,
         scope=scope,
     )
-    return _finalize(
-        event,
-        started,
-        issue_key,
-        selected_tool,
-        outcome,
-        set_scope=set_scope,
-    )
+    return _finalize(run_context, outcome)
 
 
 def _run_handler(event: Dict[str, Any], started: float) -> Dict[str, Any]:
@@ -173,17 +250,9 @@ def _run_handler(event: Dict[str, Any], started: float) -> Dict[str, Any]:
     intent = str(intake.get("intent", "general_triage"))
     issue_key = intake["issue_key"]
     expected_tool_unprefixed = str(event.get("expected_tool", "")).strip()
+    initial_context = _run_context(event=event, started=started, issue_key=issue_key, selected_tool="", set_scope=False)
     if not expected_tool_unprefixed:
-        return _failed_result(
-            event,
-            started,
-            issue_key=issue_key,
-            selected_tool="",
-            reason="expected_tool_missing",
-            selection={"selected_tool": "", "reason": "expected_tool_missing"},
-            scope=StageToolScope(intent=intent, scoped_tool_count=0, catalog_tool_count=0),
-            set_scope=False,
-        )
+        return _missing_expected_tool_result(run_context=initial_context, intent=intent)
 
     model_id = selected_model_id(event)
     region = selected_region(event)
@@ -196,15 +265,10 @@ def _run_handler(event: Dict[str, Any], started: float) -> Dict[str, Any]:
             expected_tool_unprefixed=expected_tool_unprefixed,
         )
     except Exception as exc:  # noqa: BLE001 - failure should be scored, not crash the pipeline
-        return _failed_result(
-            event,
-            started,
-            issue_key=issue_key,
-            selected_tool="",
-            reason=f"mcp_gateway_unavailable:{exc}",
-            selection={"selected_tool": "", "reason": f"mcp_gateway_error:{exc}"},
-            scope=StageToolScope(intent=intent, scoped_tool_count=0, catalog_tool_count=0),
-            set_scope=False,
+        return _gateway_unavailable_result(
+            run_context=initial_context,
+            intent=intent,
+            exc=exc,
         )
 
     selection = _select_tool(
@@ -215,17 +279,19 @@ def _run_handler(event: Dict[str, Any], started: float) -> Dict[str, Any]:
         dry_run=bool(event.get("dry_run", False)),
     )
     selected_tool = str(selection.get("selected_tool", ""))
+    selected_context = _run_context(
+        event=event,
+        started=started,
+        issue_key=issue_key,
+        selected_tool=selected_tool,
+        set_scope=True,
+    )
 
     if selected_tool not in catalog.tool_map:
-        return _failed_result(
-            event,
-            started,
-            issue_key=issue_key,
-            selected_tool=selected_tool,
-            reason=f"selected_unknown_tool:{selected_tool}",
+        return _unknown_selected_tool_result(
+            run_context=selected_context,
             selection=selection,
             scope=catalog.scope,
-            set_scope=True,
         )
 
     try:
@@ -237,33 +303,24 @@ def _run_handler(event: Dict[str, Any], started: float) -> Dict[str, Any]:
             catalog=catalog,
         )
     except Exception as exc:  # noqa: BLE001 - failure should be scored, not crash the pipeline
-        return _failed_result(
-            event,
-            started,
-            issue_key=issue_key,
-            selected_tool=selected_tool,
-            reason=f"mcp_tool_call_error:{exc}",
+        return _tool_call_error_result(
+            run_context=selected_context,
             selection=selection,
             scope=catalog.scope,
-            set_scope=True,
+            exc=exc,
         )
 
     outcome = _validate_tool_payload(
-        selected_tool=selected_tool,
-        expected_tool_unprefixed=expected_tool_unprefixed,
-        tool_payload=tool_payload,
-        issue_key=issue_key,
-        scope=catalog.scope,
-        selection=selection,
+        ValidationInput(
+            selected_tool=selected_tool,
+            expected_tool_unprefixed=expected_tool_unprefixed,
+            tool_payload=tool_payload,
+            issue_key=issue_key,
+            scope=catalog.scope,
+            selection=selection,
+        )
     )
-    return _finalize(
-        event,
-        started,
-        issue_key,
-        selected_tool,
-        outcome,
-        set_scope=True,
-    )
+    return _finalize(selected_context, outcome)
 
 
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:

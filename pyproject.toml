@@ -2,7 +2,10 @@
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["C901"]
+select = ["C901", "PLR0913"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5

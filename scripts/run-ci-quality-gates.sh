@@ -9,6 +9,8 @@ RUN_DUPLICATION_SIGNALS="${RUN_DUPLICATION_SIGNALS:-1}"
 DUPLICATION_SIGNAL_TARGET="${DUPLICATION_SIGNAL_TARGET:-.}"
 DUPLICATION_SIGNAL_MIN_SEVERITY="${DUPLICATION_SIGNAL_MIN_SEVERITY:-medium}"
 COMPLEXITY_MAX="${COMPLEXITY_MAX:-10}"
+LENGTH_MAX="${LENGTH_MAX:-80}"
+PARAM_MAX="${PARAM_MAX:-5}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -44,11 +46,11 @@ run_prettier_check() {
 }
 
 run_ruff_complexity_check() {
-  python3 -m ruff check aws/lambda evals runtime scripts --select C901 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX"
+  python3 -m ruff check aws/lambda evals runtime scripts --select C901,PLR0913 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX" --config "lint.pylint.max-args=$PARAM_MAX"
 }
 
 run_lizard_complexity_check() {
-  python3 -m lizard -C "$COMPLEXITY_MAX" aws/lambda evals runtime scripts infra/bin infra/lib
+  python3 -m lizard -C "$COMPLEXITY_MAX" -L "$LENGTH_MAX" -a "$PARAM_MAX" aws/lambda evals runtime scripts infra/bin infra/lib
 }
 
 run_semantic_contract_ownership_check() {
@@ -161,7 +163,7 @@ fi
 
 run_step "Python complexity lint (ruff <= ${COMPLEXITY_MAX})" run_ruff_complexity_check
 
-run_step "Cross-runtime complexity lint (lizard <= ${COMPLEXITY_MAX})" run_lizard_complexity_check
+run_step "Cross-runtime complexity lint (cc <= ${COMPLEXITY_MAX}, length <= ${LENGTH_MAX}, params <= ${PARAM_MAX})" run_lizard_complexity_check
 
 run_step "Semantic contract ownership guard" run_semantic_contract_ownership_check
 

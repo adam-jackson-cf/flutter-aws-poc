@@ -11,12 +11,13 @@ def ts_literal(value: object) -> str:
     return json.dumps(value, indent=2, sort_keys=True)
 
 
-def main() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+def _load_contract(repo_root: Path) -> dict[str, object]:
     contract_path = repo_root / "contracts" / "jira_tools.contract.json"
-    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    return json.loads(contract_path.read_text(encoding="utf-8"))
 
-    runtime_lines = [
+
+def _runtime_lines(contract: dict[str, object]) -> list[str]:
+    return [
         "# Auto-generated from contracts/jira_tools.contract.json.",
         "# Do not edit by hand; run scripts/generate_tool_contract_artifacts.py.",
         "",
@@ -38,10 +39,10 @@ def main() -> None:
         f"TOOL_COMPLETENESS_FIELDS_BY_OPERATION = {py_literal(contract['tool_completeness_fields_by_operation'])}",
         "",
     ]
-    runtime_out = repo_root / "runtime" / "sop_agent" / "domain" / "contracts.py"
-    runtime_out.write_text("\n".join(runtime_lines), encoding="utf-8")
 
-    lambda_lines = [
+
+def _lambda_lines(contract: dict[str, object]) -> list[str]:
+    return [
         "# Auto-generated from contracts/jira_tools.contract.json.",
         "# Do not edit by hand; run scripts/generate_tool_contract_artifacts.py.",
         "",
@@ -63,12 +64,10 @@ def main() -> None:
         f"GATEWAY_TOOLS = {py_literal(contract['gateway_tools'])}",
         "",
     ]
-    lambda_out = repo_root / "aws" / "lambda" / "contract_values.py"
-    lambda_out.write_text("\n".join(lambda_lines), encoding="utf-8")
 
-    infra_dir = repo_root / "infra" / "lib" / "generated"
-    infra_dir.mkdir(parents=True, exist_ok=True)
-    infra_lines = [
+
+def _infra_lines(contract: dict[str, object]) -> list[str]:
+    return [
         "// Auto-generated from contracts/jira_tools.contract.json.",
         "// Do not edit by hand; run scripts/generate_tool_contract_artifacts.py.",
         "",
@@ -97,8 +96,31 @@ def main() -> None:
         f"export const GATEWAY_TOOLS: GatewayToolContract[] = {ts_literal(contract['gateway_tools'])};",
         "",
     ]
+
+
+def _write_runtime_artifact(repo_root: Path, contract: dict[str, object]) -> None:
+    runtime_out = repo_root / "runtime" / "sop_agent" / "domain" / "contracts.py"
+    runtime_out.write_text("\n".join(_runtime_lines(contract)), encoding="utf-8")
+
+
+def _write_lambda_artifact(repo_root: Path, contract: dict[str, object]) -> None:
+    lambda_out = repo_root / "aws" / "lambda" / "contract_values.py"
+    lambda_out.write_text("\n".join(_lambda_lines(contract)), encoding="utf-8")
+
+
+def _write_infra_artifact(repo_root: Path, contract: dict[str, object]) -> None:
+    infra_dir = repo_root / "infra" / "lib" / "generated"
+    infra_dir.mkdir(parents=True, exist_ok=True)
     infra_out = infra_dir / "jira-tool-contract.ts"
-    infra_out.write_text("\n".join(infra_lines), encoding="utf-8")
+    infra_out.write_text("\n".join(_infra_lines(contract)), encoding="utf-8")
+
+
+def main() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    contract = _load_contract(repo_root)
+    _write_runtime_artifact(repo_root, contract)
+    _write_lambda_artifact(repo_root, contract)
+    _write_infra_artifact(repo_root, contract)
 
 
 if __name__ == "__main__":

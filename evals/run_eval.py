@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from evals.aws_pipeline_runner import (
     AwsPipelineRunner,
     AwsPipelineRunnerConfig,
+    PipelineRunRequest,
     PipelineRunResult,
 )
 from evals.cloudwatch_publish import CloudWatchPublishConfig, publish_eval_summary_metrics
@@ -358,11 +359,13 @@ def _evaluate_single_case(
 ) -> Dict[str, Any]:
     case_id = f"{case['case_id']}_it{iteration}"
     run = config.runner.run_case(
-        flow=flow,
-        request_text=case["request_text"],
-        case_id=case_id,
-        expected_tool=expected_tool_for_flow(case, flow),
-        dry_run=config.dry_run,
+        PipelineRunRequest(
+            flow=flow,
+            request_text=case["request_text"],
+            case_id=case_id,
+            expected_tool=expected_tool_for_flow(case, flow),
+            dry_run=config.dry_run,
+        )
     )
     context = CaseRunContext(flow=flow, scope=config.scope, iteration=iteration)
     result = _case_result_from_payload(case=case, run=run, context=context)

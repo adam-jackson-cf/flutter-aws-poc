@@ -269,14 +269,33 @@ def test_mcp_jira_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     assert args == {"issue_key": "JRASERVER-1", "query": "help"}
     assert flow._build_tool_arguments({"inputSchema": {"required": "bad"}}, {"issue_key": "JRASERVER-1", "request_text": "help"}) == {}
 
-    assert flow._select_tool("r", "JRASERVER-1", [{"name": "x"}], "x", dry_run=True)["reason"] == "dry_run"
+    assert (
+        flow._select_tool(
+            mod.SelectionInput(
+                request_text="r",
+                issue_key="JRASERVER-1",
+                tools=[{"name": "x"}],
+                expected_tool_name="x",
+                dry_run=True,
+            )
+        )["reason"]
+        == "dry_run"
+    )
 
     class _Client:
         def converse(self, **_kwargs: Any) -> Dict[str, Any]:
             return {"output": {"message": {"content": [{"text": '{"tool":"jira_get_issue_by_key","reason":"ok"}'}]}}}
 
     monkeypatch.setattr(mod.boto3, "client", lambda *_args, **_kwargs: _Client())
-    sel = flow._select_tool("r", "JRASERVER-1", [{"name": "jira_get_issue_by_key"}], "jira_get_issue_by_key", dry_run=False)
+    sel = flow._select_tool(
+        mod.SelectionInput(
+            request_text="r",
+            issue_key="JRASERVER-1",
+            tools=[{"name": "jira_get_issue_by_key"}],
+            expected_tool_name="jira_get_issue_by_key",
+            dry_run=False,
+        )
+    )
     assert sel["tool"] == "jira_get_issue_by_key"
 
     class _Mcp:
@@ -304,11 +323,11 @@ def test_mcp_jira_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
 
     flow._mcp_client = _Mcp([{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}], {"result": {"key": "JRASERVER-1"}})
     flow._find_expected_tool = lambda tools: "jira_get_issue_by_key"
-    flow._select_tool = lambda **_kwargs: {"tool": "unknown_tool", "reason": "x"}
+    flow._select_tool = lambda _selection_input: {"tool": "unknown_tool", "reason": "x"}
     out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
     assert out["issue"]["failure_reason"].startswith("selected_unknown_tool")
 
-    flow._select_tool = lambda **_kwargs: {"tool": "jira_get_issue_by_key", "reason": "x"}
+    flow._select_tool = lambda _selection_input: {"tool": "jira_get_issue_by_key", "reason": "x"}
     flow._mcp_client = _Mcp([{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}], RuntimeError("invoke"))
     out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
     assert out["issue"]["failure_reason"].startswith("mcp_invocation_error")
@@ -320,11 +339,11 @@ def test_mcp_jira_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
         ],
         {"result": {"key": "JRASERVER-1"}},
     )
-    flow._select_tool = lambda **_kwargs: {"tool": "jira_get_issue_status_snapshot", "reason": "x"}
+    flow._select_tool = lambda _selection_input: {"tool": "jira_get_issue_status_snapshot", "reason": "x"}
     out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
     assert out["issue"]["failure_reason"].startswith("selected_wrong_tool")
 
-    flow._select_tool = lambda **_kwargs: {"tool": "jira_get_issue_by_key", "reason": "x"}
+    flow._select_tool = lambda _selection_input: {"tool": "jira_get_issue_by_key", "reason": "x"}
     flow._mcp_client = _Mcp([{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}], {"result": {"summary": "missing key"}})
     out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
     assert out["issue"]["failure_reason"] == "mcp_missing_issue_payload"
