@@ -4,7 +4,7 @@ set -euo pipefail
 RUNNER_PATH="scripts/run-ci-quality-gates.sh"
 MODE="check"
 STAGE="false"
-PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-25}"
+PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-100}"
 
 for arg in "$@"; do
   case "$arg" in
