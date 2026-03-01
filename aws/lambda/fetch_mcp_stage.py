@@ -128,20 +128,62 @@ def _apply_outcome(event: Dict[str, Any], outcome: StageToolOutcome, set_scope: 
         }
 
 
-def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
-    started = time.time()
+def _finalize(
+    event: Dict[str, Any],
+    started: float,
+    issue_key: str,
+    selected_tool: str,
+    outcome: StageToolOutcome,
+    *,
+    set_scope: bool,
+) -> Dict[str, Any]:
+    _apply_outcome(event, outcome, set_scope=set_scope)
+    return _metric_result(event, started, issue_key, selected_tool, outcome)
+
+
+def _failed_result(
+    event: Dict[str, Any],
+    started: float,
+    *,
+    issue_key: str,
+    selected_tool: str,
+    reason: str,
+    selection: Dict[str, Any],
+    scope: StageToolScope,
+    set_scope: bool,
+) -> Dict[str, Any]:
+    outcome = stage_tool_failure(
+        issue_key=issue_key,
+        reason=reason,
+        selection=selection,
+        scope=scope,
+    )
+    return _finalize(
+        event,
+        started,
+        issue_key,
+        selected_tool,
+        outcome,
+        set_scope=set_scope,
+    )
+
+
+def _run_handler(event: Dict[str, Any], started: float) -> Dict[str, Any]:
     intake = event["intake"]
     intent = str(intake.get("intent", "general_triage"))
+    issue_key = intake["issue_key"]
     expected_tool_unprefixed = str(event.get("expected_tool", "")).strip()
     if not expected_tool_unprefixed:
-        outcome = stage_tool_failure(
-            issue_key=intake["issue_key"],
+        return _failed_result(
+            event,
+            started,
+            issue_key=issue_key,
+            selected_tool="",
             reason="expected_tool_missing",
             selection={"selected_tool": "", "reason": "expected_tool_missing"},
             scope=StageToolScope(intent=intent, scoped_tool_count=0, catalog_tool_count=0),
+            set_scope=False,
         )
-        _apply_outcome(event, outcome, set_scope=False)
-        return _metric_result(event, started, intake["issue_key"], "", outcome)
 
     model_id = selected_model_id(event)
     region = selected_region(event)
@@ -154,15 +196,16 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             expected_tool_unprefixed=expected_tool_unprefixed,
         )
     except Exception as exc:  # noqa: BLE001 - failure should be scored, not crash the pipeline
-        reason = f"mcp_gateway_unavailable:{exc}"
-        outcome = stage_tool_failure(
-            issue_key=intake["issue_key"],
-            reason=reason,
+        return _failed_result(
+            event,
+            started,
+            issue_key=issue_key,
+            selected_tool="",
+            reason=f"mcp_gateway_unavailable:{exc}",
             selection={"selected_tool": "", "reason": f"mcp_gateway_error:{exc}"},
             scope=StageToolScope(intent=intent, scoped_tool_count=0, catalog_tool_count=0),
+            set_scope=False,
         )
-        _apply_outcome(event, outcome, set_scope=False)
-        return _metric_result(event, started, intake["issue_key"], "", outcome)
 
     selection = _select_tool(
         intake=intake,
@@ -174,14 +217,16 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     selected_tool = str(selection.get("selected_tool", ""))
 
     if selected_tool not in catalog.tool_map:
-        outcome = stage_tool_failure(
-            issue_key=intake["issue_key"],
+        return _failed_result(
+            event,
+            started,
+            issue_key=issue_key,
+            selected_tool=selected_tool,
             reason=f"selected_unknown_tool:{selected_tool}",
             selection=selection,
             scope=catalog.scope,
+            set_scope=True,
         )
-        _apply_outcome(event, outcome, set_scope=True)
-        return _metric_result(event, started, intake["issue_key"], selected_tool, outcome)
 
     try:
         tool_payload = _invoke_tool(
@@ -192,22 +237,34 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             catalog=catalog,
         )
     except Exception as exc:  # noqa: BLE001 - failure should be scored, not crash the pipeline
-        outcome = stage_tool_failure(
-            issue_key=intake["issue_key"],
+        return _failed_result(
+            event,
+            started,
+            issue_key=issue_key,
+            selected_tool=selected_tool,
             reason=f"mcp_tool_call_error:{exc}",
             selection=selection,
             scope=catalog.scope,
+            set_scope=True,
         )
-        _apply_outcome(event, outcome, set_scope=True)
-        return _metric_result(event, started, intake["issue_key"], selected_tool, outcome)
 
     outcome = _validate_tool_payload(
         selected_tool=selected_tool,
         expected_tool_unprefixed=expected_tool_unprefixed,
         tool_payload=tool_payload,
-        issue_key=intake["issue_key"],
+        issue_key=issue_key,
         scope=catalog.scope,
         selection=selection,
     )
-    _apply_outcome(event, outcome, set_scope=True)
-    return _metric_result(event, started, intake["issue_key"], selected_tool, outcome)
+    return _finalize(
+        event,
+        started,
+        issue_key,
+        selected_tool,
+        outcome,
+        set_scope=True,
+    )
+
+
+def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
+    return _run_handler(event, started=time.time())
