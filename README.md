@@ -94,6 +94,15 @@ Quality gates:
 - Default (coverage + lint + synth): `bash scripts/run-ci-quality-gates.sh`
 - Include mutation gate locally: `RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
 - Tune mutation threshold: `MUTATION_SCORE_TARGET=80 RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
+- Disable duplication signals temporarily: `RUN_DUPLICATION_SIGNALS=0 bash scripts/run-ci-quality-gates.sh`
+- Tune duplication severity threshold: `DUPLICATION_SIGNAL_MIN_SEVERITY=high bash scripts/run-ci-quality-gates.sh`
+
+Duplication signal profiles (recorded when quality gates run):
+- `audit duplication`: full codebase duplication context (excluding standard build/cache paths).
+- `code-only duplication`: excludes lockfiles and generated architecture HTML so trendlines focus on maintainable source modules.
+- Artifact pointers are printed as:
+  - `DUPLICATION_AUDIT_SUMMARY=<path>`
+  - `DUPLICATION_CODE_ONLY_SUMMARY=<path>`
 
 Dashboard:
 - Create/update dashboard for a run: `./scripts/create-cloudwatch-dashboard.sh --run-id 20260227T220000Z --region "$AWS_REGION"`

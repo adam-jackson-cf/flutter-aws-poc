@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from common import fetch_jira_issue
 
@@ -58,42 +58,67 @@ def _derive_sentiment(issue: Dict[str, Any]) -> str:
     return "neutral"
 
 
+def _result_issue_by_key(issue: Dict[str, Any]) -> Dict[str, Any]:
+    return issue
+
+
+def _result_issue_status_snapshot(issue: Dict[str, Any]) -> Dict[str, Any]:
+    return {"key": issue["key"], "status": issue.get("status", "Unknown"), "updated": issue.get("updated", "")}
+
+
+def _result_issue_priority_context(issue: Dict[str, Any]) -> Dict[str, Any]:
+    priority = issue.get("priority", "None")
+    risk_band = "high" if priority in {"Highest", "High", "Critical"} else "medium" if priority == "Medium" else "low"
+    return {"key": issue["key"], "priority": priority, "risk_band": risk_band}
+
+
+def _result_issue_labels(issue: Dict[str, Any]) -> Dict[str, Any]:
+    return {"key": issue["key"], "labels": issue.get("labels", [])}
+
+
+def _result_issue_project_key(issue: Dict[str, Any]) -> Dict[str, Any]:
+    key = issue.get("key", "")
+    project_key = key.split("-", 1)[0] if "-" in key else ""
+    return {"key": key, "project_key": project_key}
+
+
+def _result_issue_update_timestamp(issue: Dict[str, Any]) -> Dict[str, Any]:
+    return {"key": issue["key"], "updated": issue.get("updated", "")}
+
+
+def _result_issue_risk_flags(issue: Dict[str, Any]) -> Dict[str, Any]:
+    labels = issue.get("labels", [])
+    risk_flags = [label for label in labels if "esc" in str(label).lower() or "security" in str(label).lower()]
+    return {"key": issue["key"], "risk_flags": risk_flags}
+
+
+def _result_customer_sentiment(issue: Dict[str, Any]) -> Dict[str, Any]:
+    return {"key": issue["key"], "sentiment": _derive_sentiment(issue), "status": issue.get("status", "Unknown")}
+
+
+def _result_customer_message_seed(issue: Dict[str, Any]) -> Dict[str, Any]:
+    summary = str(issue.get("summary", "")).strip()
+    return {"key": issue["key"], "seed_message": summary[:180]}
+
+
+_TOOL_RESULT_BUILDERS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
+    "jira_get_issue_by_key": _result_issue_by_key,
+    "jira_get_issue_status_snapshot": _result_issue_status_snapshot,
+    "jira_get_issue_priority_context": _result_issue_priority_context,
+    "jira_get_issue_labels": _result_issue_labels,
+    "jira_get_issue_project_key": _result_issue_project_key,
+    "jira_get_issue_update_timestamp": _result_issue_update_timestamp,
+    "jira_get_issue_risk_flags": _result_issue_risk_flags,
+    "jira_get_customer_sentiment": _result_customer_sentiment,
+    "jira_get_issue_customer_message_seed": _result_customer_message_seed,
+}
+
+
 def _build_tool_result(tool_name: str, issue: Dict[str, Any]) -> Dict[str, Any]:
-    if tool_name == "jira_get_issue_by_key":
-        return issue
-
-    if tool_name == "jira_get_issue_status_snapshot":
-        return {"key": issue["key"], "status": issue.get("status", "Unknown"), "updated": issue.get("updated", "")}
-
-    if tool_name == "jira_get_issue_priority_context":
-        priority = issue.get("priority", "None")
-        risk_band = "high" if priority in {"Highest", "High", "Critical"} else "medium" if priority == "Medium" else "low"
-        return {"key": issue["key"], "priority": priority, "risk_band": risk_band}
-
-    if tool_name == "jira_get_issue_labels":
-        return {"key": issue["key"], "labels": issue.get("labels", [])}
-
-    if tool_name == "jira_get_issue_project_key":
-        key = issue.get("key", "")
-        project_key = key.split("-", 1)[0] if "-" in key else ""
-        return {"key": key, "project_key": project_key}
-
-    if tool_name == "jira_get_issue_update_timestamp":
-        return {"key": issue["key"], "updated": issue.get("updated", "")}
-
-    if tool_name == "jira_get_issue_risk_flags":
-        labels = issue.get("labels", [])
-        risk_flags = [label for label in labels if "esc" in str(label).lower() or "security" in str(label).lower()]
-        return {"key": issue["key"], "risk_flags": risk_flags}
-
-    if tool_name == "jira_get_customer_sentiment":
-        return {"key": issue["key"], "sentiment": _derive_sentiment(issue), "status": issue.get("status", "Unknown")}
-
-    if tool_name == "jira_get_issue_customer_message_seed":
-        summary = str(issue.get("summary", "")).strip()
-        return {"key": issue["key"], "seed_message": summary[:180]}
-
-    return {"key": issue.get("key", ""), "error": f"unsupported_tool:{tool_name}"}
+    builder = _TOOL_RESULT_BUILDERS.get(tool_name)
+    if builder is None:
+        return {"key": issue.get("key", ""), "error": f"unsupported_tool:{tool_name}"}
+    return builder(issue)
 
 
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:

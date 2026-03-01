@@ -79,6 +79,57 @@ class EvaluationConfig:
     judge: BedrockJudge | None
 
 
+@dataclass(frozen=True)
+class ActualPayloadInput:
+    intent_actual: str
+    issue_key_actual: str
+    selected_tool: str
+    failure_reason: str
+    generated_response: str
+    run: PipelineRunResult
+
+
+@dataclass(frozen=True)
+class CaseMetricsPayloadInput:
+    intent_match: bool
+    issue_key_match: bool
+    tool_failure: bool
+    tool_match: bool
+    issue_payload_complete: bool
+    business_success: bool
+    failure_reason: str
+    total_latency_ms: float
+    response_similarity: float
+
+
+@dataclass(frozen=True)
+class CaseOutcome:
+    intent_actual: str
+    issue_key_actual: str
+    selected_tool: str
+    failure_reason: str
+    issue_payload_complete: bool
+    tool_failure: bool
+    intent_match: bool
+    issue_key_match: bool
+    tool_match: bool
+    business_success: bool
+    total_latency_ms: float
+    response_similarity: float
+
+
+@dataclass(frozen=True)
+class CaseOutcomeInput:
+    case: Dict[str, Any]
+    context: CaseRunContext
+    run_payload: Dict[str, Any]
+    run_metrics: Dict[str, Any]
+    tool_result: Dict[str, Any]
+    expected_tool: str
+    total_latency_ms: float
+    response_similarity: float
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run SOP evaluation through deployed AWS pipeline")
     parser.add_argument("--dataset", required=True)
@@ -214,52 +265,61 @@ def _expected_payload(case: Dict[str, Any], expected_tool: str) -> Dict[str, str
     }
 
 
-def _actual_payload(
-    intent_actual: str,
-    issue_key_actual: str,
-    selected_tool: str,
-    failure_reason: str,
-    generated: str,
-    run: PipelineRunResult,
-) -> Dict[str, str]:
+def _actual_payload(payload_input: ActualPayloadInput) -> Dict[str, str]:
     return {
-        "intent": intent_actual,
-        "issue_key": issue_key_actual,
-        "selected_tool": selected_tool,
-        "failure_reason": failure_reason,
-        "customer_response": generated,
-        "execution_arn": run.execution_arn,
-        "artifact_s3_uri": run.artifact_s3_uri,
+        "intent": payload_input.intent_actual,
+        "issue_key": payload_input.issue_key_actual,
+        "selected_tool": payload_input.selected_tool,
+        "failure_reason": payload_input.failure_reason,
+        "customer_response": payload_input.generated_response,
+        "execution_arn": payload_input.run.execution_arn,
+        "artifact_s3_uri": payload_input.run.artifact_s3_uri,
     }
 
 
-def _case_metrics_payload(
-    intent_match: bool,
-    issue_key_match: bool,
-    tool_failure: bool,
-    tool_match: bool,
-    issue_payload_complete: bool,
-    business_success: bool,
-    failure_reason: str,
-    total_latency_ms: float,
-    similarity: float,
-) -> Dict[str, Any]:
+def _case_metrics_payload(payload_input: CaseMetricsPayloadInput) -> Dict[str, Any]:
     return {
-        "intent_match": intent_match,
-        "issue_key_match": issue_key_match,
-        "tool_failure": tool_failure,
-        "tool_match": tool_match,
-        "issue_payload_complete": issue_payload_complete,
-        "business_success": business_success,
-        "failure_reason": failure_reason,
-        "latency_ms": total_latency_ms,
-        "response_similarity": similarity,
+        "intent_match": payload_input.intent_match,
+        "issue_key_match": payload_input.issue_key_match,
+        "tool_failure": payload_input.tool_failure,
+        "tool_match": payload_input.tool_match,
+        "issue_payload_complete": payload_input.issue_payload_complete,
+        "business_success": payload_input.business_success,
+        "failure_reason": payload_input.failure_reason,
+        "latency_ms": payload_input.total_latency_ms,
+        "response_similarity": payload_input.response_similarity,
     }
+
+
+def _derive_case_outcome(payload_input: CaseOutcomeInput) -> CaseOutcome:
+    failure_reason = str(payload_input.tool_result.get("failure_reason", ""))
+    issue_payload_complete = _issue_payload_complete_for_tool(payload_input.tool_result, payload_input.expected_tool)
+    tool_failure = bool(payload_input.run_payload.get("tool_failure", payload_input.run_metrics.get("tool_failure", False)))
+    intent_actual = str(payload_input.run_payload.get("intake", {}).get("intent", ""))
+    issue_key_actual = str(payload_input.tool_result.get("key", ""))
+    selected_tool = _selected_tool_for_flow(payload_input.context.flow, payload_input.run_payload)
+    intent_match = intent_actual == payload_input.case["expected_intent"]
+    issue_key_match = issue_key_actual == payload_input.case["expected_issue_key"]
+    tool_match = _canonical_tool_operation(selected_tool) == _canonical_tool_operation(payload_input.expected_tool)
+    business_success = bool((not tool_failure) and issue_payload_complete and intent_match and issue_key_match and tool_match)
+    return CaseOutcome(
+        intent_actual=intent_actual,
+        issue_key_actual=issue_key_actual,
+        selected_tool=selected_tool,
+        failure_reason=failure_reason,
+        issue_payload_complete=issue_payload_complete,
+        tool_failure=tool_failure,
+        intent_match=intent_match,
+        issue_key_match=issue_key_match,
+        tool_match=tool_match,
+        business_success=business_success,
+        total_latency_ms=payload_input.total_latency_ms,
+        response_similarity=payload_input.response_similarity,
+    )
 
 
 def _case_result_from_payload(case: Dict[str, Any], run: PipelineRunResult, context: CaseRunContext) -> Dict[str, Any]:
     run_payload = run.payload
-    intake = run_payload.get("intake", {})
     tool_result = run_payload.get("tool_result", {})
     generated_response = run_payload.get("generated_response", {})
     run_metrics = run_payload.get("run_metrics", {})
@@ -271,18 +331,19 @@ def _case_result_from_payload(case: Dict[str, Any], run: PipelineRunResult, cont
         expected_response_anchor=case["expected_response_anchor"],
     )
 
-    failure_reason = str(tool_result.get("failure_reason", ""))
-    issue_payload_complete = _issue_payload_complete_for_tool(tool_result, expected_tool)
-    tool_failure = bool(run_payload.get("tool_failure", run_metrics.get("tool_failure", False)))
-
-    intent_actual = str(intake.get("intent", ""))
-    issue_key_actual = str(tool_result.get("key", ""))
-    intent_match = intent_actual == case["expected_intent"]
-    issue_key_match = issue_key_actual == case["expected_issue_key"]
-    selected_tool = _selected_tool_for_flow(context.flow, run_payload)
-    tool_match = _canonical_tool_operation(selected_tool) == _canonical_tool_operation(expected_tool)
-    business_success = bool((not tool_failure) and issue_payload_complete and intent_match and issue_key_match and tool_match)
     total_latency_ms = _total_latency_ms(run_payload, run_metrics)
+    outcome = _derive_case_outcome(
+        CaseOutcomeInput(
+            case=case,
+            context=context,
+            run_payload=run_payload,
+            run_metrics=run_metrics,
+            tool_result=tool_result,
+            expected_tool=expected_tool,
+            total_latency_ms=total_latency_ms,
+            response_similarity=similarity,
+        )
+    )
 
     return {
         "iteration": context.iteration,
@@ -290,23 +351,27 @@ def _case_result_from_payload(case: Dict[str, Any], run: PipelineRunResult, cont
         "request_text": case["request_text"],
         "expected": _expected_payload(case=case, expected_tool=expected_tool),
         "actual": _actual_payload(
-            intent_actual=intent_actual,
-            issue_key_actual=issue_key_actual,
-            selected_tool=selected_tool,
-            failure_reason=failure_reason,
-            generated=generated,
-            run=run,
+            ActualPayloadInput(
+                intent_actual=outcome.intent_actual,
+                issue_key_actual=outcome.issue_key_actual,
+                selected_tool=outcome.selected_tool,
+                failure_reason=outcome.failure_reason,
+                generated_response=generated,
+                run=run,
+            )
         ),
         "metrics": _case_metrics_payload(
-            intent_match=intent_match,
-            issue_key_match=issue_key_match,
-            tool_failure=tool_failure,
-            tool_match=tool_match,
-            issue_payload_complete=issue_payload_complete,
-            business_success=business_success,
-            failure_reason=failure_reason,
-            total_latency_ms=total_latency_ms,
-            similarity=similarity,
+            CaseMetricsPayloadInput(
+                intent_match=outcome.intent_match,
+                issue_key_match=outcome.issue_key_match,
+                tool_failure=outcome.tool_failure,
+                tool_match=outcome.tool_match,
+                issue_payload_complete=outcome.issue_payload_complete,
+                business_success=outcome.business_success,
+                failure_reason=outcome.failure_reason,
+                total_latency_ms=outcome.total_latency_ms,
+                response_similarity=outcome.response_similarity,
+            )
         ),
     }
 

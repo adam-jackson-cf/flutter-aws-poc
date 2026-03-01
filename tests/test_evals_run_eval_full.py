@@ -126,10 +126,31 @@ def test_tool_operation_and_payload_helpers(monkeypatch: pytest.MonkeyPatch) -> 
     assert similarity == 0.4
 
     run = PipelineRunResult(execution_arn="arn", payload={}, artifact_s3_uri="s3://bucket/a.json")
-    actual = run_eval._actual_payload("i", "k", "tool", "r", "g", run)
+    actual = run_eval._actual_payload(
+        run_eval.ActualPayloadInput(
+            intent_actual="i",
+            issue_key_actual="k",
+            selected_tool="tool",
+            failure_reason="r",
+            generated_response="g",
+            run=run,
+        )
+    )
     assert actual["artifact_s3_uri"] == "s3://bucket/a.json"
     assert run_eval._expected_payload(_sample_case(), "tool")["tool"] == "tool"
-    metrics = run_eval._case_metrics_payload(True, True, False, True, True, True, "", 10.0, 0.9)
+    metrics = run_eval._case_metrics_payload(
+        run_eval.CaseMetricsPayloadInput(
+            intent_match=True,
+            issue_key_match=True,
+            tool_failure=False,
+            tool_match=True,
+            issue_payload_complete=True,
+            business_success=True,
+            failure_reason="",
+            total_latency_ms=10.0,
+            response_similarity=0.9,
+        )
+    )
     assert metrics["latency_ms"] == 10.0
 
 

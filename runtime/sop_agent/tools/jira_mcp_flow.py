@@ -1,10 +1,11 @@
 import json
 import re
-from typing import Any, Dict, List
+from dataclasses import dataclass
+from typing import Any, Dict, List, TypedDict
 
 import boto3
 
-from .agentcore_mcp_client import AgentCoreMcpClient, AgentCoreMcpClientError
+from .agentcore_mcp_client import AgentCoreMcpClient
 from .jira_native_sdk import JiraSdkClient
 
 EXPECTED_TOOL = "jira_get_issue_by_key"
@@ -18,6 +19,23 @@ TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
 
 class McpSelectionError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class ScopedCatalog:
+    intent: str
+    all_tools: List[Dict[str, Any]]
+    scoped_tools: List[Dict[str, Any]]
+    expected_tool_name: str
+    tool_map: Dict[str, Dict[str, Any]]
+
+
+class FailureResult(TypedDict, total=False):
+    selection: Dict[str, str]
+    tool_failure: bool
+    issue: Dict[str, Any]
+    scope: Dict[str, Any]
+    tool_payload: Dict[str, Any]
 
 
 def _extract_json(raw_text: str) -> Dict[str, Any]:
@@ -73,6 +91,62 @@ class McpJiraFlow:
             args["query"] = intake["request_text"]
         return args
 
+    def _build_scoped_catalog(self, intent: str) -> ScopedCatalog:
+        all_tools = self._mcp_client.list_tools()
+        scoped_tools = self._scope_tools_for_intent(all_tools, intent)
+        expected_tool_name = self._find_expected_tool(scoped_tools)
+        tool_map = {str(tool.get("name", "")): tool for tool in scoped_tools}
+        return ScopedCatalog(
+            intent=intent,
+            all_tools=all_tools,
+            scoped_tools=scoped_tools,
+            expected_tool_name=expected_tool_name,
+            tool_map=tool_map,
+        )
+
+    @staticmethod
+    def _scope_context(catalog: ScopedCatalog) -> Dict[str, Any]:
+        return {
+            "intent": catalog.intent,
+            "catalog_tool_count": len(catalog.all_tools),
+            "scoped_tool_count": len(catalog.scoped_tools),
+        }
+
+    @staticmethod
+    def _failure_issue(issue_key: str, failure_reason: str) -> Dict[str, Any]:
+        return {
+            "key": issue_key,
+            "summary": "",
+            "status": "Unknown",
+            "issue_type": "Unknown",
+            "priority": "None",
+            "labels": [],
+            "updated": "",
+            "description": "",
+            "comment_count": 0,
+            "failure_reason": failure_reason,
+        }
+
+    def _failure_result(
+        self,
+        *,
+        intake: Dict[str, Any],
+        failure_reason: str,
+        selection: Dict[str, str],
+        catalog: ScopedCatalog | None = None,
+        tool_payload: Dict[str, Any] | None = None,
+    ) -> FailureResult:
+        result: FailureResult = {
+            "selection": selection,
+            "tool_failure": True,
+            "issue": self._failure_issue(issue_key=intake["issue_key"], failure_reason=failure_reason),
+        }
+        if catalog is not None:
+            result["scope"] = self._scope_context(catalog)
+        if tool_payload is not None:
+            result["tool_payload"] = tool_payload
+        return result
+
     def _select_tool(
         self,
         request_text: str,
@@ -108,143 +182,66 @@ class McpJiraFlow:
     def fetch_issue_with_selection(self, intake: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
         intent = str(intake.get("intent", "general_triage"))
         try:
-            all_tools = self._mcp_client.list_tools()
-            tools = self._scope_tools_for_intent(all_tools, intent)
-            expected_tool_name = self._find_expected_tool(tools)
-            tool_map = {str(tool.get("name", "")): tool for tool in tools}
+            catalog = self._build_scoped_catalog(intent=intent)
         except Exception as exc:  # noqa: BLE001 - failure should be scored, not throw
-            return {
-                "selection": {"tool": "", "reason": f"mcp_catalog_error:{exc}"},
-                "tool_failure": True,
-                "issue": {
-                    "key": intake["issue_key"],
-                    "summary": "",
-                    "status": "Unknown",
-                    "issue_type": "Unknown",
-                    "priority": "None",
-                    "labels": [],
-                    "updated": "",
-                    "description": "",
-                    "comment_count": 0,
-                    "failure_reason": f"mcp_catalog_error:{exc}",
-                },
-            }
+            failure_reason = f"mcp_catalog_error:{exc}"
+            return self._failure_result(
+                intake=intake,
+                failure_reason=failure_reason,
+                selection={"tool": "", "reason": failure_reason},
+            )
 
         selection = self._select_tool(
             request_text=intake["request_text"],
             issue_key=intake["issue_key"],
-            tools=tools,
-            expected_tool_name=expected_tool_name,
+            tools=catalog.scoped_tools,
+            expected_tool_name=catalog.expected_tool_name,
             dry_run=dry_run,
         )
 
         selected_tool = selection["tool"]
-        if selected_tool not in tool_map:
-            return {
-                "selection": selection,
-                "tool_failure": True,
-                "issue": {
-                    "key": intake["issue_key"],
-                    "summary": "",
-                    "status": "Unknown",
-                    "issue_type": "Unknown",
-                    "priority": "None",
-                    "labels": [],
-                    "updated": "",
-                    "description": "",
-                    "comment_count": 0,
-                    "failure_reason": f"selected_unknown_tool:{selected_tool}",
-                },
-                "scope": {
-                    "intent": intent,
-                    "catalog_tool_count": len(all_tools),
-                    "scoped_tool_count": len(tools),
-                },
-            }
+        if selected_tool not in catalog.tool_map:
+            return self._failure_result(
+                intake=intake,
+                failure_reason=f"selected_unknown_tool:{selected_tool}",
+                selection=selection,
+                catalog=catalog,
+            )
 
-        args = self._build_tool_arguments(selected_tool=tool_map[selected_tool], intake=intake)
+        args = self._build_tool_arguments(selected_tool=catalog.tool_map[selected_tool], intake=intake)
         try:
             call_result = self._mcp_client.call_tool(tool_name=selected_tool, arguments=args)
             tool_payload = self._mcp_client.extract_json_payload(call_result)
         except Exception as exc:  # noqa: BLE001 - failure should be scored, not throw
-            return {
-                "selection": selection,
-                "tool_failure": True,
-                "issue": {
-                    "key": intake["issue_key"],
-                    "summary": "",
-                    "status": "Unknown",
-                    "issue_type": "Unknown",
-                    "priority": "None",
-                    "labels": [],
-                    "updated": "",
-                    "description": "",
-                    "comment_count": 0,
-                    "failure_reason": f"mcp_invocation_error:{exc}",
-                },
-                "scope": {
-                    "intent": intent,
-                    "catalog_tool_count": len(all_tools),
-                    "scoped_tool_count": len(tools),
-                },
-            }
+            return self._failure_result(
+                intake=intake,
+                failure_reason=f"mcp_invocation_error:{exc}",
+                selection=selection,
+                catalog=catalog,
+            )
 
-        if selected_tool != expected_tool_name:
-            return {
-                "selection": selection,
-                "tool_failure": True,
-                "issue": {
-                    "key": intake["issue_key"],
-                    "summary": "",
-                    "status": "Unknown",
-                    "issue_type": "Unknown",
-                    "priority": "None",
-                    "labels": [],
-                    "updated": "",
-                    "description": "",
-                    "comment_count": 0,
-                    "failure_reason": f"selected_wrong_tool:{selected_tool}",
-                },
-                "tool_payload": tool_payload,
-                "scope": {
-                    "intent": intent,
-                    "catalog_tool_count": len(all_tools),
-                    "scoped_tool_count": len(tools),
-                },
-            }
+        if selected_tool != catalog.expected_tool_name:
+            return self._failure_result(
+                intake=intake,
+                failure_reason=f"selected_wrong_tool:{selected_tool}",
+                selection=selection,
+                catalog=catalog,
+                tool_payload=tool_payload,
+            )
 
         issue = tool_payload.get("result", tool_payload)
         if not isinstance(issue, dict) or not issue.get("key"):
-            return {
-                "selection": selection,
-                "tool_failure": True,
-                "issue": {
-                    "key": intake["issue_key"],
-                    "summary": "",
-                    "status": "Unknown",
-                    "issue_type": "Unknown",
-                    "priority": "None",
-                    "labels": [],
-                    "updated": "",
-                    "description": "",
-                    "comment_count": 0,
-                    "failure_reason": "mcp_missing_issue_payload",
-                },
-                "tool_payload": tool_payload,
-                "scope": {
-                    "intent": intent,
-                    "catalog_tool_count": len(all_tools),
-                    "scoped_tool_count": len(tools),
-                },
-            }
+            return self._failure_result(
+                intake=intake,
+                failure_reason="mcp_missing_issue_payload",
+                selection=selection,
+                catalog=catalog,
+                tool_payload=tool_payload,
+            )
 
         return {
             "selection": selection,
             "tool_failure": False,
             "issue": issue,
-            "scope": {
-                "intent": intent,
-                "catalog_tool_count": len(all_tools),
-                "scoped_tool_count": len(tools),
-            },
+            "scope": self._scope_context(catalog),
         }

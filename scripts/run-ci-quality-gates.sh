@@ -5,6 +5,9 @@ RUNNER_PATH="scripts/run-ci-quality-gates.sh"
 MODE="check"
 STAGE="false"
 PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-100}"
+RUN_DUPLICATION_SIGNALS="${RUN_DUPLICATION_SIGNALS:-1}"
+DUPLICATION_SIGNAL_TARGET="${DUPLICATION_SIGNAL_TARGET:-.}"
+DUPLICATION_SIGNAL_MIN_SEVERITY="${DUPLICATION_SIGNAL_MIN_SEVERITY:-medium}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -26,6 +29,75 @@ run_step() {
   shift
   echo "==> $step"
   "$@"
+}
+
+build_duplication_artifact_root() {
+  local ts
+  ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  echo ".enaible/artifacts/ci-quality/duplication/$ts"
+}
+
+run_duplication_signals() {
+  if ! command -v enaible >/dev/null 2>&1; then
+    echo "Skipping duplication signals: enaible not installed."
+    return 0
+  fi
+
+  local artifact_root
+  artifact_root="$(build_duplication_artifact_root)"
+  mkdir -p "$artifact_root"
+
+  local audit_out="$artifact_root/duplication-audit.json"
+  local audit_summary="$artifact_root/duplication-audit-summary.json"
+  local code_out="$artifact_root/duplication-code-only.json"
+  local code_summary="$artifact_root/duplication-code-only-summary.json"
+
+  local common_excludes=(
+    --exclude "dist/"
+    --exclude "build/"
+    --exclude "node_modules/"
+    --exclude "__pycache__/"
+    --exclude ".next/"
+    --exclude "vendor/"
+    --exclude ".venv/"
+    --exclude ".mypy_cache/"
+    --exclude ".ruff_cache/"
+    --exclude ".pytest_cache/"
+    --exclude ".gradle/"
+    --exclude "target/"
+    --exclude "bin/"
+    --exclude "obj/"
+    --exclude "coverage/"
+    --exclude ".turbo/"
+    --exclude ".svelte-kit/"
+    --exclude ".cache/"
+    --exclude ".enaible/artifacts/"
+    --exclude ".enaible/"
+  )
+  local code_only_excludes=(
+    --exclude "package-lock.json"
+    --exclude "infra/package-lock.json"
+    --exclude "docs/flutter-uki-ai-platform-arch/**"
+    --exclude "*.html"
+  )
+
+  ENAIBLE_REPO_ROOT="$(pwd)" enaible analyzers run quality:jscpd \
+    --target "$DUPLICATION_SIGNAL_TARGET" \
+    --min-severity "$DUPLICATION_SIGNAL_MIN_SEVERITY" \
+    --out "$audit_out" \
+    --summary-out "$audit_summary" \
+    "${common_excludes[@]}"
+
+  ENAIBLE_REPO_ROOT="$(pwd)" enaible analyzers run quality:jscpd \
+    --target "$DUPLICATION_SIGNAL_TARGET" \
+    --min-severity "$DUPLICATION_SIGNAL_MIN_SEVERITY" \
+    --out "$code_out" \
+    --summary-out "$code_summary" \
+    "${common_excludes[@]}" \
+    "${code_only_excludes[@]}"
+
+  echo "DUPLICATION_AUDIT_SUMMARY=$audit_summary"
+  echo "DUPLICATION_CODE_ONLY_SUMMARY=$code_summary"
 }
 
 parity_guard() {
@@ -75,6 +147,10 @@ if [[ -d "tests" ]] && [[ -x "scripts/run-mutation-gate.sh" ]]; then
   else
     echo "Skipping mutation gate (set RUN_MUTATION_GATE=1 to run locally)."
   fi
+fi
+
+if [[ "$RUN_DUPLICATION_SIGNALS" == "1" ]]; then
+  run_step "Duplication signals (audit + code-only)" run_duplication_signals
 fi
 
 if [[ "$MODE" == "fix" ]]; then
