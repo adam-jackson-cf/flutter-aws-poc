@@ -1,0 +1,7 @@
+[run]
+parallel = true
+patch =
+    subprocess
+
+[report]
+show_missing = true

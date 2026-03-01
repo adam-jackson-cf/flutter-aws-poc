@@ -64,8 +64,17 @@ if [[ -d "tests" ]] && [[ -f "requirements.txt" ]] && grep -qi '^pytest' "requir
       --cov=evals \
       --cov=runtime \
       --cov=aws/lambda \
+      --cov-config=.coveragerc \
       --cov-report=term-missing \
       --cov-fail-under="$PYTEST_COVERAGE_TARGET"
+fi
+
+if [[ -d "tests" ]] && [[ -x "scripts/run-mutation-gate.sh" ]]; then
+  if [[ "${CI:-}" == "true" || "${RUN_MUTATION_GATE:-0}" == "1" ]]; then
+    run_step "Python mutation gate" bash scripts/run-mutation-gate.sh
+  else
+    echo "Skipping mutation gate (set RUN_MUTATION_GATE=1 to run locally)."
+  fi
 fi
 
 if [[ "$MODE" == "fix" ]]; then

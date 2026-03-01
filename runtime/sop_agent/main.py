@@ -38,5 +38,5 @@ def run_from_cli() -> Dict[str, Any]:
     return result
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     run_from_cli()
