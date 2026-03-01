@@ -3,7 +3,7 @@ import os
 import re
 from typing import Any, Callable, Dict
 
-from common import fetch_jira_issue
+from jira_client import fetch_jira_issue
 
 
 def _strip_target_prefix(tool_name: str) -> str:

@@ -2,27 +2,21 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from common import (
+from mcp_gateway_client import call_gateway_tool, extract_gateway_tool_payload, list_gateway_tools
+from runtime_config import selected_gateway_url, selected_model_id, selected_region
+from stage_metrics import append_stage_metric
+from tool_selection import (
     StageToolOutcome,
     StageToolScope,
     ToolSelectionRequest,
     ToolSelectorConfig,
-    append_stage_metric,
     build_gateway_tool_args,
-    call_gateway_tool,
-    extract_gateway_tool_payload,
     find_expected_gateway_tool,
-    issue_payload_complete_for_tool,
-    list_gateway_tools,
-    scope_gateway_tools_by_intent,
-    selected_gateway_url,
-    selected_model_id,
-    selected_region,
     select_mcp_tool,
     stage_tool_failure,
     stage_tool_success,
-    strip_gateway_tool_prefix,
 )
+from tooling_domain import issue_payload_complete_for_tool, scope_gateway_tools_by_intent, strip_gateway_tool_prefix
 
 
 @dataclass(frozen=True)

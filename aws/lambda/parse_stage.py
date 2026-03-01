@@ -1,7 +1,8 @@
 import time
 from typing import Any, Dict
 
-from common import append_stage_metric, base_event_with_metrics, extract_intake
+from intake_domain import extract_intake
+from stage_metrics import append_stage_metric, base_event_with_metrics
 
 
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:

@@ -26,21 +26,21 @@ def _import_lambda_module(module_name: str) -> Any:
     ],
 )
 def test_intent_classification_parity(request_text: str, expected_intent: str) -> None:
-    common = _import_lambda_module("common")
+    intake_domain = _import_lambda_module("intake_domain")
     assert intake_stage.classify_intent(request_text) == expected_intent
-    assert common.classify_intent(request_text) == expected_intent
+    assert intake_domain.classify_intent(request_text) == expected_intent
 
 
 def test_intake_risk_hint_parity() -> None:
-    common = _import_lambda_module("common")
+    intake_domain = _import_lambda_module("intake_domain")
     request_text = "Need update for JRASERVER-2 regarding security escalation and compliance"
     runtime_intake = intake_stage.run_intake(request_text)
-    lambda_intake = common.extract_intake(request_text)
+    lambda_intake = intake_domain.extract_intake(request_text)
     assert runtime_intake["risk_hints"] == lambda_intake["risk_hints"]
 
 
 def test_scope_maps_snapshot() -> None:
-    common = _import_lambda_module("common")
+    tooling_domain = _import_lambda_module("tooling_domain")
     fetch_native_stage = _import_lambda_module("fetch_native_stage")
 
     expected_mcp_scope = {
@@ -65,7 +65,7 @@ def test_scope_maps_snapshot() -> None:
         ],
     }
     assert jira_mcp_flow.TOOL_SCOPE_BY_INTENT == expected_mcp_scope
-    assert common.MCP_TOOL_SCOPE_BY_INTENT == expected_mcp_scope
+    assert tooling_domain.MCP_TOOL_SCOPE_BY_INTENT == expected_mcp_scope
 
     expected_native_scope = {
         "bug_triage": [
@@ -93,7 +93,7 @@ def test_scope_maps_snapshot() -> None:
 
 
 def test_completeness_mapping_snapshot() -> None:
-    common = _import_lambda_module("common")
+    tooling_domain = _import_lambda_module("tooling_domain")
     expected = {
         "get_issue_by_key": ["key", "summary", "status"],
         "get_issue_status_snapshot": ["key", "status", "updated"],
@@ -103,7 +103,7 @@ def test_completeness_mapping_snapshot() -> None:
         "get_issue_update_timestamp": ["key", "updated"],
         "get_issue_risk_flags": ["key"],
     }
-    assert common.TOOL_COMPLETENESS_FIELDS_BY_OPERATION == expected
+    assert tooling_domain.TOOL_COMPLETENESS_FIELDS_BY_OPERATION == expected
 
 
 def test_cdk_tool_name_snapshot() -> None:

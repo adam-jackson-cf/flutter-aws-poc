@@ -1,7 +1,9 @@
 import time
 from typing import Any, Dict
 
-from common import append_stage_metric, generate_customer_response, selected_model_id, selected_region
+from response_generation import generate_customer_response
+from runtime_config import selected_model_id, selected_region
+from stage_metrics import append_stage_metric
 
 
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
