@@ -27,28 +27,30 @@ class PipelineRunResult:
     artifact_s3_uri: str
 
 
+@dataclass(frozen=True)
+class AwsPipelineRunnerConfig:
+    state_machine_arn: str
+    aws_region: str
+    aws_profile: Optional[str] = None
+    poll_interval_seconds: float = 2.0
+    execution_timeout_seconds: int = 900
+
+
 class AwsPipelineRunner:
-    def __init__(
-        self,
-        state_machine_arn: str,
-        aws_region: str,
-        aws_profile: Optional[str] = None,
-        poll_interval_seconds: float = 2.0,
-        execution_timeout_seconds: int = 900,
-    ) -> None:
-        if not state_machine_arn:
+    def __init__(self, config: AwsPipelineRunnerConfig) -> None:
+        if not config.state_machine_arn:
             raise ValueError("state_machine_arn is required")
-        if not aws_region:
+        if not config.aws_region:
             raise ValueError("aws_region is required")
 
-        session_kwargs: Dict[str, Any] = {"region_name": aws_region}
-        if aws_profile:
-            session_kwargs["profile_name"] = aws_profile
+        session_kwargs: Dict[str, Any] = {"region_name": config.aws_region}
+        if config.aws_profile:
+            session_kwargs["profile_name"] = config.aws_profile
         session = boto3.Session(**session_kwargs)
 
-        self._state_machine_arn = state_machine_arn
-        self._poll_interval_seconds = poll_interval_seconds
-        self._execution_timeout_seconds = execution_timeout_seconds
+        self._state_machine_arn = config.state_machine_arn
+        self._poll_interval_seconds = config.poll_interval_seconds
+        self._execution_timeout_seconds = config.execution_timeout_seconds
         self._sfn = session.client("stepfunctions")
         self._s3 = session.client("s3")
         self._sts = session.client("sts")

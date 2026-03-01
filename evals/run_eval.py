@@ -13,7 +13,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from evals.aws_pipeline_runner import AwsPipelineRunner, PipelineRunResult
+from evals.aws_pipeline_runner import (
+    AwsPipelineRunner,
+    AwsPipelineRunnerConfig,
+    PipelineRunResult,
+)
 from evals.cloudwatch_publish import CloudWatchPublishConfig, publish_eval_summary_metrics
 from evals.judge import BedrockJudge
 from evals.metrics import (
@@ -420,11 +424,13 @@ def _validate_runtime_args(args: argparse.Namespace) -> None:
 
 def _build_runner(args: argparse.Namespace) -> AwsPipelineRunner:
     return AwsPipelineRunner(
-        state_machine_arn=args.state_machine_arn,
-        aws_region=args.aws_region,
-        aws_profile=args.aws_profile or None,
-        poll_interval_seconds=args.poll_interval_seconds,
-        execution_timeout_seconds=args.execution_timeout_seconds,
+        AwsPipelineRunnerConfig(
+            state_machine_arn=args.state_machine_arn,
+            aws_region=args.aws_region,
+            aws_profile=args.aws_profile or None,
+            poll_interval_seconds=args.poll_interval_seconds,
+            execution_timeout_seconds=args.execution_timeout_seconds,
+        )
     )
 
 

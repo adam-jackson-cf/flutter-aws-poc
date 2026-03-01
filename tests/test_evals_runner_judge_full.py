@@ -20,9 +20,13 @@ def test_parse_s3_uri_valid_and_invalid() -> None:
 
 def test_runner_init_requires_required_args() -> None:
     with pytest.raises(ValueError):
-        aws_pipeline_runner.AwsPipelineRunner(state_machine_arn="", aws_region="eu-west-1")
+        aws_pipeline_runner.AwsPipelineRunner(
+            aws_pipeline_runner.AwsPipelineRunnerConfig(state_machine_arn="", aws_region="eu-west-1")
+        )
     with pytest.raises(ValueError):
-        aws_pipeline_runner.AwsPipelineRunner(state_machine_arn="arn:aws:states:123", aws_region="")
+        aws_pipeline_runner.AwsPipelineRunner(
+            aws_pipeline_runner.AwsPipelineRunnerConfig(state_machine_arn="arn:aws:states:123", aws_region="")
+        )
 
 
 class _FakeBody:
@@ -83,7 +87,9 @@ def _install_boto3_session(monkeypatch: pytest.MonkeyPatch, descriptions: list[D
 
 def test_runner_preflight_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_boto3_session(monkeypatch, descriptions=[{"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})}])
-    runner = aws_pipeline_runner.AwsPipelineRunner("arn:aws:states:abc", "eu-west-1")
+    runner = aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
+    )
     identity = runner.preflight_identity()
     assert identity["account"] == "123"
     assert identity["arn"].startswith("arn:aws:iam")
@@ -105,7 +111,13 @@ def test_runner_init_with_profile(monkeypatch: pytest.MonkeyPatch) -> None:
         return _Session()
 
     monkeypatch.setattr(aws_pipeline_runner.boto3, "Session", _session)
-    aws_pipeline_runner.AwsPipelineRunner("arn:aws:states:abc", "eu-west-1", aws_profile="profile-x")
+    aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig(
+            "arn:aws:states:abc",
+            "eu-west-1",
+            aws_profile="profile-x",
+        )
+    )
     assert captured["profile_name"] == "profile-x"
 
 
@@ -122,7 +134,13 @@ def test_runner_run_case_success(monkeypatch: pytest.MonkeyPatch) -> None:
     times = iter([0.0, 0.2, 0.4])
     monkeypatch.setattr(aws_pipeline_runner.time, "time", lambda: next(times))
 
-    runner = aws_pipeline_runner.AwsPipelineRunner("arn:aws:states:abc", "eu-west-1", execution_timeout_seconds=5)
+    runner = aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig(
+            "arn:aws:states:abc",
+            "eu-west-1",
+            execution_timeout_seconds=5,
+        )
+    )
     result = runner.run_case(flow="native", request_text="check JRASERVER-1", case_id="case", expected_tool="jira_get_issue_by_key", dry_run=True)
     assert result.execution_arn == "arn:exec:1"
     assert result.artifact_s3_uri == "s3://bucket-a/artifact.json"
@@ -131,19 +149,25 @@ def test_runner_run_case_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_runner_run_case_failure_modes(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_boto3_session(monkeypatch, descriptions=[{"status": "FAILED", "error": "E", "cause": "C"}])
-    runner = aws_pipeline_runner.AwsPipelineRunner("arn:aws:states:abc", "eu-west-1")
+    runner = aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
+    )
     with pytest.raises(RuntimeError):
         runner.run_case(flow="native", request_text="x", case_id="c", expected_tool="tool", dry_run=False)
 
 
 def test_runner_run_case_missing_output_and_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_boto3_session(monkeypatch, descriptions=[{"status": "SUCCEEDED", "output": ""}])
-    runner = aws_pipeline_runner.AwsPipelineRunner("arn:aws:states:abc", "eu-west-1")
+    runner = aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
+    )
     with pytest.raises(RuntimeError):
         runner.run_case(flow="native", request_text="x", case_id="c", expected_tool="tool", dry_run=False)
 
     _install_boto3_session(monkeypatch, descriptions=[{"status": "SUCCEEDED", "output": "{}"}])
-    runner = aws_pipeline_runner.AwsPipelineRunner("arn:aws:states:abc", "eu-west-1")
+    runner = aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
+    )
     with pytest.raises(RuntimeError):
         runner.run_case(flow="native", request_text="x", case_id="c", expected_tool="tool", dry_run=False)
 
@@ -153,7 +177,13 @@ def test_runner_run_case_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(aws_pipeline_runner.time, "sleep", lambda *_args: None)
     times = iter([0.0, 10.0, 20.0, 30.0])
     monkeypatch.setattr(aws_pipeline_runner.time, "time", lambda: next(times))
-    runner = aws_pipeline_runner.AwsPipelineRunner("arn:aws:states:abc", "eu-west-1", execution_timeout_seconds=5)
+    runner = aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig(
+            "arn:aws:states:abc",
+            "eu-west-1",
+            execution_timeout_seconds=5,
+        )
+    )
     with pytest.raises(TimeoutError):
         runner.run_case(flow="native", request_text="x", case_id="c", expected_tool="tool", dry_run=False)
 

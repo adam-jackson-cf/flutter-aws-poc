@@ -292,11 +292,11 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
     with pytest.raises(ValueError):
         run_eval._validate_runtime_args(Namespace(state_machine_arn="arn", aws_region="eu", enable_judge=True, judge_region=""))
 
-    captured_runner_kwargs: Dict[str, Any] = {}
+    captured_runner_config: Dict[str, Any] = {}
 
     class _CapturedRunner:
-        def __init__(self, **kwargs: Any) -> None:
-            captured_runner_kwargs.update(kwargs)
+        def __init__(self, config: Any) -> None:
+            captured_runner_config.update(vars(config))
 
     monkeypatch.setattr(run_eval, "AwsPipelineRunner", _CapturedRunner)
     built_runner = run_eval._build_runner(
@@ -309,8 +309,8 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
         )
     )
     assert isinstance(built_runner, _CapturedRunner)
-    assert captured_runner_kwargs["aws_profile"] is None
-    assert captured_runner_kwargs["execution_timeout_seconds"] == 30
+    assert captured_runner_config["aws_profile"] is None
+    assert captured_runner_config["execution_timeout_seconds"] == 30
 
     class _Runner:
         def preflight_identity(self) -> Dict[str, str]:
