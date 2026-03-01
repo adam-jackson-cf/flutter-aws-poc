@@ -1,5 +1,6 @@
+import importlib
 import json
-import runpy
+import subprocess
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -43,6 +44,14 @@ def test_parse_args_and_simple_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     assert args.flow == "native"
     assert run_eval.utc_compact_now().endswith("Z")
     assert run_eval.sanitize_run_id(" bad id ") == "bad-id"
+
+
+def test_repo_root_added_to_sys_path_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_root = str(run_eval.REPO_ROOT)
+    trimmed_sys_path = [entry for entry in sys.path if entry != repo_root]
+    monkeypatch.setattr(sys, "path", trimmed_sys_path.copy())
+    importlib.reload(run_eval)
+    assert sys.path[0] == repo_root
 
 
 def test_load_dataset_validation(tmp_path: Path) -> None:
@@ -167,6 +176,26 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
     with pytest.raises(ValueError):
         run_eval._validate_runtime_args(Namespace(state_machine_arn="arn", aws_region="eu", enable_judge=True, judge_region=""))
 
+    captured_runner_kwargs: Dict[str, Any] = {}
+
+    class _CapturedRunner:
+        def __init__(self, **kwargs: Any) -> None:
+            captured_runner_kwargs.update(kwargs)
+
+    monkeypatch.setattr(run_eval, "AwsPipelineRunner", _CapturedRunner)
+    built_runner = run_eval._build_runner(
+        Namespace(
+            state_machine_arn="arn",
+            aws_region="eu-west-1",
+            aws_profile="",
+            poll_interval_seconds=0.5,
+            execution_timeout_seconds=30,
+        )
+    )
+    assert isinstance(built_runner, _CapturedRunner)
+    assert captured_runner_kwargs["aws_profile"] is None
+    assert captured_runner_kwargs["execution_timeout_seconds"] == 30
+
     class _Runner:
         def preflight_identity(self) -> Dict[str, str]:
             return {"account": "123", "arn": "arn:aws:iam::123:role/x"}
@@ -272,12 +301,17 @@ def test_main_and_module_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert written["run_id"] == "run-1"
     assert "comparison" in written
 
-    # Execute __main__ path with lightweight dependency stubs.
-    monkeypatch.setattr(sys, "argv", ["run_eval.py", "--dataset", str(dataset_path), "--flow", "native", "--state-machine-arn", "arn", "--aws-region", "eu-west-1", "--dry-run", "--output", str(tmp_path / "guard.json")])
-    monkeypatch.setattr("evals.aws_pipeline_runner.AwsPipelineRunner", lambda **_kwargs: _Runner())
-    repo_root = str(Path(__file__).resolve().parents[1])
-    if repo_root in sys.path:
-        sys.path.remove(repo_root)
-    with pytest.raises(SystemExit) as exc:
-        runpy.run_module("evals.run_eval", run_name="__main__")
-    assert exc.value.code == 0
+    # Execute __main__ path via subprocess CLI smoke test (argument validation path).
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "evals.run_eval",
+        ],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 2
+    assert "--dataset" in completed.stderr

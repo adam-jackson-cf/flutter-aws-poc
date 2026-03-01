@@ -2,6 +2,8 @@ import importlib
 import io
 import json
 import runpy
+import subprocess
+import sys
 from argparse import Namespace
 from pathlib import Path
 from typing import Any, Dict
@@ -34,6 +36,16 @@ def test_sop_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_sop_cli_helpers_and_main_guard(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     main_mod = importlib.import_module("runtime.sop_agent.main")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["main.py", "--flow", "native", "--request-text", "from-cli", "--dry-run"],
+    )
+    parsed_args = main_mod.parse_args()
+    assert parsed_args.flow == "native"
+    assert parsed_args.request_text == "from-cli"
+    assert parsed_args.dry_run is True
+
     args = Namespace(request_text="a", input_file="")
     assert main_mod.load_request_text(args) == "a"
 
@@ -61,8 +73,24 @@ def test_sop_cli_helpers_and_main_guard(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert out == {"ok": True}
     assert '"ok": true' in capsys.readouterr().out
 
-    with pytest.raises(SystemExit):
-        runpy.run_module("runtime.sop_agent.main", run_name="__main__")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "runtime.sop_agent.main",
+            "--flow",
+            "native",
+            "--request-text",
+            "Need update on JRASERVER-1",
+            "--dry-run",
+        ],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0
+    assert '"flow": "native"' in completed.stdout
 
 
 def test_sop_pipeline_routes(monkeypatch: pytest.MonkeyPatch) -> None:
