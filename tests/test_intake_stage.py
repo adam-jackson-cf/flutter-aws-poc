@@ -3,12 +3,17 @@ import pytest
 from runtime.sop_agent.stages.intake_stage import IntakeError, classify_intent, run_intake
 
 
-def test_classify_intent_bug() -> None:
-    assert classify_intent("Customer reports bug and outage") == "bug_triage"
-
-
-def test_classify_intent_feature() -> None:
-    assert classify_intent("Need feature improvement for roadmap") == "feature_request"
+@pytest.mark.parametrize(
+    ("request_text", "expected_intent"),
+    [
+        ("Customer reports bug and outage", "bug_triage"),
+        ("Need feature improvement for roadmap", "feature_request"),
+        ("Please provide latest status update", "status_update"),
+        ("General question with no specific signal", "general_triage"),
+    ],
+)
+def test_classify_intent(request_text: str, expected_intent: str) -> None:
+    assert classify_intent(request_text) == expected_intent
 
 
 def test_run_intake_extracts_key() -> None:
