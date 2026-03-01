@@ -20,6 +20,14 @@
 
 - Route run: `reports/runs/rebased-live-route-20260301T193550Z/eval/eval-both-route.json`
 - Full run: `reports/runs/rebased-live-full-20260301T193821Z/eval/eval-both-full.json`
+- Post-deploy route run: `reports/runs/postdeploy-route-20260301T200250Z/eval/eval-both-route.json`
+- Post-deploy full run: `reports/runs/postdeploy-full-20260301T200729Z/eval/eval-both-full.json`
+
+## Post-deploy chart artifacts
+
+- `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison.md`
+- `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.json`
+- `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.csv`
 
 ## Prior artifacts used for stale-delta analysis
 
@@ -35,4 +43,3 @@
 - AgentCore runtime and gateway status/details inspection
 - S3 object lock configuration check on artifact bucket
 - Lambda function metadata inspection (LastModified/CodeSha256)
-
