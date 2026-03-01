@@ -1,6 +1,6 @@
 import pytest
 
-from runtime.sop_agent.stages.intake_stage import IntakeError, classify_intent, run_intake
+from runtime.sop_agent.stages.intake_stage import IntakeError, classify_intent, extract_risk_hints, run_intake
 
 
 @pytest.mark.parametrize(
@@ -25,3 +25,8 @@ def test_run_intake_extracts_key() -> None:
 def test_run_intake_requires_issue_key() -> None:
     with pytest.raises(IntakeError):
         run_intake("No issue key present in this request")
+
+
+def test_extract_risk_hints() -> None:
+    hints = extract_risk_hints("JRASERVER-1 security escalation for a customer")
+    assert hints == ["security", "customer", "escalation"]

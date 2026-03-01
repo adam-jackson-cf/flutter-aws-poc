@@ -5,17 +5,13 @@ from typing import Any, Dict, List, TypedDict
 
 import boto3
 
+from ..domain import MCP_EXPECTED_TOOL, MCP_TOOL_SCOPE_BY_INTENT, build_tool_arguments, scope_tools_by_intent, strip_target_prefix
 from .agentcore_mcp_client import AgentCoreMcpClient
 from .jira_native_sdk import JiraSdkClient
 from .tool_flow_result import ToolFlowScope, flow_failure, flow_success
 
-EXPECTED_TOOL = "jira_get_issue_by_key"
-TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
-    "bug_triage": ["jira_get_issue_by_key", "jira_get_issue_priority_context", "jira_get_issue_risk_flags"],
-    "status_update": ["jira_get_issue_by_key", "jira_get_issue_status_snapshot", "jira_get_issue_update_timestamp"],
-    "feature_request": ["jira_get_issue_by_key", "jira_get_issue_labels", "jira_get_issue_project_key"],
-    "general_triage": ["jira_get_issue_by_key", "jira_get_issue_status_snapshot"],
-}
+EXPECTED_TOOL = MCP_EXPECTED_TOOL
+TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = MCP_TOOL_SCOPE_BY_INTENT
 
 
 class McpSelectionError(RuntimeError):
@@ -61,9 +57,7 @@ class McpJiraFlow:
 
     @staticmethod
     def _strip_target_prefix(tool_name: str) -> str:
-        if "__" not in tool_name:
-            return tool_name
-        return re.split(r"__+", tool_name, maxsplit=1)[1]
+        return strip_target_prefix(tool_name)
 
     def _find_expected_tool(self, tools: List[Dict[str, Any]]) -> str:
         for tool in tools:
@@ -73,24 +67,18 @@ class McpJiraFlow:
         raise McpSelectionError(f"Expected MCP tool {EXPECTED_TOOL} not found in gateway catalog")
 
     def _scope_tools_for_intent(self, tools: List[Dict[str, Any]], intent: str) -> List[Dict[str, Any]]:
-        allowed = set(TOOL_SCOPE_BY_INTENT.get(intent, TOOL_SCOPE_BY_INTENT["general_triage"]))
-        scoped = [tool for tool in tools if self._strip_target_prefix(str(tool.get("name", ""))) in allowed]
-        if not scoped:
-            raise McpSelectionError(f"No MCP tools available after scoping for intent={intent}")
-        return scoped
+        try:
+            return scope_tools_by_intent(tools=tools, intent=intent, scope_by_intent=TOOL_SCOPE_BY_INTENT)
+        except RuntimeError as exc:
+            raise McpSelectionError(f"No MCP tools available after scoping for intent={intent}") from exc
 
     @staticmethod
     def _build_tool_arguments(selected_tool: Dict[str, Any], intake: Dict[str, Any]) -> Dict[str, Any]:
-        input_schema = selected_tool.get("inputSchema", {})
-        required = input_schema.get("required", [])
-        if not isinstance(required, list):
-            required = []
-        args: Dict[str, Any] = {}
-        if "issue_key" in required:
-            args["issue_key"] = intake["issue_key"]
-        if "query" in required:
-            args["query"] = intake["request_text"]
-        return args
+        return build_tool_arguments(
+            selected_tool=selected_tool,
+            issue_key=intake["issue_key"],
+            request_text=intake["request_text"],
+        )
 
     def _build_scoped_catalog(self, intent: str) -> ScopedCatalog:
         all_tools = self._mcp_client.list_tools()

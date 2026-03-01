@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from strands import Agent, tool
 from strands.models import BedrockModel
 
+from ..domain import NATIVE_EXPECTED_TOOL, NATIVE_TOOL_SCOPE_BY_INTENT
 from .jira_native_sdk import JiraSdkClient
 from .tool_flow_result import ToolFlowScope, flow_failure, flow_success
 
@@ -13,13 +14,8 @@ class StrandsNativeFlowError(RuntimeError):
     pass
 
 
-EXPECTED_TOOL = "jira_api_get_issue_by_key"
-TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = {
-    "bug_triage": ["jira_api_get_issue_by_key", "jira_api_get_issue_priority_context", "jira_api_get_issue_status_snapshot"],
-    "status_update": ["jira_api_get_issue_by_key", "jira_api_get_issue_status_snapshot", "jira_api_get_issue_update_timestamp"],
-    "feature_request": ["jira_api_get_issue_by_key", "jira_api_get_issue_labels", "jira_api_get_issue_project_key"],
-    "general_triage": ["jira_api_get_issue_by_key", "jira_api_get_issue_status_snapshot"],
-}
+EXPECTED_TOOL = NATIVE_EXPECTED_TOOL
+TOOL_SCOPE_BY_INTENT: Dict[str, List[str]] = NATIVE_TOOL_SCOPE_BY_INTENT
 
 
 def _extract_json(raw_text: str) -> Dict[str, Any]:
