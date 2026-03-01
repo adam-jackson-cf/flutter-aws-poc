@@ -11,6 +11,9 @@ DUPLICATION_SIGNAL_MIN_SEVERITY="${DUPLICATION_SIGNAL_MIN_SEVERITY:-medium}"
 COMPLEXITY_MAX="${COMPLEXITY_MAX:-10}"
 LENGTH_MAX="${LENGTH_MAX:-80}"
 PARAM_MAX="${PARAM_MAX:-5}"
+HEADROOM_COMPLEXITY_WARN="${HEADROOM_COMPLEXITY_WARN:-9}"
+HEADROOM_LENGTH_WARN="${HEADROOM_LENGTH_WARN:-70}"
+HEADROOM_PARAM_WARN="${HEADROOM_PARAM_WARN:-4}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -51,6 +54,13 @@ run_ruff_complexity_check() {
 
 run_lizard_complexity_check() {
   python3 -m lizard -C "$COMPLEXITY_MAX" -L "$LENGTH_MAX" -a "$PARAM_MAX" aws/lambda evals runtime scripts infra/bin infra/lib
+}
+
+run_headroom_complexity_check() {
+  python3 scripts/check-complexity-headroom.py \
+    --warn-ccn "$HEADROOM_COMPLEXITY_WARN" \
+    --warn-length "$HEADROOM_LENGTH_WARN" \
+    --warn-params "$HEADROOM_PARAM_WARN"
 }
 
 run_semantic_contract_ownership_check() {
@@ -162,6 +172,10 @@ if [[ -f "infra/package.json" ]] && grep -q '"lint:eslint"' "infra/package.json"
 fi
 
 run_step "Python complexity lint (ruff <= ${COMPLEXITY_MAX})" run_ruff_complexity_check
+
+run_step \
+  "Complexity headroom guard (cc >= ${HEADROOM_COMPLEXITY_WARN}, length >= ${HEADROOM_LENGTH_WARN}, params >= ${HEADROOM_PARAM_WARN})" \
+  run_headroom_complexity_check
 
 run_step "Cross-runtime complexity lint (cc <= ${COMPLEXITY_MAX}, length <= ${LENGTH_MAX}, params <= ${PARAM_MAX})" run_lizard_complexity_check
 
