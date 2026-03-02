@@ -1,22 +1,23 @@
 # Recommendation: Next Implementation Tranche (Top 3)
 
-Date: 2026-03-01
+Date: 2026-03-02
+Run source: `nova-adv-large-postfix-20260302T214400Z`
 
 ## Prioritized interventions
 
 | Priority | Intervention | Why this is first | Expected impact (directional) | Test plan |
 |---|---|---|---|---|
-| 1 | Add deterministic tool-selection contract enforcement in selection stage | The dominant failure class in both routes remains wrong-tool selection (`*_get_issue_by_key` over-selection and status-snapshot confusion). | Reduce wrong-tool errors by ~20-35% relative from current baseline by rejecting out-of-contract choices and forcing one constrained retry. | Add unit tests for selector output validation + retry behavior, then run route eval (`iterations=3`) and compare failure reason counts before/after. |
-| 2 | Strengthen intent-to-tool disambiguation prompt with explicit negative examples | Current intent classes (`status_update`, `feature_request`, `bug_triage`) still collide on tool choice even with scoped catalogs. | Improve `tool_match_rate` by ~10-20 points on both routes if ambiguity is reduced in first-pass selection. | Add deterministic fixtures per intent pair conflict, replay full golden set, and require non-regression in `tool_match_rate` + `business_success_rate`. |
-| 3 | Add MCP catalog preflight assertion for required tools per intent before selection | MCP still emits gateway-availability failures (`expected_gateway_tool_not_found`) and remains worse than native. | Remove avoidable MCP-specific catalog misses and reduce false protocol-attribution risk. | Introduce catalog-coverage contract test against required intent scopes, fail fast pre-selection, rerun route eval and confirm zero catalog-missing failures. |
+| 1 | Normalize MCP write-tool aliases and scoped naming map | Latest failures are concentrated in `selected_unknown_tool:*write*` (`8/112` MCP cases) | Remove dominant MCP failure family in current run | Add contract + stage tests for write aliases; rerun adversarial both-flow (`iterations=4`) and require zero write alias failures |
+| 2 | Strengthen MCP call-construction corrective feedback on schema mismatch | MCP still has non-zero `call_construction_failure_rate` and retries | Reduce retries/failures and narrow latency/token gap | Add targeted vectors for wrong arg names/unknown args and require lower `call_construction_failure_rate` with no native regression |
+| 3 | Add vector-level guardrails for high-divergence prompts | Selection divergence remains `12/112` and can hide brittle behavior | Improve tool consistency under adversarial phrasing | Track divergence by vector and require reduced divergence on rerun while preserving business success |
 
 ## Why this sequencing
 
-- It targets the highest-volume failure mode first.
-- It improves both routes before protocol-specific claims.
-- It preserves current quality/contract gate posture and uses the existing eval harness for verification.
+- It addresses the largest currently observed MCP-specific failure cause first.
+- It directly targets measurable deltas already present in deterministic metrics.
+- It preserves current parity controls and keeps comparisons apples-to-apples.
 
 ## Explicit non-claim guard
 
-- Do not claim MCP protocol causality from current data.
-- Only claim protocol-level effects after ablation controls isolate selector/prompt changes from transport/interface changes.
+- Do not claim full architecture conformance from this tranche.
+- Do not claim protocol-only causality until alias and call-construction remediations are applied and rerun.

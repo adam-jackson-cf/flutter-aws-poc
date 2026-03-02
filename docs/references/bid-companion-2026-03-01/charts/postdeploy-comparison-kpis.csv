@@ -1,5 +1,0 @@
-run_type,run_id,scope,iterations,flow,total_cases,tool_failure_rate,tool_match_rate,business_success_rate,mean_latency_ms,issue_payload_completeness_rate,deterministic_release_score,overall_reflection_score
-postdeploy_route,postdeploy-route-20260301T200250Z,route,3,native,30,0.7,0.3,0.2,1652.7703333333334,0.7,0.46,0.46
-postdeploy_route,postdeploy-route-20260301T200250Z,route,3,mcp,30,0.9333333333333333,0.06666666666666667,0.06666666666666667,1960.6483333333333,0.5666666666666667,0.33166666666666667,0.33166666666666667
-postdeploy_full,postdeploy-full-20260301T200729Z,full,1,native,10,0.7,0.3,0.2,1630.942,0.7,0.46,0.46
-postdeploy_full,postdeploy-full-20260301T200729Z,full,1,mcp,10,0.9,0.1,0.1,1923.111,0.6,0.355,0.355

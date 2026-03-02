@@ -1,39 +1,24 @@
-# Expansion Experiment Backlog (Post-Deploy)
+# Expansion Experiment Backlog (Current)
 
 Prioritization dimensions:
-- Signal value: how much uncertainty it removes for bid/proposal decision.
+- Signal value: uncertainty removed for architecture and bid decisions.
 - Effort: expected implementation + run effort.
 
-## Completed Since Rebased Plan
-
-- Scheduler input contract hardening (`expected_tool`) deployed.
-- Eval artifact schema lock added (fail-fast on flow-specific payload drift).
-- Tool-name normalization hardening for gateway prefixes (`__`, `___`) implemented and tested.
-
-## Remaining Backlog
+## Priority backlog
 
 | Priority | Experiment | Signal value | Effort | Acceptance criteria |
 |---|---|---|---|---|
-| P1 | MCP/native fairness harness with seeded repeats and run metadata lock | High | Medium | Repeated runs produce stable confidence intervals for key KPIs |
-| P1 | Unconfounded ablation matrix: native direct vs MCP deterministic-call vs MCP model-selection | High | Medium | Effect sizes separated for transport overhead vs selector error |
-| P1 | Intent-to-tool-scope diagnostics for gateway expected-tool-not-found failures | High | Medium | Failures attributable to specific intent/catalog mismatch causes |
-| P2 | Failure taxonomy expansion (timeout, malformed schema, gateway unavailable, auth drift, throttling) | High | Medium | Distinct error families emitted and tracked per flow |
-| P2 | Operational SLO/cost pack (p50/p95/p99 latency, success, retry rate, cost-per-success/failure) | High | Medium | One report section with run IDs and confidence bands |
-| P2 | Resilience drills with controlled fault injection | Medium | Medium | Recovery behavior measured and replayable |
-| P2 | AgentCore alpha change-management drill (diff/deploy/rollback) | Medium | Medium | Measured rollback and recovery envelope documented |
-| P3 | R2/R3 orchestration extension (workflow contract, compensation, HITL checkpoints) | High | High | End-to-end Process-scope scenario with explicit contract evidence |
-| P3 | Identity/governance observability pack (session-tag lineage, ABAC decisions, scoped-token traces) | High | High | Per-execution trace shows identity and policy decision chain |
-| P3 | Audit immutability tiered storage (transient eval vs compliance audit) | High | High | Compliance-mode audit path validated separately from transient store |
+| P1 | MCP write-tool alias normalization (`jira_write_issue_followup_note` vs gateway-prefixed variants) | High | Low | Zero `selected_unknown_tool:*write*` failures in adversarial write vectors |
+| P1 | MCP call-construction contract hardening (schema-aware corrective retry prompt) | High | Medium | `call_construction_failure_rate` reduced with no regression in native metrics |
+| P1 | Selection divergence diagnostics | High | Medium | `selection_divergence_rate` traced to explicit cause families with remediation status |
+| P2 | Cost/latency SLO pack | High | Medium | p50/p95 latency and cost-per-success available per flow and per adversarial vector |
+| P2 | Fault-injection resilience drill (gateway unavailable, schema invalid, timeout) | Medium | Medium | Recovery behavior and retry envelopes are reproducible and evidenced |
+| P3 | Workflow-contract + HITL tranche | High | High | End-to-end process-scope scenario including compensation/HITL evidence |
+| P3 | Immutable audit and identity-context lineage tranche | High | High | Execution-level identity and immutable audit proofs included in artifacts |
 
 ## Suggested execution order (4-6 weeks)
 
-1. Week 1: P1 ablation + fairness harness + gateway scope diagnostics.
-2. Week 2: P2 operational/failure taxonomy and resilience evidence.
-3. Week 3: P2 alpha change-management drill.
-4. Weeks 4-6: P3 architecture conformance evidence.
-
-## Additional proposal-strengthening recommendation
-
-- Add deployment parity checks that compare local commit SHA, deployed Lambda code SHA, and run metadata before every evaluation run.  
-  Value: prevents analysis/deployment skew and raises review confidence.
-
+1. Week 1: P1 alias + call-construction hardening and rerun adversarial both-flow benchmark.
+2. Week 2: P1 divergence diagnostics plus P2 SLO pack publication.
+3. Week 3: P2 resilience drill and evidence packaging.
+4. Weeks 4-6: P3 architecture-conformance controls.

@@ -51,7 +51,7 @@ Out of scope / not yet represented in this PoC:
 - Failure taxonomy: explicit reasons for selection mismatch, construction retry exhaustion, tool-call failure, and payload completeness failure.
 - Adversarial stress suite: additional dataset specifically designed to provoke model-driven MCP call-construction errors.
 
-### Adversarial dataset (new)
+### Adversarial dataset
 - File: [evals/golden/sop_cases_adversarial.jsonl](./evals/golden/sop_cases_adversarial.jsonl)
 - Goal: stress point 1 directly (model-driven MCP call construction fragility) while keeping native route deterministic after selection.
 - Stress vectors included:
@@ -63,9 +63,8 @@ Out of scope / not yet represented in this PoC:
 - `write_note_*`: punctuation-heavy, quoted, and structured follow-up-note text to stress write-call argument construction.
 - Expected outcome pattern:
 - Native and MCP may still align on many selections, but MCP should show higher construction pressure through `call_construction_attempts`, retries/failures, and higher `llm_total_tokens`.
-- Contradiction to monitor: if both routes still produce near-identical case-level tool choices and outcomes after model-driven grounding, the dataset is still under-stressing decision ambiguity for your target hypothesis.
 
-### Business flow and hypotheses (current as of 2026-03-01)
+### Business flow and hypotheses (current as of 2026-03-02)
 ```mermaid
 flowchart TD
     A["Support lead defines SOP scenarios and success criteria"]
@@ -105,7 +104,7 @@ flowchart TD
       Y2["H2: intent-scoped catalogs and stricter selection raise tool_match_rate and business_success_rate"]
       Y3["H3: MCP call-construction failures are measurable and partly recoverable through retries"]
       Y4["H4: deterministic metrics remain release truth while judge adds diagnostic context"]
-      Y5["H5: current signal (2026-03-01): both routes weak and mcp worse so reliability tranche is required before architecture-level claims"]
+      Y5["H5: current signal (2026-03-02): both routes pass deterministic gate in adversarial run, but mcp remains slower and more expensive with measurable call-construction failures"]
     end
 
     A --> B --> C --> D --> E
@@ -123,6 +122,36 @@ flowchart TD
     Y4 -.validated by.-> I
     Y5 -.bounded by.-> L
 ```
+
+### Latest benchmark snapshot (as of 2026-03-02)
+
+Source artifact:
+- `reports/runs/nova-adv-large-postfix-20260302T214400Z/eval/eval-both-route.json`
+
+Conditions:
+- dataset: `evals/golden/sop_cases_adversarial.jsonl`
+- iterations: `4`
+- model parity: gateway `eu.amazon.nova-lite-v1:0`, runtime `eu.amazon.nova-lite-v1:0`
+- provider: `bedrock`
+
+Key route metrics:
+
+| Flow | Cases | Tool Failure Rate | Tool Match Rate | Business Success Rate | Mean Latency (ms) | Mean LLM Total Tokens | Mean Estimated Cost (USD) | Deterministic Release Score |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| native | 112 | 0.0000 | 0.9643 | 0.8571 | 1639.62 | 650.89 | 0.00007385 | 0.9125 |
+| mcp | 112 | 0.0714 | 0.8929 | 0.8214 | 2167.28 | 1040.84 | 0.00010860 | 0.8911 |
+
+Observed deltas (`mcp - native`):
+- `tool_failure_delta`: `+0.0714`
+- `latency_delta_ms`: `+527.66`
+- `call_construction_failure_delta`: `+0.0893`
+- `selection_divergence_rate`: `0.1071` (12 / 112)
+- `mean_llm_total_tokens_delta`: `+389.05`
+- `mean_estimated_cost_usd_delta`: `+0.00003475`
+
+Dominant MCP failure reasons in the latest run:
+- `selected_unknown_tool:jira_write_issue_followup_note` (4)
+- `selected_unknown_tool:jira-issue-tools___jira_create_comment` (4)
 
 ## Setup
 Prerequisites:

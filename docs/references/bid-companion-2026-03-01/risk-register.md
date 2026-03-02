@@ -1,24 +1,23 @@
-# Risk Register (Post-Deploy)
+# Risk Register (Current)
 
 Scale:
 - Severity: `Low` / `Medium` / `High` / `Critical`
 - Likelihood: `Low` / `Medium` / `High`
 
-| ID | Risk | Severity | Likelihood | Evidence | Mitigation |
+| ID | Risk | Severity | Likelihood | Current evidence | Mitigation |
 |---|---|---|---|---|---|
-| R-01 | Scheduler contract regression (`expected_tool`) reappears in future edits | Medium | Low | Nightly target now includes `expected_tool`; guard test exists | Keep scheduler contract test mandatory in CI; add stack-level synth assertion if needed |
-| R-02 | Eval payload schema drift silently corrupts comparative metrics | Medium | Low | Eval now fails fast on missing flow-specific selection payloads | Keep `artifact_schema_invalid:*` hard fail behavior; document runbook recovery path |
-| R-03 | MCP prefix/normalization regression causes false wrong-tool scoring | Medium | Low | `___` and `__` handling now covered by tests across runtime/lambda/eval | Keep normalization tests as required gate; avoid ad-hoc delimiter parsing elsewhere |
-| R-04 | Architecture claims remain overstated vs Flutter target (workflow contract/HITL/audit semantics) | High | High | Current state machine still lacks R2/R3 workflow-contract semantics and HITL branches | Scope claims explicitly; deliver dedicated R2/R3 conformance tranche |
-| R-05 | Public runtime network posture conflicts with enterprise security narrative | High | Medium | AgentCore runtime still `PUBLIC`; public Jira egress retained | Define private-network target architecture and migration plan |
-| R-06 | Audit retention posture not compliance-ready | High | Medium | No Object Lock compliance mode in current artifact path | Separate transient eval artifacts from immutable audit store |
-| R-07 | Alpha CDK operational risk under upgrade/rollback scenarios under-tested | Medium | Medium | Deploy/update works, but no structured rollback drill evidence | Add upgrade/diff/rollback drill pack with measured recovery outcomes |
-| R-08 | Reliability remains low in both routes, reducing confidence for production adoption | Critical | High | Post-deploy route run: native failure `0.7000`, mcp `0.9333`; full run: native `0.7000`, mcp `0.9000` | Execute optimization + ablation tranche before architecture sign-off |
-| R-09 | MCP-specific gateway/catalog failure class persists (`expected_gateway_tool_not_found`) | High | Medium | Seen in post-deploy mcp failures (`mcp_gateway_unavailable:*`) | Add intent-to-tool-scope diagnostics and catalog coverage tests |
+| R-01 | Scheduler contract regression (`expected_tool`) reappears | Medium | Low | Guard test enforces scheduler contract | Keep scheduler contract test mandatory in CI |
+| R-02 | Eval payload schema drift corrupts metrics | Medium | Low | Artifact schema fail-fast checks are active | Keep `artifact_schema_invalid:*` hard fail behavior |
+| R-03 | Tool-prefix normalization regression causes false mismatch scoring | Medium | Low | Prefix handling tests exist across lambda/runtime/eval layers | Keep normalization tests as required quality gate |
+| R-04 | MCP write-tool alias mismatch persists | High | High | Latest run has 8 MCP failures from unknown write tools | Add alias normalization and scoped mapping for write tools |
+| R-05 | MCP call-construction retries inflate latency and cost | High | Medium | `call_construction_failure_rate=0.0893`, latency and token deltas remain positive | Strengthen schema-aware retry feedback and argument validation prompts |
+| R-06 | Architecture claims overstated vs Flutter target (workflow contract/HITL/immutable audit) | High | High | Current PoC still lacks these controls end-to-end | Keep claims scoped; execute dedicated conformance tranche |
+| R-07 | Public runtime network posture conflicts with enterprise security narrative | High | Medium | Runtime remains `PUBLIC`; Jira over public egress | Define private-network target and migration plan |
+| R-08 | Identity-context observability remains partial | Medium | Medium | No full ABAC lineage trace in run artifacts | Add identity-context decision trace instrumentation |
+| R-09 | Comparative parity drift between gateway/runtime model settings | Medium | Low | Parity metadata now recorded per run | Enforce parity checks in pre-run validation and review |
 
 ## Risk ownership recommendation
 
-- Platform engineering: R-01, R-02, R-03, R-07, R-08, R-09
-- Security/governance: R-04, R-05, R-06
-- Delivery/proposal lead: R-04, R-08
-
+- Platform engineering: R-01, R-02, R-03, R-04, R-05, R-09
+- Security/governance: R-06, R-07, R-08
+- Delivery/proposal lead: R-04, R-05, R-06

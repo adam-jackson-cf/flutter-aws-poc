@@ -1,6 +1,6 @@
-# Evidence Index (Post-Deploy)
+# Evidence Index (Current)
 
-## Refactored source anchors
+## Source anchors
 
 - Stack and deployment topology: `infra/lib/flutter-agentcore-poc-stack.ts`
 - Eval harness + schema expectations: `evals/run_eval.py`, `evals/metrics.py`, `evals/aws_pipeline_runner.py`
@@ -16,42 +16,19 @@
 - `docs/flutter-uki-ai-platform-arch/view-request-trace-v10.html`
 - `docs/flutter-uki-ai-platform-arch/component-design-v2.html`
 
-## Current local run artifacts used for conclusions (workspace snapshot)
+## Latest run artifact used for conclusions
 
-- `reports/runs/nova20-write-retry-final-20260302T114512Z/eval/eval-both-route.json`
+- `reports/runs/nova-adv-large-postfix-20260302T214400Z/eval/eval-both-route.json`
 
-## Historical 2026-03-01 run evidence in this repo snapshot
+## Current chart artifacts
 
-- Narrative and KPI summaries remain in:
-  - `docs/references/bid-companion-2026-03-01/objective-validation-report.md`
-  - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison.md`
-  - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.json`
-  - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.csv`
-
-## Chart artifacts
-
-- `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison.md`
-- `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.json`
-- `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.csv`
-- `docs/references/bid-companion-2026-03-01/charts/three-model-route-comparison.md`
-- `docs/references/bid-companion-2026-03-01/charts/three-model-route-comparison-kpis.json`
-- `docs/references/bid-companion-2026-03-01/charts/three-model-route-comparison-kpis.csv`
+- `docs/references/bid-companion-2026-03-01/charts/latest-adversarial-route-comparison.md`
+- `docs/references/bid-companion-2026-03-01/charts/latest-adversarial-route-comparison-kpis.json`
+- `docs/references/bid-companion-2026-03-01/charts/latest-adversarial-route-comparison-kpis.csv`
 
 ## Decision notes
 
-- `docs/references/bid-companion-2026-03-01/bid-deck-narrative-delta.md`
+- `docs/references/bid-companion-2026-03-01/executive-brief.md`
+- `docs/references/bid-companion-2026-03-01/objective-validation-report.md`
 - `docs/references/bid-companion-2026-03-01/implementation-tranche-recommendation.md`
-
-## Historical snapshots retained for traceability
-
-- `docs/references/flutter-agentcore-poc-architecture-assessment-2026-03-01.md`
-- `docs/references/flutter-agentcore-poc-architecture-assessment-2026-03-01-rebased.md`
-
-## Live AWS probe classes executed
-
-- STS identity check (`aws sts get-caller-identity`) in `eu-west-1`
-- Step Functions state machine status/definition inspection
-- EventBridge nightly rule target inspection
-- AgentCore runtime and gateway status/details inspection
-- S3 Object Lock configuration check on artifact bucket
-- Lambda function metadata inspection (LastModified/CodeSha256)
+- `docs/references/bid-companion-2026-03-01/risk-register.md`

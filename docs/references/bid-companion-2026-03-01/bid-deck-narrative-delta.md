@@ -1,34 +1,32 @@
-# Bid Support Deck: Narrative Delta (Post 3-Model Attempt)
+# Bid Deck Narrative Snapshot (Current)
 
-Date: 2026-03-01
+Date: 2026-03-02
+Run source: `reports/runs/nova-adv-large-postfix-20260302T214400Z/eval/eval-both-route.json`
 
-## What changed in evidence
+## What changed in the evidence position
 
-1. Controlled rerun under pinned conditions completed for current default model (`eu.amazon.nova-lite-v1:0`) with route scope parity preserved.
-2. Requested GPT-5 and GPT-5 Codex High runs were attempted in the same path and failed immediately with Bedrock `ValidationException` (`provided model identifier is invalid`).
-3. Bedrock model probe in `eu-west-1` did not show GPT-5/Codex entries; OpenAI GPT-OSS variants are available instead.
+- The PoC is now evaluated against a model-driven adversarial dataset that stresses grounding ambiguity and MCP call-construction fragility.
+- Latest run uses parity-pinned model settings (`gateway_model_id == runtime_bedrock_model_id == eu.amazon.nova-lite-v1:0`).
+- Both routes now pass deterministic release threshold in this benchmark, but MCP retains measurable penalties.
 
-## Narrative update for deck
+## Current narrative for the deck
 
-Use this updated framing:
+Use this framing:
 
-- "We completed a controlled benchmark harness run and confirmed reliability remains weak for both routes under the current default model, with MCP still worse than native."
-- "We attempted the planned GPT-5 and GPT-5 Codex High comparison in the same execution path, but those identifiers are not currently executable in the pinned Bedrock region/path."
-- "The next decision-critical step is provider-path enablement (or approved equivalent model substitution) plus a rerun of identical benchmark conditions."
+- "In the latest adversarial benchmark, both native and MCP routes clear deterministic release threshold, so the baseline is now operationally useful."
+- "MCP remains weaker on execution efficiency and call-construction reliability: higher failure incidence, retries, latency, and token/cost consumption."
+- "The next tranche should target MCP write-tool alias hardening and call-construction reliability while keeping model/runtime parity controls in place."
 
-## KPI deltas to cite (default model rerun vs previous post-deploy route)
+## KPI deltas to cite (`mcp - native`)
 
-- Native `tool_failure_rate`: unchanged at `0.7000`.
-- MCP `tool_failure_rate`: `0.9333 -> 0.9000` (still materially worse than native).
-- MCP minus native latency delta: `+307.88ms -> +364.93ms`.
+- `tool_failure_rate`: `+0.0714`
+- `call_construction_failure_rate`: `+0.0893`
+- `mean_latency_ms`: `+527.66`
+- `mean_llm_total_tokens`: `+389.05`
+- `mean_estimated_cost_usd`: `+0.00003475`
+- `selection_divergence_rate`: `0.1071` (`12 / 112`)
 
 ## Claims to avoid
 
-- Avoid any statement that protocol/interface is the sole cause of reliability gaps.
-- Avoid implying GPT-5/Codex results exist in this benchmark tranche.
-
-## Immediate deck edits
-
-- Replace "3-model results" section with "3-model execution status + blocker evidence".
-- Add one slide for "Model-path readiness" as an explicit gating dependency.
-- Keep recommendation focused on wrong-tool mitigation and ablation-backed causality.
+- Avoid claiming full Flutter architecture conformance from this PoC alone.
+- Avoid attributing all residual gap to protocol alone; selector/prompt and tool-alias design still influence outcomes.
