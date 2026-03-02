@@ -1,0 +1,29 @@
+{
+  "version": "2026-03-02",
+  "models": {
+    "eu.amazon.nova-lite-v1:0": {
+      "input_per_1m_tokens_usd": 0.06,
+      "output_per_1m_tokens_usd": 0.24
+    },
+    "amazon.nova-lite-v1:0": {
+      "input_per_1m_tokens_usd": 0.06,
+      "output_per_1m_tokens_usd": 0.24
+    },
+    "gpt-5.2-codex": {
+      "input_per_1m_tokens_usd": 1.75,
+      "output_per_1m_tokens_usd": 14.0
+    },
+    "gpt-5.2-codex:reasoning-low": {
+      "input_per_1m_tokens_usd": 1.75,
+      "output_per_1m_tokens_usd": 14.0
+    },
+    "gpt-5.2-codex:reasoning-medium": {
+      "input_per_1m_tokens_usd": 1.75,
+      "output_per_1m_tokens_usd": 14.0
+    },
+    "gpt-5.2-codex:reasoning-high": {
+      "input_per_1m_tokens_usd": 1.75,
+      "output_per_1m_tokens_usd": 14.0
+    }
+  }
+}

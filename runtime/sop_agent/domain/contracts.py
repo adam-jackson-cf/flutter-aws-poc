@@ -42,7 +42,8 @@ MCP_TOOL_SCOPE_BY_INTENT = {
     "bug_triage": [
         "jira_get_issue_by_key",
         "jira_get_issue_priority_context",
-        "jira_get_issue_risk_flags"
+        "jira_get_issue_status_snapshot",
+        "jira_write_issue_followup_note"
     ],
     "feature_request": [
         "jira_get_issue_by_key",
@@ -64,7 +65,8 @@ NATIVE_TOOL_SCOPE_BY_INTENT = {
     "bug_triage": [
         "jira_api_get_issue_by_key",
         "jira_api_get_issue_priority_context",
-        "jira_api_get_issue_status_snapshot"
+        "jira_api_get_issue_status_snapshot",
+        "jira_api_write_issue_followup_note"
     ],
     "feature_request": [
         "jira_api_get_issue_by_key",
@@ -88,7 +90,8 @@ NATIVE_TOOL_DESCRIPTIONS = {
     "jira_api_get_issue_priority_context": "Fetch issue priority and derived risk band from Jira.",
     "jira_api_get_issue_project_key": "Fetch project key derived from issue key.",
     "jira_api_get_issue_status_snapshot": "Fetch status and update timestamp for an issue key.",
-    "jira_api_get_issue_update_timestamp": "Fetch issue update timestamp for freshness checks."
+    "jira_api_get_issue_update_timestamp": "Fetch issue update timestamp for freshness checks.",
+    "jira_api_write_issue_followup_note": "Persist a customer follow-up note artifact for an issue."
 }
 
 TOOL_COMPLETENESS_FIELDS_BY_OPERATION = {
@@ -120,5 +123,10 @@ TOOL_COMPLETENESS_FIELDS_BY_OPERATION = {
     "get_issue_update_timestamp": [
         "key",
         "updated"
+    ],
+    "write_issue_followup_note": [
+        "key",
+        "write_status",
+        "write_artifact_s3_uri"
     ]
 }

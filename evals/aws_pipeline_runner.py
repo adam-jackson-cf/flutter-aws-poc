@@ -34,6 +34,13 @@ class PipelineRunRequest:
     case_id: str
     expected_tool: str
     dry_run: bool
+    model_id: str = ""
+    runtime_bedrock_model_id: str = ""
+    bedrock_region: str = ""
+    model_provider: str = ""
+    openai_reasoning_effort: str = ""
+    openai_text_verbosity: str = ""
+    openai_max_output_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -78,49 +85,98 @@ class AwsPipelineRunner:
             flow=request.flow,
             case_id=request.case_id,
         )
-        execution_input = {
+        started_response = self._sfn.start_execution(
+            stateMachineArn=self._state_machine_arn,
+            name=execution_name,
+            input=json.dumps(self._execution_input(request)),
+        )
+        execution_arn = started_response["executionArn"]
+        return self._wait_for_execution_result(
+            execution_arn=execution_arn,
+            flow=request.flow,
+            started=started,
+        )
+
+    @staticmethod
+    def _execution_input(request: PipelineRunRequest) -> Dict[str, Any]:
+        payload = {
             "flow": request.flow,
             "request_text": request.request_text,
             "case_id": request.case_id,
             "expected_tool": request.expected_tool,
             "dry_run": request.dry_run,
         }
-        started_response = self._sfn.start_execution(
-            stateMachineArn=self._state_machine_arn,
-            name=execution_name,
-            input=json.dumps(execution_input),
-        )
-        execution_arn = started_response["executionArn"]
+        if request.model_id:
+            payload["model_id"] = request.model_id
+        if request.runtime_bedrock_model_id:
+            payload["runtime_bedrock_model_id"] = request.runtime_bedrock_model_id
+        if request.bedrock_region:
+            payload["bedrock_region"] = request.bedrock_region
+        if request.model_provider:
+            payload["model_provider"] = request.model_provider
+        if request.openai_reasoning_effort:
+            payload["openai_reasoning_effort"] = request.openai_reasoning_effort
+        if request.openai_text_verbosity:
+            payload["openai_text_verbosity"] = request.openai_text_verbosity
+        if request.openai_max_output_tokens > 0:
+            payload["openai_max_output_tokens"] = request.openai_max_output_tokens
+        return payload
 
+    def _wait_for_execution_result(
+        self,
+        *,
+        execution_arn: str,
+        flow: str,
+        started: float,
+    ) -> PipelineRunResult:
         while True:
             description = self._sfn.describe_execution(executionArn=execution_arn)
             status = description["status"]
             if status == "SUCCEEDED":
-                output = description.get("output", "")
-                if not output:
-                    raise RuntimeError(f"State machine execution missing output: {execution_arn}")
-                payload = json.loads(output)
-                artifact_s3_uri = str(payload.get("artifact_s3_uri", "")).strip()
-                if not artifact_s3_uri:
-                    raise RuntimeError(f"State machine output missing artifact_s3_uri: {execution_arn}")
-
-                artifact_payload = self._read_artifact(artifact_s3_uri)
-                self._validate_artifact_payload(payload=artifact_payload, flow=request.flow)
-                return PipelineRunResult(
+                return self._successful_execution_result(
                     execution_arn=execution_arn,
-                    payload=artifact_payload,
-                    artifact_s3_uri=artifact_s3_uri,
+                    flow=flow,
+                    output=str(description.get("output", "")),
                 )
 
             if status in {"FAILED", "TIMED_OUT", "ABORTED"}:
-                error = description.get("error", "unknown_error")
-                cause = description.get("cause", "unknown_cause")
-                raise RuntimeError(f"Execution {status}: {error}: {cause}")
+                self._raise_execution_failure(status=status, description=description)
 
             if (time.time() - started) > self._execution_timeout_seconds:
                 raise TimeoutError(f"Execution timed out after {self._execution_timeout_seconds}s: {execution_arn}")
 
             time.sleep(self._poll_interval_seconds)
+
+    def _successful_execution_result(
+        self,
+        *,
+        execution_arn: str,
+        flow: str,
+        output: str,
+    ) -> PipelineRunResult:
+        if not output:
+            raise RuntimeError(f"State machine execution missing output: {execution_arn}")
+        payload = json.loads(output)
+        artifact_s3_uri = str(payload.get("artifact_s3_uri", "")).strip()
+        if not artifact_s3_uri:
+            raise RuntimeError(f"State machine output missing artifact_s3_uri: {execution_arn}")
+        artifact_payload = self._read_artifact(artifact_s3_uri)
+        self._validate_artifact_payload(payload=artifact_payload, flow=flow)
+        return PipelineRunResult(
+            execution_arn=execution_arn,
+            payload=artifact_payload,
+            artifact_s3_uri=artifact_s3_uri,
+        )
+
+    @staticmethod
+    def _raise_execution_failure(
+        *,
+        status: str,
+        description: Dict[str, Any],
+    ) -> None:
+        error = description.get("error", "unknown_error")
+        cause = description.get("cause", "unknown_cause")
+        raise RuntimeError(f"Execution {status}: {error}: {cause}")
 
     def _read_artifact(self, artifact_s3_uri: str) -> Dict[str, Any]:
         bucket, key = _parse_s3_uri(artifact_s3_uri)

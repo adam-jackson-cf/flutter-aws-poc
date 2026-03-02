@@ -77,6 +77,14 @@ class StrandsNativeFlow:
             issue = self._jira_client.get_issue(issue_key)
             return {"key": issue["key"], "updated": issue.get("updated", "")}
 
+        @tool
+        def jira_api_write_issue_followup_note(issue_key: str) -> dict:
+            """Write a follow-up note to the issue via native API client."""
+            return self._jira_client.write_issue_followup_note(
+                issue_key=issue_key,
+                note_text=f"SOP follow-up for {issue_key}",
+            )
+
         tool_functions = {
             "jira_api_get_issue_by_key": jira_api_get_issue_by_key,
             "jira_api_get_issue_status_snapshot": jira_api_get_issue_status_snapshot,
@@ -84,6 +92,7 @@ class StrandsNativeFlow:
             "jira_api_get_issue_labels": jira_api_get_issue_labels,
             "jira_api_get_issue_project_key": jira_api_get_issue_project_key,
             "jira_api_get_issue_update_timestamp": jira_api_get_issue_update_timestamp,
+            "jira_api_write_issue_followup_note": jira_api_write_issue_followup_note,
         }
         return [tool_functions[name] for name in scoped_names]
 

@@ -16,13 +16,13 @@
   "mcp_expected_tool": "jira_get_issue_by_key",
   "native_expected_tool": "jira_api_get_issue_by_key",
   "mcp_tool_scope_by_intent": {
-    "bug_triage": ["jira_get_issue_by_key", "jira_get_issue_priority_context", "jira_get_issue_risk_flags"],
+    "bug_triage": ["jira_get_issue_by_key", "jira_get_issue_priority_context", "jira_get_issue_status_snapshot", "jira_write_issue_followup_note"],
     "status_update": ["jira_get_issue_by_key", "jira_get_issue_status_snapshot", "jira_get_issue_update_timestamp"],
     "feature_request": ["jira_get_issue_by_key", "jira_get_issue_labels", "jira_get_issue_project_key"],
     "general_triage": ["jira_get_issue_by_key", "jira_get_issue_status_snapshot"]
   },
   "native_tool_scope_by_intent": {
-    "bug_triage": ["jira_api_get_issue_by_key", "jira_api_get_issue_priority_context", "jira_api_get_issue_status_snapshot"],
+    "bug_triage": ["jira_api_get_issue_by_key", "jira_api_get_issue_priority_context", "jira_api_get_issue_status_snapshot", "jira_api_write_issue_followup_note"],
     "status_update": ["jira_api_get_issue_by_key", "jira_api_get_issue_status_snapshot", "jira_api_get_issue_update_timestamp"],
     "feature_request": ["jira_api_get_issue_by_key", "jira_api_get_issue_labels", "jira_api_get_issue_project_key"],
     "general_triage": ["jira_api_get_issue_by_key", "jira_api_get_issue_status_snapshot"]
@@ -33,7 +33,8 @@
     "jira_api_get_issue_priority_context": "Fetch issue priority and derived risk band from Jira.",
     "jira_api_get_issue_labels": "Fetch issue labels for classification context.",
     "jira_api_get_issue_project_key": "Fetch project key derived from issue key.",
-    "jira_api_get_issue_update_timestamp": "Fetch issue update timestamp for freshness checks."
+    "jira_api_get_issue_update_timestamp": "Fetch issue update timestamp for freshness checks.",
+    "jira_api_write_issue_followup_note": "Persist a customer follow-up note artifact for an issue."
   },
   "tool_completeness_fields_by_operation": {
     "get_issue_by_key": ["key", "summary", "status"],
@@ -42,6 +43,7 @@
     "get_issue_labels": ["key", "labels"],
     "get_issue_project_key": ["key", "project_key"],
     "get_issue_update_timestamp": ["key", "updated"],
+    "write_issue_followup_note": ["key", "write_status", "write_artifact_s3_uri"],
     "get_issue_risk_flags": ["key"]
   },
   "gateway_tools": [
@@ -166,6 +168,32 @@
           "updated": {"type": "string"}
         },
         "required": ["key", "updated"]
+      }
+    },
+    {
+      "name": "jira_write_issue_followup_note",
+      "description": "Persist a customer follow-up note artifact for an issue key.",
+      "input_schema": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "description": "Issue key such as JRASERVER-79286"
+          },
+          "note_text": {
+            "type": "string",
+            "description": "Customer-safe note text to persist."
+          }
+        },
+        "required": ["issue_key", "note_text"]
+      },
+      "output_schema": {
+        "properties": {
+          "key": {"type": "string"},
+          "write_status": {"type": "string"},
+          "write_artifact_s3_uri": {"type": "string"},
+          "note_digest": {"type": "string"}
+        },
+        "required": ["key", "write_status", "write_artifact_s3_uri", "note_digest"]
       }
     },
     {

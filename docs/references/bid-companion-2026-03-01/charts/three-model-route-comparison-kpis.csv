@@ -1,0 +1,5 @@
+model_label,model_id,status,run_id,flow,total_cases,tool_failure_rate,tool_match_rate,business_success_rate,mean_latency_ms,issue_payload_completeness_rate,deterministic_release_score,overall_reflection_score,error_type,error_summary
+Bedrock Default,eu.amazon.nova-lite-v1:0,completed,bench3model-nova-route-20260301T203500Z,native,30,0.7,0.3,0.2,1599.4396666666667,0.7,0.46,0.46,,
+Bedrock Default,eu.amazon.nova-lite-v1:0,completed,bench3model-nova-route-20260301T203500Z,mcp,30,0.9,0.1,0.1,1964.3659999999998,0.6,0.355,0.355,,
+GPT-5,gpt-5,failed,bench3model-gpt5-route-20260301T204100Z,both,,,,,,,,,ValidationException,"The provided model identifier is invalid."
+GPT-5 Codex High,gpt-5-codex-high,failed,bench3model-gpt5codexhigh-route-20260301T204130Z,both,,,,,,,,,ValidationException,"The provided model identifier is invalid."

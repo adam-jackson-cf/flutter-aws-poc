@@ -25,7 +25,8 @@ export const MCP_TOOL_SCOPE_BY_INTENT: Record<string, string[]> = {
   "bug_triage": [
     "jira_get_issue_by_key",
     "jira_get_issue_priority_context",
-    "jira_get_issue_risk_flags"
+    "jira_get_issue_status_snapshot",
+    "jira_write_issue_followup_note"
   ],
   "feature_request": [
     "jira_get_issue_by_key",
@@ -227,6 +228,48 @@ export const GATEWAY_TOOLS: GatewayToolContract[] = [
       "required": [
         "key",
         "updated"
+      ]
+    }
+  },
+  {
+    "description": "Persist a customer follow-up note artifact for an issue key.",
+    "input_schema": {
+      "properties": {
+        "issue_key": {
+          "description": "Issue key such as JRASERVER-79286",
+          "type": "string"
+        },
+        "note_text": {
+          "description": "Customer-safe note text to persist.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_key",
+        "note_text"
+      ]
+    },
+    "name": "jira_write_issue_followup_note",
+    "output_schema": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "note_digest": {
+          "type": "string"
+        },
+        "write_artifact_s3_uri": {
+          "type": "string"
+        },
+        "write_status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "write_status",
+        "write_artifact_s3_uri",
+        "note_digest"
       ]
     }
   },

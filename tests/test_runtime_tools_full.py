@@ -230,7 +230,13 @@ def test_strands_native_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
             "priority": "High",
             "labels": ["a", "b"],
             "summary": "ok",
-        }
+        },
+        write_issue_followup_note=lambda issue_key, note_text: {
+            "key": issue_key,
+            "write_status": "committed",
+            "note_digest": "digest",
+            "note_text": note_text,
+        },
     )
     flow2 = mod.StrandsNativeFlow(jira_client=rich_jira_client, model_id="model", region="eu-west-1")
     monkeypatch.setattr(mod, "Agent", _InvokeToolsAgent)

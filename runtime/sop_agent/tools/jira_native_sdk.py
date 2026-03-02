@@ -1,3 +1,4 @@
+import hashlib
 from typing import Any, Dict
 
 from jira import JIRA
@@ -38,4 +39,17 @@ class JiraSdkClient:
             "updated": fields.get("updated", ""),
             "description": description[:600],
             "comment_count": comments.get("total", 0),
+        }
+
+    def write_issue_followup_note(self, issue_key: str, note_text: str) -> Dict[str, Any]:
+        issue = self._client.issue(issue_key, fields="summary")
+        text = note_text.strip()
+        if not text:
+            raise ValueError("note_text_missing")
+        comment = self._client.add_comment(issue, text)
+        return {
+            "key": issue.key,
+            "write_status": "committed",
+            "note_digest": hashlib.sha256(text.encode("utf-8")).hexdigest()[:12],
+            "comment_id": str(getattr(comment, "id", "")),
         }

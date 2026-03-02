@@ -1,6 +1,7 @@
 import math
 import re
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
 
@@ -44,75 +45,204 @@ def wilson_interval(successes: int, total: int, z: float = 1.96) -> Dict[str, fl
     return {"low": max(0.0, center - margin), "high": min(1.0, center + margin)}
 
 
+@dataclass
+class CaseMetricsAccumulator:
+    intent_hits: int = 0
+    issue_hits: int = 0
+    tool_match_hits: int = 0
+    tool_failures: int = 0
+    issue_payload_complete_hits: int = 0
+    issue_key_resolution_match_hits: int = 0
+    business_success_hits: int = 0
+    call_construction_failure_hits: int = 0
+    call_construction_recovered_hits: int = 0
+    grounding_failure_hits: int = 0
+    write_case_count: int = 0
+    write_tool_selected_hits: int = 0
+    write_tool_match_hits: int = 0
+    latencies: List[float] | None = None
+    success_latencies: List[float] | None = None
+    failed_latencies: List[float] | None = None
+    similarities: List[float] | None = None
+    grounding_attempts: List[float] | None = None
+    grounding_retries: List[float] | None = None
+    call_construction_attempts: List[float] | None = None
+    call_construction_retries: List[float] | None = None
+    llm_input_tokens: List[float] | None = None
+    llm_output_tokens: List[float] | None = None
+    llm_total_tokens: List[float] | None = None
+
+    def __post_init__(self) -> None:
+        self.latencies = []
+        self.success_latencies = []
+        self.failed_latencies = []
+        self.similarities = []
+        self.grounding_attempts = []
+        self.grounding_retries = []
+        self.call_construction_attempts = []
+        self.call_construction_retries = []
+        self.llm_input_tokens = []
+        self.llm_output_tokens = []
+        self.llm_total_tokens = []
+
+
+def _empty_case_metrics_summary() -> Dict[str, float]:
+    return {
+        "total_cases": 0,
+        "intent_accuracy": 0.0,
+        "issue_key_accuracy": 0.0,
+        "tool_match_rate": 0.0,
+        "tool_failure_rate": 0.0,
+        "tool_failure_ci95_low": 0.0,
+        "tool_failure_ci95_high": 0.0,
+        "issue_payload_completeness_rate": 0.0,
+        "issue_key_resolution_match_rate": 0.0,
+        "business_success_rate": 0.0,
+        "mean_latency_ms": 0.0,
+        "mean_latency_success_ms": 0.0,
+        "mean_latency_failure_ms": 0.0,
+        "mean_response_similarity": 0.0,
+        "grounding_failure_rate": 0.0,
+        "mean_grounding_attempts": 0.0,
+        "mean_grounding_retries": 0.0,
+        "call_construction_failure_rate": 0.0,
+        "mean_call_construction_attempts": 0.0,
+        "mean_call_construction_retries": 0.0,
+        "call_construction_recovery_rate": 0.0,
+        "write_case_count": 0,
+        "write_tool_selected_rate": 0.0,
+        "write_tool_match_rate": 0.0,
+        "total_llm_input_tokens": 0.0,
+        "total_llm_output_tokens": 0.0,
+        "total_llm_total_tokens": 0.0,
+        "mean_llm_input_tokens": 0.0,
+        "mean_llm_output_tokens": 0.0,
+        "mean_llm_total_tokens": 0.0,
+    }
+
+
+def _update_accumulator(acc: CaseMetricsAccumulator, case: Dict[str, Any]) -> None:
+    metrics = case["metrics"]
+    _update_match_counters(acc, metrics)
+    _update_grounding_and_construction(acc, metrics)
+    _update_write_metrics(acc, metrics)
+    _update_token_metrics(acc, metrics)
+    _update_latency_metrics(acc, metrics)
+
+
+def _update_match_counters(acc: CaseMetricsAccumulator, metrics: Dict[str, Any]) -> None:
+    if metrics["intent_match"]:
+        acc.intent_hits += 1
+    if metrics["issue_key_match"]:
+        acc.issue_hits += 1
+    if metrics.get("tool_match", False):
+        acc.tool_match_hits += 1
+    if metrics["tool_failure"]:
+        acc.tool_failures += 1
+    if metrics.get("issue_payload_complete", False):
+        acc.issue_payload_complete_hits += 1
+    if metrics.get("issue_key_resolution_match", False):
+        acc.issue_key_resolution_match_hits += 1
+    if metrics.get("business_success", False):
+        acc.business_success_hits += 1
+
+
+def _update_grounding_and_construction(
+    acc: CaseMetricsAccumulator,
+    metrics: Dict[str, Any],
+) -> None:
+    if metrics.get("grounding_failure", False):
+        acc.grounding_failure_hits += 1
+    acc.grounding_attempts.append(float(metrics.get("grounding_attempts", 0.0)))
+    acc.grounding_retries.append(float(metrics.get("grounding_retry_count", 0.0)))
+    if metrics.get("call_construction_failure", False):
+        acc.call_construction_failure_hits += 1
+        if metrics.get("call_construction_recovered", False):
+            acc.call_construction_recovered_hits += 1
+    acc.call_construction_attempts.append(float(metrics.get("call_construction_attempts", 0.0)))
+    acc.call_construction_retries.append(float(metrics.get("call_construction_retries", 0.0)))
+
+
+def _update_write_metrics(acc: CaseMetricsAccumulator, metrics: Dict[str, Any]) -> None:
+    if metrics.get("write_case", False):
+        acc.write_case_count += 1
+        if metrics.get("write_tool_selected", False):
+            acc.write_tool_selected_hits += 1
+        if metrics.get("write_tool_match", False):
+            acc.write_tool_match_hits += 1
+
+
+def _update_token_metrics(acc: CaseMetricsAccumulator, metrics: Dict[str, Any]) -> None:
+    acc.llm_input_tokens.append(float(metrics.get("llm_input_tokens", 0.0)))
+    acc.llm_output_tokens.append(float(metrics.get("llm_output_tokens", 0.0)))
+    acc.llm_total_tokens.append(float(metrics.get("llm_total_tokens", 0.0)))
+
+
+def _update_latency_metrics(acc: CaseMetricsAccumulator, metrics: Dict[str, Any]) -> None:
+    latency_value = float(metrics["latency_ms"])
+    acc.latencies.append(latency_value)
+    if metrics.get("business_success", False):
+        acc.success_latencies.append(latency_value)
+    else:
+        acc.failed_latencies.append(latency_value)
+    acc.similarities.append(float(metrics["response_similarity"]))
+
+
+def _summary_from_accumulator(acc: CaseMetricsAccumulator, total: int) -> Dict[str, float]:
+    tool_failure_ci = wilson_interval(successes=acc.tool_failures, total=total)
+    call_construction_recovery_rate = (
+        acc.call_construction_recovered_hits / acc.call_construction_failure_hits
+        if acc.call_construction_failure_hits > 0
+        else 0.0
+    )
+    write_tool_selected_rate = (
+        acc.write_tool_selected_hits / acc.write_case_count if acc.write_case_count > 0 else 0.0
+    )
+    write_tool_match_rate = (
+        acc.write_tool_match_hits / acc.write_case_count if acc.write_case_count > 0 else 0.0
+    )
+    return {
+        "total_cases": total,
+        "intent_accuracy": acc.intent_hits / total,
+        "issue_key_accuracy": acc.issue_hits / total,
+        "tool_match_rate": acc.tool_match_hits / total,
+        "tool_failure_rate": acc.tool_failures / total,
+        "tool_failure_ci95_low": tool_failure_ci["low"],
+        "tool_failure_ci95_high": tool_failure_ci["high"],
+        "issue_payload_completeness_rate": acc.issue_payload_complete_hits / total,
+        "issue_key_resolution_match_rate": acc.issue_key_resolution_match_hits / total,
+        "business_success_rate": acc.business_success_hits / total,
+        "mean_latency_ms": safe_mean(acc.latencies),
+        "mean_latency_success_ms": safe_mean(acc.success_latencies),
+        "mean_latency_failure_ms": safe_mean(acc.failed_latencies),
+        "mean_response_similarity": safe_mean(acc.similarities),
+        "grounding_failure_rate": acc.grounding_failure_hits / total,
+        "mean_grounding_attempts": safe_mean(acc.grounding_attempts),
+        "mean_grounding_retries": safe_mean(acc.grounding_retries),
+        "call_construction_failure_rate": acc.call_construction_failure_hits / total,
+        "mean_call_construction_attempts": safe_mean(acc.call_construction_attempts),
+        "mean_call_construction_retries": safe_mean(acc.call_construction_retries),
+        "call_construction_recovery_rate": call_construction_recovery_rate,
+        "write_case_count": acc.write_case_count,
+        "write_tool_selected_rate": write_tool_selected_rate,
+        "write_tool_match_rate": write_tool_match_rate,
+        "total_llm_input_tokens": sum(acc.llm_input_tokens),
+        "total_llm_output_tokens": sum(acc.llm_output_tokens),
+        "total_llm_total_tokens": sum(acc.llm_total_tokens),
+        "mean_llm_input_tokens": safe_mean(acc.llm_input_tokens),
+        "mean_llm_output_tokens": safe_mean(acc.llm_output_tokens),
+        "mean_llm_total_tokens": safe_mean(acc.llm_total_tokens),
+    }
+
+
 def aggregate_case_metrics(case_results: List[Dict]) -> Dict[str, float]:
     total = len(case_results)
     if total == 0:
-        return {
-            "total_cases": 0,
-            "intent_accuracy": 0.0,
-            "issue_key_accuracy": 0.0,
-            "tool_match_rate": 0.0,
-            "tool_failure_rate": 0.0,
-            "tool_failure_ci95_low": 0.0,
-            "tool_failure_ci95_high": 0.0,
-            "issue_payload_completeness_rate": 0.0,
-            "business_success_rate": 0.0,
-            "mean_latency_ms": 0.0,
-            "mean_latency_success_ms": 0.0,
-            "mean_latency_failure_ms": 0.0,
-            "mean_response_similarity": 0.0,
-        }
-
-    intent_hits = 0
-    issue_hits = 0
-    tool_match_hits = 0
-    tool_failures = 0
-    issue_payload_complete_hits = 0
-    business_success_hits = 0
-    latencies: List[float] = []
-    success_latencies: List[float] = []
-    failed_latencies: List[float] = []
-    similarities: List[float] = []
-
+        return _empty_case_metrics_summary()
+    accumulator = CaseMetricsAccumulator()
     for case in case_results:
-        if case["metrics"]["intent_match"]:
-            intent_hits += 1
-        if case["metrics"]["issue_key_match"]:
-            issue_hits += 1
-        if case["metrics"].get("tool_match", False):
-            tool_match_hits += 1
-        if case["metrics"]["tool_failure"]:
-            tool_failures += 1
-        if case["metrics"].get("issue_payload_complete", False):
-            issue_payload_complete_hits += 1
-        if case["metrics"].get("business_success", False):
-            business_success_hits += 1
-
-        latency_value = float(case["metrics"]["latency_ms"])
-        latencies.append(latency_value)
-        if case["metrics"].get("business_success", False):
-            success_latencies.append(latency_value)
-        else:
-            failed_latencies.append(latency_value)
-        similarities.append(float(case["metrics"]["response_similarity"]))
-
-    tool_failure_ci = wilson_interval(successes=tool_failures, total=total)
-
-    return {
-        "total_cases": total,
-        "intent_accuracy": intent_hits / total,
-        "issue_key_accuracy": issue_hits / total,
-        "tool_match_rate": tool_match_hits / total,
-        "tool_failure_rate": tool_failures / total,
-        "tool_failure_ci95_low": tool_failure_ci["low"],
-        "tool_failure_ci95_high": tool_failure_ci["high"],
-        "issue_payload_completeness_rate": issue_payload_complete_hits / total,
-        "business_success_rate": business_success_hits / total,
-        "mean_latency_ms": safe_mean(latencies),
-        "mean_latency_success_ms": safe_mean(success_latencies),
-        "mean_latency_failure_ms": safe_mean(failed_latencies),
-        "mean_response_similarity": safe_mean(similarities),
-    }
+        _update_accumulator(accumulator, case)
+    return _summary_from_accumulator(accumulator, total)
 
 
 def aggregate_judge_metrics(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:

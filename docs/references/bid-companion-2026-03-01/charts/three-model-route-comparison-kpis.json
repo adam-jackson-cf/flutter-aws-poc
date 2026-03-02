@@ -1,0 +1,85 @@
+{
+  "generated_at": "2026-03-01T20:42:28Z",
+  "objective": "Controlled 3-model route benchmark under identical conditions",
+  "run_conditions": {
+    "dataset": "evals/golden/sop_cases.jsonl",
+    "flow": "both",
+    "scope": "route",
+    "iterations": 3,
+    "aws_region": "eu-west-1",
+    "state_machine_arn": "arn:aws:states:eu-west-1:530267068969:stateMachine:SopAutomationPipelineF2E8B14A-9Q34zedvCDIs"
+  },
+  "model_availability_probe": {
+    "bedrock_query_region": "eu-west-1",
+    "gpt5_or_codex_models": [],
+    "openai_gpt_models_available": [
+      "openai.gpt-oss-20b-1:0",
+      "openai.gpt-oss-120b-1:0",
+      "openai.gpt-oss-safeguard-20b",
+      "openai.gpt-oss-safeguard-120b"
+    ]
+  },
+  "benchmark_results": [
+    {
+      "model_label": "Bedrock Default",
+      "model_id": "eu.amazon.nova-lite-v1:0",
+      "status": "completed",
+      "run_id": "bench3model-nova-route-20260301T203500Z",
+      "eval_path": "reports/runs/bench3model-nova-route-20260301T203500Z/eval/eval-both-route.json",
+      "kpis": [
+        {
+          "flow": "native",
+          "total_cases": 30,
+          "tool_failure_rate": 0.7,
+          "tool_match_rate": 0.3,
+          "business_success_rate": 0.2,
+          "mean_latency_ms": 1599.4396666666667,
+          "issue_payload_completeness_rate": 0.7,
+          "deterministic_release_score": 0.46,
+          "overall_reflection_score": 0.46
+        },
+        {
+          "flow": "mcp",
+          "total_cases": 30,
+          "tool_failure_rate": 0.9,
+          "tool_match_rate": 0.1,
+          "business_success_rate": 0.1,
+          "mean_latency_ms": 1964.3659999999998,
+          "issue_payload_completeness_rate": 0.6,
+          "deterministic_release_score": 0.355,
+          "overall_reflection_score": 0.355
+        }
+      ],
+      "comparison_delta": {
+        "tool_failure_delta": 0.20000000000000007,
+        "latency_delta_ms": 364.9263333333331,
+        "response_similarity_delta": 0.0,
+        "deterministic_release_score_delta": -0.10500000000000004,
+        "judge_diagnostic_score_delta": 0.0,
+        "overall_reflection_score_delta": -0.10500000000000004
+      }
+    },
+    {
+      "model_label": "GPT-5",
+      "model_id": "gpt-5",
+      "status": "failed",
+      "run_id": "bench3model-gpt5-route-20260301T204100Z",
+      "failure": {
+        "error_type": "ValidationException",
+        "error_summary": "The provided model identifier is invalid.",
+        "pipeline_stage": "fetch_native_stage -> tool_selection -> bedrock Converse"
+      }
+    },
+    {
+      "model_label": "GPT-5 Codex High",
+      "model_id": "gpt-5-codex-high",
+      "status": "failed",
+      "run_id": "bench3model-gpt5codexhigh-route-20260301T204130Z",
+      "failure": {
+        "error_type": "ValidationException",
+        "error_summary": "The provided model identifier is invalid.",
+        "pipeline_stage": "fetch_native_stage -> tool_selection -> bedrock Converse"
+      }
+    }
+  ]
+}

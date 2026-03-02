@@ -6,8 +6,9 @@
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -w -p tsconfig.json",
     "cdk:synth": "cdk synth",
+    "cdk:synth:ci": "MODEL_ID=${MODEL_ID:-eu.amazon.nova-lite-v1:0} BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-eu.amazon.nova-lite-v1:0} cdk synth",
     "cdk:diff": "cdk diff",
-    "cdk:deploy": "cdk deploy --require-approval never",
+    "cdk:deploy": "cdk deploy --require-approval broadening",
     "lint": "tsc --noEmit -p tsconfig.json",
     "lint:eslint": "eslint --max-warnings 0 .",
     "test": "npm run lint"

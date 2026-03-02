@@ -122,10 +122,12 @@ def test_intake_domain_and_bedrock_client(monkeypatch: pytest.MonkeyPatch) -> No
     assert intake_domain.classify_intent("There is a bug outage") == "bug_triage"
     assert intake_domain.classify_intent("Feature suggestion for roadmap") == "feature_request"
     assert intake_domain.classify_intent("Need latest status update") == "status_update"
+    assert intake_domain.classify_intent("Latest status for JRASERVER-79286 and any incident signals for support team.") == "status_update"
     assert intake_domain.classify_intent("hello") == "general_triage"
 
-    intake = intake_domain.extract_intake("Need update for JRASERVER-2 regarding security escalation")
-    assert intake["issue_key"] == "JRASERVER-2"
+    intake = intake_domain.extract_intake("Need update for JRASERVER-2 and JRASERVER-2 regarding security escalation")
+    assert intake["candidate_issue_keys"] == ["JRASERVER-2"]
+    assert intake["intent_hint"] == "status_update"
     assert "security" in intake["risk_hints"]
     with pytest.raises(ValueError):
         intake_domain.extract_intake("no issue key here")
@@ -149,6 +151,188 @@ def test_intake_domain_and_bedrock_client(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(bedrock_client.boto3, "client", lambda *_args, **_kwargs: _Client())
     text = bedrock_client.call_bedrock("model", "prompt", "eu-west-1")
     assert "tool" in text
+
+
+def test_llm_gateway_client_provider_routing(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm_gateway_client = _import_lambda_module("llm_gateway_client")
+    monkeypatch.setattr(
+        llm_gateway_client,
+        "call_bedrock_with_usage",
+        lambda **_kwargs: ("bedrock", {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
+    )
+    captured: Dict[str, Any] = {}
+
+    def _call_openai(**kwargs: Any) -> tuple[str, Dict[str, int]]:
+        captured.update(kwargs)
+        return ("openai", {"input_tokens": 2, "output_tokens": 1, "total_tokens": 3})
+
+    monkeypatch.setattr(llm_gateway_client, "call_openai_with_usage", _call_openai)
+
+    assert llm_gateway_client.call_llm_gateway("eu.amazon.nova-lite-v1:0", "p", "eu-west-1", provider="auto") == "bedrock"
+    assert llm_gateway_client.call_llm_gateway("gpt-5", "p", "eu-west-1", provider="auto") == "openai"
+    assert llm_gateway_client.call_llm_gateway("gpt-5-codex-high", "p", "eu-west-1", provider="openai") == "openai"
+    assert llm_gateway_client.call_llm_gateway("gpt-5", "p", "eu-west-1", provider="bedrock") == "bedrock"
+
+    assert (
+        llm_gateway_client.call_llm_gateway(
+            "gpt-5",
+            "p",
+            "eu-west-1",
+            provider="openai",
+            provider_options={"openai": {"reasoning_effort": "high", "verbosity": "medium"}},
+        )
+        == "openai"
+    )
+    assert captured["openai_options"]["reasoning_effort"] == "high"
+    assert captured["openai_options"]["verbosity"] == "medium"
+    assert llm_gateway_client._openai_runtime_options(None)["reasoning_effort"] == "medium"
+    assert llm_gateway_client._openai_runtime_options(None)["verbosity"] == "medium"
+    assert llm_gateway_client._openai_runtime_options(None)["max_output_tokens"] == 2000
+
+
+def test_llm_gateway_client_openai_key_resolution_and_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm_gateway_client = _import_lambda_module("llm_gateway_client")
+    llm_gateway_client._OPENAI_API_KEY_CACHE = ""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_HTTP_TIMEOUT_SECONDS", "45")
+    monkeypatch.setenv("OPENAI_HTTP_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv(
+        "OPENAI_API_KEY_SECRET_ARN",
+        "arn:aws:secretsmanager:eu-north-1:123456789012:secret:flutter-agentcore-poc/openai-api-key-abc",
+    )
+    monkeypatch.setattr(llm_gateway_client, "validate_endpoint_url", lambda **_kwargs: None)
+
+    class _SecretsClient:
+        def get_secret_value(self, SecretId: str) -> Dict[str, Any]:  # noqa: N803
+            assert SecretId == "arn:aws:secretsmanager:eu-north-1:123456789012:secret:flutter-agentcore-poc/openai-api-key-abc"
+            return {"SecretString": '{"OPENAI_API_KEY":"k-test"}'}
+
+    class _Response:
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"output_text":"ok"}'
+
+    captured: Dict[str, Any] = {}
+    def _client(service_name: str, region_name: str | None = None) -> _SecretsClient:
+        captured["client"] = (service_name, region_name)
+        return _SecretsClient()
+
+    def _urlopen(req: Any, timeout: float = 45) -> _Response:
+        captured["req"] = req
+        assert timeout == 45
+        return _Response()
+
+    monkeypatch.setattr(llm_gateway_client.boto3, "client", _client)
+    monkeypatch.setattr(llm_gateway_client, "urlopen", _urlopen)
+    text = llm_gateway_client.call_openai(model_id="gpt-5", prompt="hello", region="eu-west-1")
+    assert text == "ok"
+    assert captured["client"][0] == "secretsmanager"
+    assert captured["client"][1] == "eu-north-1"
+    assert "Bearer k-test" in captured["req"].headers["Authorization"]
+    request_payload = json.loads(captured["req"].data.decode("utf-8"))
+    assert request_payload["reasoning"]["effort"] == "medium"
+    assert request_payload["text"]["verbosity"] == "medium"
+    assert request_payload["max_output_tokens"] == 2000
+
+    llm_gateway_client._OPENAI_API_KEY_CACHE = ""
+    monkeypatch.delenv("OPENAI_API_KEY_SECRET_ARN", raising=False)
+    with pytest.raises(RuntimeError):
+        llm_gateway_client.call_openai(model_id="gpt-5", prompt="hello", region="eu-west-1")
+
+
+def test_llm_gateway_client_openai_timeout_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm_gateway_client = _import_lambda_module("llm_gateway_client")
+    llm_gateway_client._OPENAI_API_KEY_CACHE = ""
+    monkeypatch.setenv("OPENAI_API_KEY", "k-test")
+    monkeypatch.setenv("OPENAI_HTTP_TIMEOUT_SECONDS", "10")
+    monkeypatch.setenv("OPENAI_HTTP_MAX_ATTEMPTS", "2")
+    monkeypatch.setattr(llm_gateway_client, "validate_endpoint_url", lambda **_kwargs: None)
+
+    class _Response:
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"output_text":"ok"}'
+
+    call_count = {"count": 0}
+
+    def _urlopen(_req: Any, timeout: float = 10) -> _Response:
+        call_count["count"] += 1
+        assert timeout == 10
+        if call_count["count"] == 1:
+            raise TimeoutError("The read operation timed out")
+        return _Response()
+
+    monkeypatch.setattr(llm_gateway_client, "urlopen", _urlopen)
+    monkeypatch.setattr(llm_gateway_client.time, "sleep", lambda _seconds: None)
+
+    assert llm_gateway_client.call_openai(model_id="gpt-5", prompt="hello", region="eu-west-1") == "ok"
+    assert call_count["count"] == 2
+
+
+def test_llm_gateway_client_openai_incomplete_max_tokens_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm_gateway_client = _import_lambda_module("llm_gateway_client")
+    llm_gateway_client._OPENAI_API_KEY_CACHE = ""
+    monkeypatch.setenv("OPENAI_API_KEY", "k-test")
+    monkeypatch.setenv("OPENAI_HTTP_TIMEOUT_SECONDS", "10")
+    monkeypatch.setenv("OPENAI_HTTP_MAX_ATTEMPTS", "2")
+    monkeypatch.setattr(llm_gateway_client, "validate_endpoint_url", lambda **_kwargs: None)
+
+    class _Response:
+        def __init__(self, payload: Dict[str, Any]) -> None:
+            self._payload = payload
+
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(self._payload).encode("utf-8")
+
+    requested_tokens: list[int] = []
+
+    def _urlopen(req: Any, timeout: float = 10) -> _Response:
+        assert timeout == 10
+        payload = json.loads(req.data.decode("utf-8"))
+        requested_tokens.append(payload["max_output_tokens"])
+        if len(requested_tokens) == 1:
+            return _Response(
+                {
+                    "status": "incomplete",
+                    "incomplete_details": {"reason": "max_output_tokens"},
+                    "output": [],
+                }
+            )
+        return _Response({"status": "completed", "output_text": '{"customer_response":"ok","internal_actions":[],"risk_level":"low"}'})
+
+    monkeypatch.setattr(llm_gateway_client, "urlopen", _urlopen)
+
+    text = llm_gateway_client.call_openai(model_id="gpt-5", prompt="hello", region="eu-west-1")
+    assert '"customer_response":"ok"' in text
+    assert requested_tokens == [2000, 4000]
+
+
+def test_llm_gateway_client_secret_region_from_arn() -> None:
+    llm_gateway_client = _import_lambda_module("llm_gateway_client")
+    assert (
+        llm_gateway_client._secret_region_from_arn(
+            "arn:aws:secretsmanager:eu-north-1:123456789012:secret:x",
+            "eu-west-1",
+        )
+        == "eu-north-1"
+    )
+    assert llm_gateway_client._secret_region_from_arn("not-an-arn", "eu-west-1") == "eu-west-1"
 
 
 def test_tooling_and_selection_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,7 +368,17 @@ def test_tooling_and_selection_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
         def converse(self, **_kwargs: Any) -> Dict[str, Any]:
             return {"output": {"message": {"content": [{"text": '{"tool":"jira_get_issue_by_key","reason":"ok"}'}]}}}
 
-    monkeypatch.setattr(tool_selection, "call_bedrock", lambda **_kwargs: '{"tool":"jira_get_issue_by_key","reason":"ok"}')
+    selection_call: Dict[str, Any] = {}
+
+    def _selection_llm_call(**kwargs: Any) -> str:
+        selection_call.update(kwargs)
+        return '{"tool":"jira_get_issue_by_key","reason":"ok"}'
+
+    monkeypatch.setattr(
+        tool_selection,
+        "call_llm_gateway_with_usage",
+        lambda **kwargs: (_selection_llm_call(**kwargs), {"input_tokens": 3, "output_tokens": 1, "total_tokens": 4}),
+    )
     selection = tool_selection.select_tool_with_model(
         selection=tool_selection.ToolSelectionRequest(
             request_text="r",
@@ -195,6 +389,8 @@ def test_tooling_and_selection_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
         config=tool_selection.ToolSelectorConfig(model_id="model", region="eu-west-1"),
     )
     assert selection["selected_tool"] == "jira_get_issue_by_key"
+    selection_schema = selection_call["provider_options"]["openai"]["response_json_schema"]["schema"]
+    assert selection_schema["required"] == ["tool", "reason"]
 
     dry = tool_selection.select_tool_with_model(
         selection=tool_selection.ToolSelectionRequest(
@@ -207,21 +403,40 @@ def test_tooling_and_selection_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert dry["reason"] == "dry_run"
 
-    sel = tool_selection.select_mcp_tool(
-        selection=tool_selection.ToolSelectionRequest("r", "k", [{"name": "t", "description": ""}], "default"),
+    mcp_call = tool_selection.select_mcp_tool_call(
+        selection=tool_selection.ToolSelectionRequest("r", "JRASERVER-1", [{"name": "t", "description": ""}], "t"),
         config=tool_selection.ToolSelectorConfig("m", "eu-west-1", dry_run=True),
     )
-    assert sel["selected_tool"] == "default"
+    assert mcp_call["selected_tool"] == "t"
+    assert mcp_call["arguments"] == {}
 
-    assert tool_selection.find_expected_gateway_tool([{"name": "x__jira_get_issue_by_key"}]) == "x__jira_get_issue_by_key"
-    with pytest.raises(RuntimeError):
-        tool_selection.find_expected_gateway_tool([{"name": "x__jira_get_issue_labels"}])
-
-    assert tool_selection.build_gateway_tool_args({"inputSchema": {"required": ["issue_key", "query"]}}, "JRASERVER-1", "help") == {
-        "issue_key": "JRASERVER-1",
-        "query": "help",
-    }
-    assert tool_selection.build_gateway_tool_args({"inputSchema": {"required": "bad"}}, "JRASERVER-1", "help") == {}
+    schema_validation = tool_selection.validate_gateway_tool_arguments(
+        selected_tool={
+            "inputSchema": {
+                "properties": {
+                    "issue_key": {"type": "string"},
+                    "labels": {"type": "array_string"},
+                },
+                "required": ["issue_key"],
+            }
+        },
+        arguments={"issue_key": "JRASERVER-1", "labels": ["a"]},
+    )
+    assert schema_validation == ""
+    assert (
+        tool_selection.validate_gateway_tool_arguments(
+            selected_tool={"inputSchema": {"properties": {"issue_key": {"type": "string"}}, "required": ["issue_key"]}},
+            arguments={},
+        )
+        == "mcp_tool_args_missing_required:issue_key"
+    )
+    assert (
+        tool_selection.validate_gateway_tool_arguments(
+            selected_tool={"inputSchema": {"properties": {"issue_key": {"type": "string"}}}},
+            arguments={"issue_key": 42},
+        )
+        == "mcp_tool_args_invalid_type:issue_key:expected_string"
+    )
 
 
 def test_gateway_client_runtime_config_stage_metrics_and_artifacts(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -290,15 +505,29 @@ def test_gateway_client_runtime_config_stage_metrics_and_artifacts(monkeypatch: 
     with pytest.raises(RuntimeError):
         mcp_gateway_client.extract_gateway_tool_payload({"result": {"content": [{"text": ""}]}})
 
-    monkeypatch.setenv("BEDROCK_MODEL_ID", "env-model")
+    monkeypatch.setenv("MODEL_ID", "env-model")
     monkeypatch.setenv("BEDROCK_REGION", "env-region")
+    monkeypatch.setenv("MODEL_PROVIDER", "bedrock")
+    monkeypatch.setenv("OPENAI_REASONING_EFFORT", "medium")
+    monkeypatch.setenv("OPENAI_TEXT_VERBOSITY", "medium")
+    monkeypatch.setenv("OPENAI_MAX_OUTPUT_TOKENS", "2000")
     assert runtime_config.selected_model_id({}) == "env-model"
     assert runtime_config.selected_region({}) == "env-region"
+    assert runtime_config.selected_model_provider({}) == "bedrock"
     assert runtime_config.selected_model_id({"model_id": "custom"}) == "custom"
     assert runtime_config.selected_region({"bedrock_region": "custom-region"}) == "custom-region"
+    assert runtime_config.selected_model_provider({"model_provider": "openai"}) == "openai"
+    assert runtime_config.selected_provider_options({})["openai"]["reasoning_effort"] == "medium"
+    assert runtime_config.selected_provider_options({})["openai"]["verbosity"] == "medium"
+    assert runtime_config.selected_provider_options({})["openai"]["max_output_tokens"] == 2000
+    assert runtime_config.selected_provider_options({"openai_reasoning_effort": "high"})["openai"]["reasoning_effort"] == "high"
+    assert runtime_config.selected_provider_options({"openai_text_verbosity": "medium"})["openai"]["verbosity"] == "medium"
+    assert runtime_config.selected_provider_options({"openai_max_output_tokens": 3000})["openai"]["max_output_tokens"] == 3000
 
-    monkeypatch.setattr(runtime_config, "validate_endpoint_url", lambda **_kwargs: None)
+    validation_call: Dict[str, Any] = {}
+    monkeypatch.setattr(runtime_config, "validate_endpoint_url", lambda **kwargs: validation_call.update(kwargs))
     assert runtime_config.selected_gateway_url({"mcp_gateway_url": "https://example.com"}) == "https://example.com"
+    assert validation_call["default_allowed_hosts"] == ".gateway.bedrock-agentcore.env-region.amazonaws.com"
     monkeypatch.delenv("MCP_GATEWAY_URL", raising=False)
     with pytest.raises(RuntimeError):
         runtime_config.selected_gateway_url({})
@@ -306,28 +535,50 @@ def test_gateway_client_runtime_config_stage_metrics_and_artifacts(monkeypatch: 
     dry = response_generation.generate_customer_response(
         intake={"issue_key": "JRASERVER-1", "intent": "bug_triage"},
         tool_result={"status": "Done"},
-        model_id="model",
-        region="eu-west-1",
-        dry_run=True,
+        config=response_generation.ResponseGenerationConfig(
+            model_id="model",
+            region="eu-west-1",
+            dry_run=True,
+        ),
     )
     assert dry["risk_level"] == "medium"
 
-    monkeypatch.setattr(response_generation, "call_bedrock", lambda **_kwargs: '{"customer_response":"ok","internal_actions":["a"],"risk_level":"low"}')
+    generation_call: Dict[str, Any] = {}
+
+    def _generation_llm_call(**kwargs: Any) -> str:
+        generation_call.update(kwargs)
+        return '{"customer_response":"ok","internal_actions":["a"],"risk_level":"low"}'
+
+    monkeypatch.setattr(
+        response_generation,
+        "call_llm_gateway_with_usage",
+        lambda **kwargs: (_generation_llm_call(**kwargs), {"input_tokens": 4, "output_tokens": 2, "total_tokens": 6}),
+    )
     parsed = response_generation.generate_customer_response(
         intake={"issue_key": "JRASERVER-1", "intent": "feature_request"},
         tool_result={},
-        model_id="model",
-        region="eu-west-1",
+        config=response_generation.ResponseGenerationConfig(
+            model_id="model",
+            region="eu-west-1",
+        ),
     )
     assert parsed["internal_actions"] == ["a"]
+    generation_schema = generation_call["provider_options"]["openai"]["response_json_schema"]["schema"]
+    assert generation_schema["required"] == ["customer_response", "internal_actions", "risk_level"]
 
-    monkeypatch.setattr(response_generation, "call_bedrock", lambda **_kwargs: '{"customer_response":"ok","internal_actions":"bad","risk_level":"low"}')
+    monkeypatch.setattr(
+        response_generation,
+        "call_llm_gateway_with_usage",
+        lambda **_kwargs: ('{"customer_response":"ok","internal_actions":"bad","risk_level":"low"}', {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
+    )
     with pytest.raises(ValueError):
         response_generation.generate_customer_response(
             intake={"issue_key": "JRASERVER-1", "intent": "feature_request"},
             tool_result={},
-            model_id="model",
-            region="eu-west-1",
+            config=response_generation.ResponseGenerationConfig(
+                model_id="model",
+                region="eu-west-1",
+            ),
         )
 
     put_calls: Dict[str, Any] = {}
@@ -350,3 +601,62 @@ def test_gateway_client_runtime_config_stage_metrics_and_artifacts(monkeypatch: 
 
     assert artifact_store.safe_token("  bad value!  ") == "bad-value-"
     assert artifact_store.safe_token("", fallback="x") == "x"
+
+
+def test_request_grounding_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    request_grounding = _import_lambda_module("request_grounding")
+
+    dry = request_grounding.resolve_request_grounding(
+        intake_seed={
+            "request_text": "Need update for JRASERVER-1",
+            "candidate_issue_keys": ["JRASERVER-1"],
+            "intent_hint": "status_update",
+        },
+        dry_run=True,
+        llm_config=request_grounding.GroundingLlmConfig(
+            model_id="eu.amazon.nova-lite-v1:0",
+            region="eu-west-1",
+            model_provider="auto",
+            provider_options={},
+        ),
+    )
+    assert dry["issue_key"] == "JRASERVER-1"
+    assert dry["intent"] == "status_update"
+    assert dry["retries"] == 0
+
+    calls = {"count": 0}
+
+    def _llm_call(**_kwargs: Any) -> tuple[str, Dict[str, int]]:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return (
+                '{"intent":"status_update","issue_key":"JRASERVER-000","reason":"wrong key"}',
+                {"input_tokens": 9, "output_tokens": 3, "total_tokens": 12},
+            )
+        return (
+            '{"intent":"status_update","issue_key":"JRASERVER-1","reason":"explicit target key"}',
+            {"input_tokens": 7, "output_tokens": 2, "total_tokens": 9},
+        )
+
+    monkeypatch.setattr(request_grounding, "call_llm_gateway_with_usage", _llm_call)
+    monkeypatch.setenv("GROUNDING_MAX_ATTEMPTS", "2")
+    grounded = request_grounding.resolve_request_grounding(
+        intake_seed={
+            "request_text": "Need update for JRASERVER-1 and JRASERVER-999",
+            "candidate_issue_keys": ["JRASERVER-1", "JRASERVER-999"],
+            "intent_hint": "status_update",
+        },
+        dry_run=False,
+        llm_config=request_grounding.GroundingLlmConfig(
+            model_id="eu.amazon.nova-lite-v1:0",
+            region="eu-west-1",
+            model_provider="auto",
+            provider_options={},
+        ),
+    )
+    assert grounded["issue_key"] == "JRASERVER-1"
+    assert grounded["attempts"] == 2
+    assert grounded["retries"] == 1
+    assert grounded["llm_usage"]["total_tokens"] == 21
+    assert grounded["attempt_trace"][0]["status"] == "invalid"
+    assert grounded["attempt_trace"][1]["status"] == "valid"

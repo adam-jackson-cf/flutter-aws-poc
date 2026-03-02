@@ -16,16 +16,31 @@
 - `docs/flutter-uki-ai-platform-arch/view-request-trace-v10.html`
 - `docs/flutter-uki-ai-platform-arch/component-design-v2.html`
 
-## Current run artifacts used for conclusions
+## Current local run artifacts used for conclusions (workspace snapshot)
 
-- `reports/runs/postdeploy-route-20260301T200250Z/eval/eval-both-route.json`
-- `reports/runs/postdeploy-full-20260301T200729Z/eval/eval-both-full.json`
+- `reports/runs/nova20-write-retry-final-20260302T114512Z/eval/eval-both-route.json`
+
+## Historical 2026-03-01 run evidence in this repo snapshot
+
+- Narrative and KPI summaries remain in:
+  - `docs/references/bid-companion-2026-03-01/objective-validation-report.md`
+  - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison.md`
+  - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.json`
+  - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.csv`
 
 ## Chart artifacts
 
 - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison.md`
 - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.json`
 - `docs/references/bid-companion-2026-03-01/charts/postdeploy-comparison-kpis.csv`
+- `docs/references/bid-companion-2026-03-01/charts/three-model-route-comparison.md`
+- `docs/references/bid-companion-2026-03-01/charts/three-model-route-comparison-kpis.json`
+- `docs/references/bid-companion-2026-03-01/charts/three-model-route-comparison-kpis.csv`
+
+## Decision notes
+
+- `docs/references/bid-companion-2026-03-01/bid-deck-narrative-delta.md`
+- `docs/references/bid-companion-2026-03-01/implementation-tranche-recommendation.md`
 
 ## Historical snapshots retained for traceability
 
@@ -40,4 +55,3 @@
 - AgentCore runtime and gateway status/details inspection
 - S3 Object Lock configuration check on artifact bucket
 - Lambda function metadata inspection (LastModified/CodeSha256)
-

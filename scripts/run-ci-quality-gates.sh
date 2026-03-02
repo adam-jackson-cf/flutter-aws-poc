@@ -71,6 +71,14 @@ run_architecture_boundary_check() {
   python3 scripts/check-architecture-boundaries.py
 }
 
+run_cdk_synth() {
+  if [[ "${CI:-}" == "true" ]] && [[ -f "infra/package.json" ]] && grep -q '"cdk:synth:ci"' "infra/package.json"; then
+    npm --prefix infra run cdk:synth:ci
+    return 0
+  fi
+  npm --prefix infra run cdk:synth
+}
+
 build_duplication_artifact_root() {
   local ts
   ts="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -184,7 +192,7 @@ run_step "Semantic contract ownership guard" run_semantic_contract_ownership_che
 run_step "Architecture boundary guard" run_architecture_boundary_check
 
 if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; then
-  run_step "CDK synth (infra)" npm --prefix infra run cdk:synth
+  run_step "CDK synth (infra)" run_cdk_synth
 fi
 
 if [[ -d "tests" ]] && [[ -f "requirements.txt" ]] && grep -qi '^pytest' "requirements.txt"; then

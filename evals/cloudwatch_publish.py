@@ -11,12 +11,31 @@ class SummaryPayload(TypedDict):
     tool_failure_rate: float
     business_success_rate: float
     issue_payload_completeness_rate: float
+    issue_key_resolution_match_rate: float
     mean_latency_ms: float
     mean_latency_success_ms: float
     mean_latency_failure_ms: float
     mean_response_similarity: float
     tool_failure_ci95_low: float
     tool_failure_ci95_high: float
+    grounding_failure_rate: float
+    mean_grounding_attempts: float
+    mean_grounding_retries: float
+    call_construction_failure_rate: float
+    mean_call_construction_attempts: float
+    mean_call_construction_retries: float
+    call_construction_recovery_rate: float
+    write_case_count: float
+    write_tool_selected_rate: float
+    write_tool_match_rate: float
+    total_llm_input_tokens: float
+    total_llm_output_tokens: float
+    total_llm_total_tokens: float
+    mean_llm_input_tokens: float
+    mean_llm_output_tokens: float
+    mean_llm_total_tokens: float
+    total_estimated_cost_usd: float
+    mean_estimated_cost_usd: float
 
 
 class JudgeSummaryPayload(TypedDict, total=False):
@@ -107,12 +126,45 @@ def _build_base_summary_metrics(summary: Mapping[str, object], dimensions: Dimen
         ("ToolFailureRate", "tool_failure_rate", None),
         ("BusinessSuccessRate", "business_success_rate", None),
         ("IssuePayloadCompletenessRate", "issue_payload_completeness_rate", None),
+        ("IssueKeyResolutionMatchRate", "issue_key_resolution_match_rate", None),
         ("MeanLatencyMs", "mean_latency_ms", "Milliseconds"),
         ("MeanLatencySuccessMs", "mean_latency_success_ms", "Milliseconds"),
         ("MeanLatencyFailureMs", "mean_latency_failure_ms", "Milliseconds"),
         ("MeanResponseSimilarity", "mean_response_similarity", None),
         ("ToolFailureCi95Low", "tool_failure_ci95_low", None),
         ("ToolFailureCi95High", "tool_failure_ci95_high", None),
+    ]
+    return [
+        _metric_datum(
+            metric_name=metric_name,
+            value=_normalized_float(summary, source_key=source_key, metric_name=metric_name),
+            dimensions=dimensions,
+            unit=unit,
+        )
+        for metric_name, source_key, unit in metric_specs
+    ]
+
+
+def _build_extended_summary_metrics(summary: Mapping[str, object], dimensions: Dimensions) -> List[Dict[str, Any]]:
+    metric_specs: List[tuple[str, str, str | None]] = [
+        ("GroundingFailureRate", "grounding_failure_rate", None),
+        ("MeanGroundingAttempts", "mean_grounding_attempts", "Count"),
+        ("MeanGroundingRetries", "mean_grounding_retries", "Count"),
+        ("CallConstructionFailureRate", "call_construction_failure_rate", None),
+        ("MeanCallConstructionAttempts", "mean_call_construction_attempts", "Count"),
+        ("MeanCallConstructionRetries", "mean_call_construction_retries", "Count"),
+        ("CallConstructionRecoveryRate", "call_construction_recovery_rate", None),
+        ("WriteCaseCount", "write_case_count", "Count"),
+        ("WriteToolSelectedRate", "write_tool_selected_rate", None),
+        ("WriteToolMatchRate", "write_tool_match_rate", None),
+        ("TotalLlmInputTokens", "total_llm_input_tokens", "Count"),
+        ("TotalLlmOutputTokens", "total_llm_output_tokens", "Count"),
+        ("TotalLlmTotalTokens", "total_llm_total_tokens", "Count"),
+        ("MeanLlmInputTokens", "mean_llm_input_tokens", "Count"),
+        ("MeanLlmOutputTokens", "mean_llm_output_tokens", "Count"),
+        ("MeanLlmTotalTokens", "mean_llm_total_tokens", "Count"),
+        ("TotalEstimatedCostUsd", "total_estimated_cost_usd", None),
+        ("MeanEstimatedCostUsd", "mean_estimated_cost_usd", None),
     ]
     return [
         _metric_datum(
@@ -243,6 +295,7 @@ def publish_eval_summary_metrics(
             )
         )
         metric_data.extend(_build_base_summary_metrics(summary=summary, dimensions=dimensions))
+        metric_data.extend(_build_extended_summary_metrics(summary=summary, dimensions=dimensions))
         metric_data.extend(_build_judge_metrics(judge_summary=row.get("judge_summary"), dimensions=dimensions))
         metric_data.extend(
             _build_composite_reflection_metrics(

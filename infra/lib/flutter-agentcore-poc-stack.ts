@@ -13,6 +13,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as sfnTasks from "aws-cdk-lib/aws-stepfunctions-tasks";
 import * as agentcore from "@aws-cdk/aws-bedrock-agentcore-alpha";
@@ -82,6 +83,23 @@ const buildGatewayToolSchema = (): InlineToolSchema =>
   }));
 
 type LambdaFactory = (name: string, handler: string) => lambda.Function;
+const DEFAULT_BEDROCK_MODEL_ID = "eu.amazon.nova-lite-v1:0";
+
+interface ModelGatewayEnvConfig {
+  modelId: string;
+  isExplicitModelId: boolean;
+  modelProvider: string;
+  openAiApiKeySecretArn: string;
+  openAiBaseUrl: string;
+  openAiReasoningEffort: string;
+  openAiTextVerbosity: string;
+  openAiMaxOutputTokens: string;
+}
+
+interface RuntimeBedrockModelConfig {
+  modelId: string;
+  isExplicit: boolean;
+}
 
 interface PipelineLambdas {
   parseLambda: lambda.Function;
@@ -104,19 +122,43 @@ interface StackOutputResources {
   stateMachine: sfn.StateMachine;
 }
 
+interface StackLifecycleConfig {
+  ephemeral: boolean;
+  logRetention: logs.RetentionDays;
+}
+
 export class FlutterAgentCorePocStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    const datasetBucket = this.createDatasetBucket();
-    const makeLambda = this.createLambdaFactory(datasetBucket);
-    const pipelineLambdas = this.createPipelineLambdas(makeLambda);
-    const runtimeResources = this.createRuntimeResources();
+    const lifecycleConfig = this.stackLifecycleConfig();
+    const modelGatewayConfig = this.modelGatewayConfig();
+    const runtimeBedrockModelConfig = this.runtimeBedrockModelConfig();
+    this.validateModelPlaneConfiguration(
+      modelGatewayConfig,
+      runtimeBedrockModelConfig,
+    );
+    const datasetBucket = this.createDatasetBucket(lifecycleConfig.ephemeral);
+    const makeLambda = this.createLambdaFactory(
+      datasetBucket,
+      modelGatewayConfig,
+      lifecycleConfig.logRetention,
+    );
+    const pipelineLambdas = this.createPipelineLambdas(
+      makeLambda,
+      modelGatewayConfig,
+    );
+    const runtimeResources = this.createRuntimeResources(
+      runtimeBedrockModelConfig.modelId,
+    );
     const gateway = this.createGateway(
       pipelineLambdas.jiraToolLambda,
       pipelineLambdas.mcpLambda,
     );
-    const stateMachine = this.createStateMachine(pipelineLambdas);
+    const stateMachine = this.createStateMachine(
+      pipelineLambdas,
+      lifecycleConfig.logRetention,
+    );
     this.createNightlyEvaluationRule(stateMachine);
     this.emitOutputs({
       datasetBucket,
@@ -126,28 +168,137 @@ export class FlutterAgentCorePocStack extends Stack {
     });
   }
 
-  private createDatasetBucket(): s3.Bucket {
+  private stackLifecycleConfig(): StackLifecycleConfig {
+    const rawEphemeral = String(
+      this.node.tryGetContext("ephemeral") ??
+        process.env.EPHEMERAL_STACK ??
+        "false",
+    )
+      .trim()
+      .toLowerCase();
+    const ephemeral = rawEphemeral === "true" || rawEphemeral === "1";
+    return {
+      ephemeral,
+      logRetention: ephemeral
+        ? logs.RetentionDays.ONE_WEEK
+        : logs.RetentionDays.ONE_MONTH,
+    };
+  }
+
+  private createDatasetBucket(ephemeral: boolean): s3.Bucket {
     return new s3.Bucket(this, "PocArtifactsBucket", {
       enforceSSL: true,
       versioned: true,
-      removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
+      removalPolicy: ephemeral ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN,
+      autoDeleteObjects: ephemeral,
     });
   }
 
-  private createLambdaFactory(datasetBucket: s3.Bucket): LambdaFactory {
+  private modelGatewayConfig(): ModelGatewayEnvConfig {
+    const modelIdSource = this.readTrimmed("modelId", "MODEL_ID", "");
+    const modelId = modelIdSource || DEFAULT_BEDROCK_MODEL_ID;
+    const modelProvider = this.resolveModelProvider(
+      this.readTrimmed("modelProvider", "MODEL_PROVIDER", "auto"),
+    );
+    return {
+      modelId,
+      isExplicitModelId: modelIdSource.length > 0,
+      modelProvider,
+      openAiApiKeySecretArn: this.readTrimmed(
+        "openAiApiKeySecretArn",
+        "OPENAI_API_KEY_SECRET_ARN",
+        "",
+      ),
+      openAiBaseUrl: this.readTrimmed(
+        "openAiBaseUrl",
+        "OPENAI_BASE_URL",
+        "https://api.openai.com/v1",
+      ),
+      openAiReasoningEffort: this.readTrimmed(
+        "openAiReasoningEffort",
+        "OPENAI_REASONING_EFFORT",
+        "medium",
+      ),
+      openAiTextVerbosity: this.readTrimmed(
+        "openAiTextVerbosity",
+        "OPENAI_TEXT_VERBOSITY",
+        "medium",
+      ),
+      openAiMaxOutputTokens: this.readTrimmed(
+        "openAiMaxOutputTokens",
+        "OPENAI_MAX_OUTPUT_TOKENS",
+        "2000",
+      ),
+    };
+  }
+
+  private runtimeBedrockModelConfig(): RuntimeBedrockModelConfig {
+    const modelIdSource = this.readTrimmed(
+      "runtimeBedrockModelId",
+      "BEDROCK_MODEL_ID",
+      "",
+    );
+    const modelId = modelIdSource || DEFAULT_BEDROCK_MODEL_ID;
+    return {
+      modelId,
+      isExplicit: modelIdSource.length > 0,
+    };
+  }
+
+  private readTrimmed(
+    contextKey: string,
+    envKey: string,
+    fallback: string,
+  ): string {
+    return String(
+      this.node.tryGetContext(contextKey) ?? process.env[envKey] ?? fallback,
+    ).trim();
+  }
+
+  private resolveModelProvider(value: string): "auto" | "bedrock" | "openai" {
+    if (value === "bedrock" || value === "openai") {
+      return value;
+    }
+    return "auto";
+  }
+
+  private validateModelPlaneConfiguration(
+    modelGatewayConfig: ModelGatewayEnvConfig,
+    runtimeBedrockModelConfig: RuntimeBedrockModelConfig,
+  ): void {
+    if (
+      modelGatewayConfig.modelProvider === "openai" &&
+      !runtimeBedrockModelConfig.isExplicit
+    ) {
+      throw new Error(
+        "MODEL_PROVIDER=openai requires explicit BEDROCK_MODEL_ID/runtimeBedrockModelId",
+      );
+    }
+  }
+
+  private createLambdaFactory(
+    datasetBucket: s3.Bucket,
+    modelGatewayConfig: ModelGatewayEnvConfig,
+    logRetention: logs.RetentionDays,
+  ): LambdaFactory {
     const sharedLambdaEnv = {
       JIRA_BASE_URL: "https://jira.atlassian.com",
       BEDROCK_REGION: this.region,
-      BEDROCK_MODEL_ID: "eu.amazon.nova-lite-v1:0",
+      MODEL_ID: modelGatewayConfig.modelId,
+      MODEL_PROVIDER: modelGatewayConfig.modelProvider,
+      OPENAI_API_KEY_SECRET_ARN: modelGatewayConfig.openAiApiKeySecretArn,
+      OPENAI_BASE_URL: modelGatewayConfig.openAiBaseUrl,
+      OPENAI_REASONING_EFFORT: modelGatewayConfig.openAiReasoningEffort,
+      OPENAI_TEXT_VERBOSITY: modelGatewayConfig.openAiTextVerbosity,
+      OPENAI_MAX_OUTPUT_TOKENS: modelGatewayConfig.openAiMaxOutputTokens,
       RESULT_BUCKET: datasetBucket.bucketName,
       FAIL_ON_TOOL_FAILURE: "false",
     };
     const lambdaCodePath = path.join(__dirname, "../../aws/lambda");
     return (name: string, handler: string): lambda.Function => {
       const lambdaLogGroup = new logs.LogGroup(this, `${name}LogGroup`, {
-        retention: logs.RetentionDays.ONE_WEEK,
-        removalPolicy: RemovalPolicy.DESTROY,
+        retention: logRetention,
+        removalPolicy: RemovalPolicy.RETAIN,
       });
       const fn = new lambda.Function(this, name, {
         runtime: lambda.Runtime.PYTHON_3_12,
@@ -170,8 +321,11 @@ export class FlutterAgentCorePocStack extends Stack {
     };
   }
 
-  private createPipelineLambdas(makeLambda: LambdaFactory): PipelineLambdas {
-    return {
+  private createPipelineLambdas(
+    makeLambda: LambdaFactory,
+    modelGatewayConfig: ModelGatewayEnvConfig,
+  ): PipelineLambdas {
+    const lambdas = {
       parseLambda: makeLambda("ParseSopInputFn", "parse_stage.handler"),
       nativeLambda: makeLambda("RunNativeToolFn", "fetch_native_stage.handler"),
       mcpLambda: makeLambda("RunMcpToolFn", "fetch_mcp_stage.handler"),
@@ -185,9 +339,33 @@ export class FlutterAgentCorePocStack extends Stack {
         "jira_tool_target.handler",
       ),
     };
+    this.grantModelGatewaySecrets(
+      lambdas,
+      modelGatewayConfig.openAiApiKeySecretArn,
+    );
+    return lambdas;
   }
 
-  private createRuntimeResources(): RuntimeResources {
+  private grantModelGatewaySecrets(
+    lambdas: PipelineLambdas,
+    openAiApiKeySecretArn: string,
+  ): void {
+    if (!openAiApiKeySecretArn) {
+      return;
+    }
+    const openAiApiKeySecret = secretsmanager.Secret.fromSecretCompleteArn(
+      this,
+      "OpenAiApiKeySecret",
+      openAiApiKeySecretArn,
+    );
+    openAiApiKeySecret.grantRead(lambdas.nativeLambda);
+    openAiApiKeySecret.grantRead(lambdas.mcpLambda);
+    openAiApiKeySecret.grantRead(lambdas.generateLambda);
+  }
+
+  private createRuntimeResources(
+    runtimeBedrockModelId: string,
+  ): RuntimeResources {
     const runtimeArtifact = agentcore.AgentRuntimeArtifact.fromCodeAsset({
       path: path.join(__dirname, "../../runtime"),
       runtime: agentcore.AgentCoreRuntime.PYTHON_3_12,
@@ -206,7 +384,8 @@ export class FlutterAgentCorePocStack extends Stack {
       },
       environmentVariables: {
         JIRA_BASE_URL: "https://jira.atlassian.com",
-        BEDROCK_MODEL_ID: "eu.amazon.nova-lite-v1:0",
+        BEDROCK_MODEL_ID: runtimeBedrockModelId,
+        BEDROCK_REGION: this.region,
       },
       authorizerConfiguration:
         agentcore.RuntimeAuthorizerConfiguration.usingIAM(),
@@ -253,7 +432,10 @@ export class FlutterAgentCorePocStack extends Stack {
     return gateway;
   }
 
-  private createStateMachine(lambdas: PipelineLambdas): sfn.StateMachine {
+  private createStateMachine(
+    lambdas: PipelineLambdas,
+    logRetention: logs.RetentionDays,
+  ): sfn.StateMachine {
     const parseTask = new sfnTasks.LambdaInvoke(this, "ParseNlpStage", {
       lambdaFunction: lambdas.parseLambda,
       payloadResponseOnly: true,
@@ -300,8 +482,8 @@ export class FlutterAgentCorePocStack extends Stack {
       timeout: Duration.minutes(10),
       logs: {
         destination: new logs.LogGroup(this, "SopPipelineLogGroup", {
-          retention: logs.RetentionDays.ONE_WEEK,
-          removalPolicy: RemovalPolicy.DESTROY,
+          retention: logRetention,
+          removalPolicy: RemovalPolicy.RETAIN,
         }),
         level: sfn.LogLevel.ALL,
       },

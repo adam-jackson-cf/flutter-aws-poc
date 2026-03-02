@@ -24,6 +24,9 @@ def test_aggregate_metrics() -> None:
                 "tool_failure": False,
                 "latency_ms": 120.0,
                 "response_similarity": 0.9,
+                "llm_input_tokens": 100,
+                "llm_output_tokens": 30,
+                "llm_total_tokens": 130,
             }
         },
         {
@@ -34,6 +37,9 @@ def test_aggregate_metrics() -> None:
                 "tool_failure": True,
                 "latency_ms": 180.0,
                 "response_similarity": 0.4,
+                "llm_input_tokens": 140,
+                "llm_output_tokens": 40,
+                "llm_total_tokens": 180,
             }
         },
     ]
@@ -42,6 +48,8 @@ def test_aggregate_metrics() -> None:
     assert summary["intent_accuracy"] == 0.5
     assert summary["tool_match_rate"] == 0.5
     assert summary["tool_failure_rate"] == 0.5
+    assert summary["total_llm_total_tokens"] == 310
+    assert summary["mean_llm_total_tokens"] == 155
 
 
 def test_judge_aggregation_and_reflection() -> None:

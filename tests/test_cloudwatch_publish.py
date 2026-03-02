@@ -22,6 +22,42 @@ class _DummySession:
         return self.cloudwatch
 
 
+def _summary_payload() -> Dict[str, float]:
+    return {
+        "intent_accuracy": 1.0,
+        "issue_key_accuracy": 1.0,
+        "tool_match_rate": 1.0,
+        "tool_failure_rate": 0.0,
+        "business_success_rate": 1.0,
+        "issue_payload_completeness_rate": 1.0,
+        "issue_key_resolution_match_rate": 1.0,
+        "mean_latency_ms": 100.0,
+        "mean_latency_success_ms": 100.0,
+        "mean_latency_failure_ms": 0.0,
+        "mean_response_similarity": 0.8,
+        "tool_failure_ci95_low": 0.0,
+        "tool_failure_ci95_high": 0.1,
+        "grounding_failure_rate": 0.0,
+        "mean_grounding_attempts": 1.0,
+        "mean_grounding_retries": 0.0,
+        "call_construction_failure_rate": 0.0,
+        "mean_call_construction_attempts": 1.0,
+        "mean_call_construction_retries": 0.0,
+        "call_construction_recovery_rate": 0.0,
+        "write_case_count": 1.0,
+        "write_tool_selected_rate": 1.0,
+        "write_tool_match_rate": 1.0,
+        "total_llm_input_tokens": 120.0,
+        "total_llm_output_tokens": 30.0,
+        "total_llm_total_tokens": 150.0,
+        "mean_llm_input_tokens": 60.0,
+        "mean_llm_output_tokens": 15.0,
+        "mean_llm_total_tokens": 75.0,
+        "total_estimated_cost_usd": 0.0012,
+        "mean_estimated_cost_usd": 0.0006,
+    }
+
+
 def test_publish_eval_summary_metrics_includes_judge_and_composite(monkeypatch: Any) -> None:
     created: Dict[str, Any] = {}
 
@@ -36,20 +72,7 @@ def test_publish_eval_summary_metrics_includes_judge_and_composite(monkeypatch: 
         summaries=[
             {
                 "flow": "native",
-                "summary": {
-                    "intent_accuracy": 1.0,
-                    "issue_key_accuracy": 1.0,
-                    "tool_match_rate": 1.0,
-                    "tool_failure_rate": 0.0,
-                    "business_success_rate": 1.0,
-                    "issue_payload_completeness_rate": 1.0,
-                    "mean_latency_ms": 100.0,
-                    "mean_latency_success_ms": 100.0,
-                    "mean_latency_failure_ms": 0.0,
-                    "mean_response_similarity": 0.8,
-                    "tool_failure_ci95_low": 0.0,
-                    "tool_failure_ci95_high": 0.1,
-                },
+                "summary": _summary_payload(),
                 "judge_summary": {
                     "evaluated_cases": 2,
                     "coverage_rate": 1.0,
@@ -101,6 +124,12 @@ def test_publish_eval_summary_metrics_includes_judge_and_composite(monkeypatch: 
         "OverallReflectionScore",
         "ReleaseGatePass",
         "DivergenceFlag",
+        "TotalLlmTotalTokens",
+        "MeanLlmTotalTokens",
+        "TotalEstimatedCostUsd",
+        "MeanEstimatedCostUsd",
+        "CallConstructionFailureRate",
+        "WriteToolMatchRate",
     }
     assert expected_names.issubset(set(all_metric_names))
 
@@ -118,20 +147,7 @@ def test_publish_eval_summary_metrics_skips_judge_metrics_when_no_cases(monkeypa
         summaries=[
             {
                 "flow": "native",
-                "summary": {
-                    "intent_accuracy": 1.0,
-                    "issue_key_accuracy": 1.0,
-                    "tool_match_rate": 1.0,
-                    "tool_failure_rate": 0.0,
-                    "business_success_rate": 1.0,
-                    "issue_payload_completeness_rate": 1.0,
-                    "mean_latency_ms": 100.0,
-                    "mean_latency_success_ms": 100.0,
-                    "mean_latency_failure_ms": 0.0,
-                    "mean_response_similarity": 0.8,
-                    "tool_failure_ci95_low": 0.0,
-                    "tool_failure_ci95_high": 0.1,
-                },
+                "summary": _summary_payload(),
                 "judge_summary": {
                     "evaluated_cases": 0,
                     "coverage_rate": 1.0,
@@ -169,17 +185,9 @@ def test_publish_eval_summary_metrics_rejects_missing_metric_field(monkeypatch: 
                 {
                     "flow": "native",
                     "summary": {
-                        "intent_accuracy": 1.0,
-                        "issue_key_accuracy": 1.0,
-                        "tool_match_rate": 1.0,
-                        "tool_failure_rate": 0.0,
-                        "business_success_rate": 1.0,
-                        "issue_payload_completeness_rate": 1.0,
-                        "mean_latency_ms": 100.0,
-                        "mean_latency_success_ms": 100.0,
-                        "mean_latency_failure_ms": 0.0,
-                        "mean_response_similarity": 0.8,
-                        "tool_failure_ci95_low": 0.0,
+                        key: value
+                        for key, value in _summary_payload().items()
+                        if key != "tool_failure_ci95_high"
                     },
                 }
             ],
@@ -202,18 +210,8 @@ def test_publish_eval_summary_metrics_rejects_invalid_metric_value(monkeypatch: 
                 {
                     "flow": "native",
                     "summary": {
+                        **_summary_payload(),
                         "intent_accuracy": "invalid",
-                        "issue_key_accuracy": 1.0,
-                        "tool_match_rate": 1.0,
-                        "tool_failure_rate": 0.0,
-                        "business_success_rate": 1.0,
-                        "issue_payload_completeness_rate": 1.0,
-                        "mean_latency_ms": 100.0,
-                        "mean_latency_success_ms": 100.0,
-                        "mean_latency_failure_ms": 0.0,
-                        "mean_response_similarity": 0.8,
-                        "tool_failure_ci95_low": 0.0,
-                        "tool_failure_ci95_high": 0.1,
                     },
                 }
             ],

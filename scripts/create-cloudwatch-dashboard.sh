@@ -200,6 +200,29 @@ cat >"$BODY_FILE" <<EOF
           [ "$NAMESPACE", "ReleaseGatePass", "RunId", "$RUN_ID", "Flow", "mcp", "Scope", "$SCOPE", "Dataset", "$DATASET", { "label": "MCP Release Gate Pass" } ]
         ]
       }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 15,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "Estimated Cost (Native vs MCP, USD)",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "$REGION",
+        "stat": "Average",
+        "period": 300,
+        "metrics": [
+          [ "$NAMESPACE", "MeanEstimatedCostUsd", "RunId", "$RUN_ID", "Flow", "native", "Scope", "$SCOPE", "Dataset", "$DATASET", { "id": "n_mean_cost", "label": "Native Mean Cost (USD)" } ],
+          [ "$NAMESPACE", "MeanEstimatedCostUsd", "RunId", "$RUN_ID", "Flow", "mcp", "Scope", "$SCOPE", "Dataset", "$DATASET", { "id": "m_mean_cost", "label": "MCP Mean Cost (USD)" } ],
+          [ { "expression": "m_mean_cost-n_mean_cost", "label": "Mean Cost Delta MCP-Native (USD)", "id": "mean_cost_delta" } ],
+          [ "$NAMESPACE", "TotalEstimatedCostUsd", "RunId", "$RUN_ID", "Flow", "native", "Scope", "$SCOPE", "Dataset", "$DATASET", { "id": "n_total_cost", "label": "Native Total Cost (USD)" } ],
+          [ "$NAMESPACE", "TotalEstimatedCostUsd", "RunId", "$RUN_ID", "Flow", "mcp", "Scope", "$SCOPE", "Dataset", "$DATASET", { "id": "m_total_cost", "label": "MCP Total Cost (USD)" } ],
+          [ { "expression": "m_total_cost-n_total_cost", "label": "Total Cost Delta MCP-Native (USD)", "id": "total_cost_delta" } ]
+        ]
+      }
     }
   ]
 }

@@ -169,6 +169,50 @@ def test_runner_run_case_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.payload["run_metrics"]["business_success"] is True
 
 
+def test_runner_run_case_includes_openai_provider_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: Dict[str, Any] = {}
+
+    class _Sfn:
+        def start_execution(self, **kwargs: Any) -> Dict[str, str]:
+            captured["input"] = json.loads(kwargs["input"])
+            return {"executionArn": "arn:exec:1"}
+
+        def describe_execution(self, executionArn: str) -> Dict[str, Any]:  # noqa: N803
+            assert executionArn == "arn:exec:1"
+            return {"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})}
+
+    class _Session:
+        def client(self, service_name: str) -> Any:
+            if service_name == "stepfunctions":
+                return _Sfn()
+            if service_name == "s3":
+                return _FakeS3(_valid_artifact_payload(flow="native"))
+            return _FakeSts()
+
+    monkeypatch.setattr(aws_pipeline_runner.boto3, "Session", lambda **_kwargs: _Session())
+    runner = aws_pipeline_runner.AwsPipelineRunner(
+        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
+    )
+    runner.run_case(
+        aws_pipeline_runner.PipelineRunRequest(
+            flow="native",
+            request_text="check JRASERVER-1",
+            case_id="case",
+            expected_tool="jira_get_issue_by_key",
+            dry_run=False,
+            model_id="gpt-5.2-codex",
+            runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+            model_provider="openai",
+            openai_reasoning_effort="high",
+            openai_text_verbosity="medium",
+        )
+    )
+    assert captured["input"]["runtime_bedrock_model_id"] == "eu.amazon.nova-lite-v1:0"
+    assert captured["input"]["model_provider"] == "openai"
+    assert captured["input"]["openai_reasoning_effort"] == "high"
+    assert captured["input"]["openai_text_verbosity"] == "medium"
+
+
 def test_runner_run_case_failure_modes(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_boto3_session(monkeypatch, descriptions=[{"status": "FAILED", "error": "E", "cause": "C"}])
     runner = aws_pipeline_runner.AwsPipelineRunner(
@@ -415,12 +459,31 @@ def test_cloudwatch_publish_input_validation_and_chunking(monkeypatch: pytest.Mo
         "tool_failure_rate": 0,
         "business_success_rate": 1,
         "issue_payload_completeness_rate": 1,
+        "issue_key_resolution_match_rate": 1,
         "mean_latency_ms": 10,
         "mean_latency_success_ms": 9,
         "mean_latency_failure_ms": 1,
         "mean_response_similarity": 0.9,
         "tool_failure_ci95_low": 0,
         "tool_failure_ci95_high": 0.1,
+        "grounding_failure_rate": 0.0,
+        "mean_grounding_attempts": 1.0,
+        "mean_grounding_retries": 0.0,
+        "call_construction_failure_rate": 0.0,
+        "mean_call_construction_attempts": 1.0,
+        "mean_call_construction_retries": 0.0,
+        "call_construction_recovery_rate": 0.0,
+        "write_case_count": 1.0,
+        "write_tool_selected_rate": 1.0,
+        "write_tool_match_rate": 1.0,
+        "total_llm_input_tokens": 200.0,
+        "total_llm_output_tokens": 40.0,
+        "total_llm_total_tokens": 240.0,
+        "mean_llm_input_tokens": 100.0,
+        "mean_llm_output_tokens": 20.0,
+        "mean_llm_total_tokens": 120.0,
+        "total_estimated_cost_usd": 0.0024,
+        "mean_estimated_cost_usd": 0.0012,
     }
     rows = [{"flow": f"flow{i}", "summary": summary} for i in range(2)]
     cloudwatch_publish.publish_eval_summary_metrics(
