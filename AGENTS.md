@@ -56,6 +56,78 @@ Project-specific defaults for AI agents working in this repository.
 - Before commit or handoff, run:
   - `scripts/run-ci-quality-gates.sh`
 
+## Command Reference (Developer Actions)
+
+Use this as the authoritative command/action source before running operational or repo-wide tasks.
+
+### Setup and deployment
+- `./scripts/bootstrap-repo.sh`
+- `./scripts/bootstrap-repo.sh --deploy-infra`
+- `npm --prefix infra run cdk:diff`
+- `npm --prefix infra run cdk:synth`
+- `npm --prefix infra run cdk:deploy`
+
+### Evaluation execution
+- Dry run:
+  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 1 --run-id smoke --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --dry-run`
+- Baseline dry run:
+  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 5 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --dry-run`
+- Live benchmark:
+  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 10 --run-id 20260227T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --publish-cloudwatch`
+- Adversarial point-1 stress:
+  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases_adversarial.jsonl --flow both --scope route --iterations 1 --run-id 20260302T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION"`
+- Optional evaluator flags:
+  - add `--enable-judge` for judge diagnostics
+  - add `--publish-cloudwatch` for CloudWatch dashboard publishing
+  - add `--model-id "<MODEL_ID>" --bedrock-region "$AWS_REGION"` for controlled model overrides
+  - add `--model-provider auto|bedrock|openai`
+  - add `--openai-reasoning-effort <low|medium|high> --openai-text-verbosity <low|medium|high> --openai-max-output-tokens <int>`
+  - add `--price-input-per-1m-tokens-usd <float> --price-output-per-1m-tokens-usd <float>` for ad-hoc pricing overrides
+
+### Quality gates
+- `bash scripts/run-ci-quality-gates.sh`
+- `RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
+- `MUTATION_SCORE_TARGET=80 RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
+- `COMPLEXITY_MAX=10 bash scripts/run-ci-quality-gates.sh`
+- `RUN_DUPLICATION_SIGNALS=0 bash scripts/run-ci-quality-gates.sh`
+- `DUPLICATION_SIGNAL_MIN_SEVERITY=high bash scripts/run-ci-quality-gates.sh`
+
+### Dashboard and ops
+- Recreate/run dashboard: `./scripts/create-cloudwatch-dashboard.sh --run-id <RUN_ID> --region "$AWS_REGION"`
+- Configure AgentCore online eval: `python3 scripts/configure-agentcore-online-eval.py --name flutter-sop-poc-online-eval --role-arn "<EVAL_EXECUTION_ROLE_ARN>" --log-group "/aws/bedrock-agentcore/runtimes/flutterSopPocRuntime" --service-name bedrock-agentcore --evaluator-id "<EVALUATOR_ID_1>" --evaluator-id "<EVALUATOR_ID_2>" --aws-region "$AWS_REGION"`
+- Invoke State Machine manually:
+  - `aws stepfunctions start-execution --state-machine-arn "<STATE_MACHINE_ARN>" --input '{"flow":"mcp","request_text":"Need customer sentiment and status update for JRASERVER-79286 before escalation.","case_id":"manual_run_001","expected_tool":"jira_get_issue_status_snapshot"}'`
+
+### Operational troubleshooting
+- AWS auth failures (`ExpiredToken`, `aws_auth_preflight_failed`): refresh credentials for the active profile and re-run.
+- Empty CloudWatch dashboard graphs: confirm run context (`RunId`, `Scope`, `Dataset`) matches `create-cloudwatch-dashboard.sh` args.
+- Empty judge widgets: rerun eval with `--enable-judge`.
+- Manual Step Functions payload shape is controlled by the caller (`run_eval` for benchmark runs, API caller for direct runtime paths).
+- Missing optional request fields are validated as input defaults before Lambda handlers are invoked.
+- Re-run deterministic smoke before deeper incident debugging:
+  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow native --scope route --iterations 1 --run-id smoke --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION" --dry-run`
+- Recreate dashboard for a known run ID:
+  - `./scripts/create-cloudwatch-dashboard.sh --run-id <RUN_ID> --region "$AWS_REGION"`
+- Re-check planned infra changes before any deploy:
+  - `npm --prefix infra run cdk:diff`
+
+## Runtime/usage notes
+- live evals through Step Functions require `STATE_MACHINE_ARN`.
+- direct runtime MCP checks require `MCP_GATEWAY_URL`.
+- non-dry-run evals run AWS identity preflight (`sts:GetCallerIdentity`).
+- dataset rows require `expected_tool.native` and `expected_tool.mcp`; runtime invocation flow sees `expected_tool.<flow>`.
+- eval artifacts validate schema per flow and fail fast on drift (`artifact_schema_invalid:*`).
+- lambda and AgentCore runtime model calls route through LLM gateway (`MODEL_ID`, `MODEL_PROVIDER`).
+- deployments must remain in eu-west-1; set `EPHEMERAL_STACK=false` for retained artifacts or `EPHEMERAL_STACK=true` for disposable stacks.
+- for OpenAI deployed lambdas, set `OPENAI_API_KEY_SECRET_ARN` and redeploy infra.
+- OpenAI defaults: `OPENAI_REASONING_EFFORT=medium`, `OPENAI_TEXT_VERBOSITY=medium`, `OPENAI_MAX_OUTPUT_TOKENS=2000`.
+- model pricing snapshot source: `evals/model_pricing_usd_per_1m_tokens.json`; snapshots include catalog path/version/hash and per-1M rates.
+- judge mode requires Bedrock (`BEDROCK_JUDGE_MODEL_ID`).
+
 ## Security Defaults
 - Never print secret values in terminal output.
 - Use presence checks for env/secrets; mask values if display is unavoidable.
+
+## CloudWatch
+- Dashboard namespace: `FlutterAgentCorePoc/Evals`
+- Default metric dimensions: `RunId`, `Flow`, `Scope`, `Dataset`
