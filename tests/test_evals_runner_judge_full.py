@@ -77,6 +77,7 @@ class _FakeSession:
 
 def _valid_artifact_payload(flow: str) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
+        "contract_version": "2.0.0",
         "flow": flow,
         "intake": {"intent": "status_update", "issue_key": "JRASERVER-1"},
         "tool_result": {"key": "JRASERVER-1"},
@@ -237,6 +238,7 @@ def test_runner_run_case_fails_on_artifact_schema_drift(monkeypatch: pytest.Monk
             {"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})},
         ],
         s3_payload={
+            "contract_version": "2.0.0",
             "flow": "native",
             "intake": {"intent": "status_update", "issue_key": "JRASERVER-1"},
             "tool_result": {"key": "JRASERVER-1"},
@@ -265,6 +267,7 @@ def test_artifact_validation_errors_for_payload_shape() -> None:
     with pytest.raises(RuntimeError, match="artifact_schema_invalid:native_selection.selected_tool_not_string"):
         aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
             payload={
+                "contract_version": "2.0.0",
                 "flow": "native",
                 "intake": {"intent": "status_update"},
                 "tool_result": {"key": "JRASERVER-1"},
@@ -277,6 +280,7 @@ def test_artifact_validation_errors_for_payload_shape() -> None:
     with pytest.raises(RuntimeError, match="artifact_schema_invalid:flow_mismatch:expected=native:actual=mcp"):
         aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
             payload={
+                "contract_version": "2.0.0",
                 "flow": "mcp",
                 "intake": {"intent": "status_update"},
                 "tool_result": {"key": "JRASERVER-1"},
@@ -284,6 +288,35 @@ def test_artifact_validation_errors_for_payload_shape() -> None:
                 "native_selection": {"selected_tool": "jira_api_get_issue_by_key"},
             },
             flow="native",
+        )
+
+    with pytest.raises(RuntimeError, match="artifact_schema_invalid:contract_version_missing"):
+        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
+            payload={
+                "flow": "native",
+                "intake": {"intent": "status_update"},
+                "tool_result": {"key": "JRASERVER-1"},
+                "run_metrics": {"tool_failure": False},
+                "native_selection": {"selected_tool": "jira_api_get_issue_by_key"},
+            },
+            flow="native",
+        )
+
+    with pytest.raises(
+        RuntimeError,
+        match="artifact_schema_invalid:contract_version_mismatch:expected=2.0.0:actual=1.0.0",
+    ):
+        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
+            payload={
+                "contract_version": "1.0.0",
+                "flow": "native",
+                "intake": {"intent": "status_update"},
+                "tool_result": {"key": "JRASERVER-1"},
+                "run_metrics": {"tool_failure": False},
+                "native_selection": {"selected_tool": "jira_api_get_issue_by_key"},
+            },
+            flow="native",
+            expected_contract_version="2.0.0",
         )
 
 

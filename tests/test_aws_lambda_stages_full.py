@@ -82,6 +82,7 @@ def test_evaluate_stage_metrics_and_handler(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(evaluate_stage, "issue_payload_complete_for_tool", lambda *_args, **_kwargs: True)
     metrics = evaluate_stage._calculate_run_metrics(event)
     assert metrics["business_success"] is True
+    assert metrics["contract_version"] == "2.0.0"
     assert metrics["total_latency_ms"] == 12.0
     assert metrics["issue_key_resolution_match"] is True
     assert metrics["grounding_retry_count"] == 0

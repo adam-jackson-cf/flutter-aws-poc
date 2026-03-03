@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "intent_keywords": {
     "bug_triage": ["bug", "incident", "error", "outage", "failure", "broken"],
     "feature_request": ["feature", "suggestion", "roadmap", "improvement"],

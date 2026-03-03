@@ -3,6 +3,7 @@ import time
 from typing import Any, Dict
 
 from artifact_store import persist_artifact
+from contract_values import CONTRACT_VERSION
 from stage_metrics import append_stage_metric
 from tooling_domain import issue_payload_complete_for_tool
 
@@ -108,6 +109,7 @@ def _calculate_run_metrics(event: Dict[str, Any]) -> Dict[str, Any]:
     issue_key_resolution_match = bool(intake_issue_key and tool_issue_key and intake_issue_key == tool_issue_key)
 
     return {
+        "contract_version": CONTRACT_VERSION,
         "intent": event["intake"]["intent"],
         "issue_key": intake_issue_key,
         "flow": event.get("flow", "native"),
@@ -146,6 +148,7 @@ def _calculate_run_metrics(event: Dict[str, Any]) -> Dict[str, Any]:
 
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     started = time.time()
+    event["contract_version"] = CONTRACT_VERSION
     metrics = _calculate_run_metrics(event)
     event["run_metrics"] = metrics
 

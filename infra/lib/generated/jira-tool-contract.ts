@@ -1,6 +1,8 @@
 // Auto-generated from contracts/jira_tools.contract.json.
 // Do not edit by hand; run scripts/generate_tool_contract_artifacts.py.
 
+export const CONTRACT_VERSION = "2.0.0";
+
 export type ContractType = "string" | "array_string";
 
 export interface ContractProperty {

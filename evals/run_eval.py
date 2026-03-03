@@ -28,6 +28,7 @@ from evals.metrics import (
     build_overall_reflection,
     lexical_cosine_similarity,
 )
+from runtime.sop_agent.domain.contracts import CONTRACT_VERSION as TOOL_CONTRACT_VERSION
 from runtime.sop_agent.domain.tooling import (
     canonical_tool_operation as _domain_canonical_tool_operation,
     issue_payload_complete_for_tool as _domain_issue_payload_complete_for_tool,
@@ -1074,6 +1075,7 @@ def _build_runner(args: argparse.Namespace) -> AwsPipelineRunner:
             aws_profile=args.aws_profile or None,
             poll_interval_seconds=args.poll_interval_seconds,
             execution_timeout_seconds=args.execution_timeout_seconds,
+            expected_contract_version=TOOL_CONTRACT_VERSION,
         )
     )
 
@@ -1267,6 +1269,7 @@ def _build_run_payload(
         "state_machine_arn": args.state_machine_arn,
         "aws_region": args.aws_region,
         "model": _payload_model_section(args, context.evaluation),
+        "tool_contract_version": TOOL_CONTRACT_VERSION,
         "route_semantics": route_semantics,
         "model_pricing_snapshot": _payload_pricing_snapshot_section(args, context.pricing_snapshot),
         "model_parity": {
@@ -1279,6 +1282,7 @@ def _build_run_payload(
             "execution_mode": route_semantics["execution_mode"],
             "mcp_binding_mode": route_semantics["mcp_binding_mode"],
             "route_semantics_version": route_semantics["route_semantics_version"],
+            "tool_contract_version": TOOL_CONTRACT_VERSION,
         },
         "aws_identity": context.aws_identity,
         "judge": {

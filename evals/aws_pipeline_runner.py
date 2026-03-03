@@ -54,6 +54,7 @@ class AwsPipelineRunnerConfig:
     aws_profile: Optional[str] = None
     poll_interval_seconds: float = 2.0
     execution_timeout_seconds: int = 900
+    expected_contract_version: str = ""
 
 
 class AwsPipelineRunner:
@@ -71,6 +72,7 @@ class AwsPipelineRunner:
         self._state_machine_arn = config.state_machine_arn
         self._poll_interval_seconds = config.poll_interval_seconds
         self._execution_timeout_seconds = config.execution_timeout_seconds
+        self._expected_contract_version = str(config.expected_contract_version).strip()
         self._sfn = session.client("stepfunctions")
         self._s3 = session.client("s3")
         self._sts = session.client("sts")
@@ -173,7 +175,11 @@ class AwsPipelineRunner:
         if not artifact_s3_uri:
             raise RuntimeError(f"State machine output missing artifact_s3_uri: {execution_arn}")
         artifact_payload = self._read_artifact(artifact_s3_uri)
-        self._validate_artifact_payload(payload=artifact_payload, flow=flow)
+        self._validate_artifact_payload(
+            payload=artifact_payload,
+            flow=flow,
+            expected_contract_version=self._expected_contract_version,
+        )
         return PipelineRunResult(
             execution_arn=execution_arn,
             payload=artifact_payload,
@@ -215,9 +221,32 @@ class AwsPipelineRunner:
             raise RuntimeError(f"artifact_schema_invalid:{selection_key}.selected_tool_not_string")
 
     @staticmethod
-    def _validate_artifact_payload(payload: Dict[str, Any], flow: str) -> None:
+    def _validate_contract_version(
+        payload: Dict[str, Any],
+        expected_contract_version: str,
+    ) -> None:
+        actual_contract_version = str(payload.get("contract_version", "")).strip()
+        if not actual_contract_version:
+            raise RuntimeError("artifact_schema_invalid:contract_version_missing")
+        if expected_contract_version and actual_contract_version != expected_contract_version:
+            raise RuntimeError(
+                "artifact_schema_invalid:contract_version_mismatch:"
+                f"expected={expected_contract_version}:actual={actual_contract_version}"
+            )
+
+    @staticmethod
+    def _validate_artifact_payload(
+        payload: Dict[str, Any],
+        flow: str,
+        expected_contract_version: str = "",
+    ) -> None:
         if not isinstance(payload, dict):
             raise RuntimeError("artifact_schema_invalid:payload_not_object")
+
+        AwsPipelineRunner._validate_contract_version(
+            payload=payload,
+            expected_contract_version=expected_contract_version,
+        )
 
         for key in ("intake", "tool_result", "run_metrics"):
             AwsPipelineRunner._require_dict_field(payload, key)

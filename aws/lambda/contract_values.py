@@ -1,6 +1,8 @@
 # Auto-generated from contracts/jira_tools.contract.json.
 # Do not edit by hand; run scripts/generate_tool_contract_artifacts.py.
 
+CONTRACT_VERSION = "2.0.0"
+
 INTENT_KEYWORDS = {
     "bug_triage": [
         "bug",
