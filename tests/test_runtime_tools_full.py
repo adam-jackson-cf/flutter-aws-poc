@@ -131,6 +131,9 @@ def test_jira_sdk_client(monkeypatch: pytest.MonkeyPatch) -> None:
             }
         }
 
+    class _Comment:
+        id = "12345"
+
     class _Jira:
         def __init__(self, server: str, options: Dict[str, Any]) -> None:
             assert server == "https://jira.example.com"
@@ -141,12 +144,35 @@ def test_jira_sdk_client(monkeypatch: pytest.MonkeyPatch) -> None:
             assert "summary" in fields
             return _Issue()
 
+        def add_comment(self, issue: _Issue, text: str) -> _Comment:
+            assert issue.key == "JRASERVER-1"
+            assert text == "follow up note"
+            return _Comment()
+
     monkeypatch.setattr(mod, "JIRA", _Jira)
     client = mod.JiraSdkClient("https://jira.example.com")
     issue = client.get_issue("JRASERVER-1")
     assert issue["summary"] == "123"
     assert issue["description"] == "{'x': 'y'}"
     assert issue["comment_count"] == 7
+    write_result = client.write_issue_followup_note("JRASERVER-1", "follow up note")
+    assert write_result["write_status"] == "committed"
+    assert write_result["comment_id"] == "12345"
+    assert write_result["write_artifact_s3_uri"].startswith("https://jira.example.com/browse/JRASERVER-1")
+
+    class _NoCommentId(_Comment):
+        id = ""
+
+    class _JiraNoCommentId(_Jira):
+        def add_comment(self, issue: _Issue, text: str) -> _NoCommentId:
+            assert issue.key == "JRASERVER-1"
+            assert text == "follow up note"
+            return _NoCommentId()
+
+    monkeypatch.setattr(mod, "JIRA", _JiraNoCommentId)
+    client_no_comment_id = mod.JiraSdkClient("https://jira.example.com")
+    with pytest.raises(ValueError, match="comment_id_missing"):
+        client_no_comment_id.write_issue_followup_note("JRASERVER-1", "follow up note")
 
 
 def test_strands_native_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -47,9 +47,17 @@ class JiraSdkClient:
         if not text:
             raise ValueError("note_text_missing")
         comment = self._client.add_comment(issue, text)
+        comment_id = str(getattr(comment, "id", "")).strip()
+        if not comment_id:
+            raise ValueError("comment_id_missing")
+        issue_key_safe = str(issue.key).strip()
+        artifact_uri = (
+            f"{self._base_url.rstrip('/')}/browse/{issue_key_safe}?focusedCommentId={comment_id}"
+        )
         return {
             "key": issue.key,
             "write_status": "committed",
             "note_digest": hashlib.sha256(text.encode("utf-8")).hexdigest()[:12],
-            "comment_id": str(getattr(comment, "id", "")),
+            "comment_id": comment_id,
+            "write_artifact_s3_uri": artifact_uri,
         }
