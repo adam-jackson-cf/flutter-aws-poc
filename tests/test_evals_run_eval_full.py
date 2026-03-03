@@ -24,6 +24,35 @@ def _sample_case() -> Dict[str, Any]:
     }
 
 
+def _runtime_args(**overrides: Any) -> Namespace:
+    args = {
+        "state_machine_arn": "arn",
+        "aws_region": "eu-west-1",
+        "model_id": "eu.amazon.nova-lite-v1:0",
+        "runtime_model_id": "eu.amazon.nova-lite-v1:0",
+        "bedrock_region": "eu-west-1",
+        "model_provider": "auto",
+        "enable_judge": False,
+        "judge_model_id": "eu.amazon.nova-lite-v1:0",
+        "judge_region": "",
+        "openai_max_output_tokens": 2000,
+    }
+    args.update(overrides)
+    return Namespace(**args)
+
+
+def _pricing_snapshot_args(catalog_path: Path, **overrides: Any) -> Namespace:
+    args = {
+        "model_id": "model-a",
+        "model_pricing_catalog": str(catalog_path),
+        "price_input_per_1m_tokens_usd": "",
+        "price_output_per_1m_tokens_usd": "",
+        "openai_reasoning_effort": "medium",
+    }
+    args.update(overrides)
+    return Namespace(**args)
+
+
 def _sample_run_payload() -> Dict[str, Any]:
     return {
         "intake": {"intent": "status_update"},
@@ -381,155 +410,36 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     assert outcome.business_success is True
 
 
-def test_runtime_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    args = Namespace(
-        state_machine_arn="arn",
-        aws_region="eu-west-1",
-        model_id="eu.amazon.nova-lite-v1:0",
-        runtime_model_id="eu.amazon.nova-lite-v1:0",
-        bedrock_region="eu-west-1",
-        model_provider="auto",
-        enable_judge=False,
-        judge_model_id="eu.amazon.nova-lite-v1:0",
-        judge_region="",
-        openai_max_output_tokens=2000,
-    )
-    run_eval._validate_runtime_args(args)
+def test_runtime_validation_enforces_required_runtime_args() -> None:
+    run_eval._validate_runtime_args(_runtime_args())
+    with pytest.raises(ValueError):
+        run_eval._validate_runtime_args(_runtime_args(state_machine_arn=""))
+    with pytest.raises(ValueError):
+        run_eval._validate_runtime_args(_runtime_args(aws_region=""))
+    with pytest.raises(ValueError):
+        run_eval._validate_runtime_args(_runtime_args(model_id=""))
+    with pytest.raises(ValueError):
+        run_eval._validate_runtime_args(_runtime_args(bedrock_region=""))
+    with pytest.raises(ValueError):
+        run_eval._validate_runtime_args(_runtime_args(enable_judge=True, aws_region="eu"))
     with pytest.raises(ValueError):
         run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="",
-                aws_region="eu-west-1",
-                model_id="eu.amazon.nova-lite-v1:0",
-                runtime_model_id="eu.amazon.nova-lite-v1:0",
-                bedrock_region="eu-west-1",
-                model_provider="auto",
-                enable_judge=False,
-                judge_model_id="eu.amazon.nova-lite-v1:0",
-                judge_region="",
-                openai_max_output_tokens=2000,
-            )
-        )
-    with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="arn",
-                aws_region="",
-                model_id="eu.amazon.nova-lite-v1:0",
-                runtime_model_id="eu.amazon.nova-lite-v1:0",
-                bedrock_region="eu-west-1",
-                model_provider="auto",
-                enable_judge=False,
-                judge_model_id="eu.amazon.nova-lite-v1:0",
-                judge_region="",
-                openai_max_output_tokens=2000,
-            )
-        )
-    with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="arn",
-                aws_region="eu-west-1",
-                model_id="",
-                runtime_model_id="eu.amazon.nova-lite-v1:0",
-                bedrock_region="eu-west-1",
-                model_provider="auto",
-                enable_judge=False,
-                judge_model_id="eu.amazon.nova-lite-v1:0",
-                judge_region="",
-                openai_max_output_tokens=2000,
-            )
-        )
-    with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="arn",
-                aws_region="eu-west-1",
-                model_id="eu.amazon.nova-lite-v1:0",
-                runtime_model_id="eu.amazon.nova-lite-v1:0",
-                bedrock_region="",
-                model_provider="auto",
-                enable_judge=False,
-                judge_model_id="eu.amazon.nova-lite-v1:0",
-                judge_region="",
-                openai_max_output_tokens=2000,
-            )
-        )
-    with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="arn",
-                aws_region="eu",
-                model_id="eu.amazon.nova-lite-v1:0",
-                runtime_model_id="eu.amazon.nova-lite-v1:0",
-                bedrock_region="eu-west-1",
-                model_provider="auto",
-                enable_judge=True,
-                judge_model_id="eu.amazon.nova-lite-v1:0",
-                judge_region="",
-                openai_max_output_tokens=2000,
-            )
-        )
-    with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="arn",
-                aws_region="eu-west-1",
-                model_id="gpt-5.2-codex",
-                runtime_model_id="eu.amazon.nova-lite-v1:0",
-                bedrock_region="eu-west-1",
+            _runtime_args(
                 model_provider="openai",
-                enable_judge=True,
+                model_id="gpt-5.2-codex",
                 judge_model_id="gpt-5.2-codex",
                 judge_region="eu-west-1",
-                openai_max_output_tokens=2000,
+                enable_judge=True,
             )
         )
     with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="arn",
-                aws_region="eu-west-1",
-                model_id="eu.amazon.nova-lite-v1:0",
-                runtime_model_id="eu.amazon.nova-lite-v1:0",
-                bedrock_region="eu-west-1",
-                model_provider="auto",
-                enable_judge=False,
-                judge_model_id="eu.amazon.nova-lite-v1:0",
-                judge_region="",
-                openai_max_output_tokens=32,
-            )
-        )
+        run_eval._validate_runtime_args(_runtime_args(openai_max_output_tokens=32))
     with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="arn",
-                aws_region="eu-west-1",
-                model_id="eu.amazon.nova-lite-v1:0",
-                runtime_model_id="",
-                bedrock_region="eu-west-1",
-                model_provider="auto",
-                enable_judge=False,
-                judge_model_id="eu.amazon.nova-lite-v1:0",
-                judge_region="",
-                openai_max_output_tokens=2000,
-            )
-        )
-    run_eval._validate_runtime_args(
-        Namespace(
-            state_machine_arn="arn",
-            aws_region="eu-west-1",
-            model_id="eu.amazon.nova-lite-v1:0",
-            runtime_model_id="gpt-5.2-codex",
-            bedrock_region="eu-west-1",
-            model_provider="auto",
-            enable_judge=False,
-            judge_model_id="eu.amazon.nova-lite-v1:0",
-            judge_region="",
-            openai_max_output_tokens=2000,
-        )
-    )
+        run_eval._validate_runtime_args(_runtime_args(runtime_model_id=""))
+    run_eval._validate_runtime_args(_runtime_args(runtime_model_id="gpt-5.2-codex"))
 
+
+def test_runtime_validation_builds_runner_and_checks_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_runner_config: Dict[str, Any] = {}
 
     class _CapturedRunner:
@@ -700,7 +610,7 @@ def test_adversarial_vector_and_selection_divergence_helpers() -> None:
     assert divergence_with_iterations["selection_divergence_rate"] == 0.5
 
 
-def test_pricing_snapshot_resolution_and_cost_estimation(tmp_path: Path) -> None:
+def test_pricing_snapshot_resolution_base_and_reasoning_models(tmp_path: Path) -> None:
     catalog_path = tmp_path / "pricing.json"
     catalog_path.write_text(
         json.dumps(
@@ -716,15 +626,7 @@ def test_pricing_snapshot_resolution_and_cost_estimation(tmp_path: Path) -> None
         ),
         encoding="utf-8",
     )
-    snapshot = run_eval._pricing_snapshot_for_model(
-        Namespace(
-            model_id="model-a",
-            model_pricing_catalog=str(catalog_path),
-            price_input_per_1m_tokens_usd="",
-            price_output_per_1m_tokens_usd="",
-            openai_reasoning_effort="medium",
-        )
-    )
+    snapshot = run_eval._pricing_snapshot_for_model(_pricing_snapshot_args(catalog_path))
     assert snapshot["source"] == "catalog"
     assert snapshot["catalog_version"] == "v-test"
     assert snapshot["pricing_model_key"] == "model-a"
@@ -751,22 +653,33 @@ def test_pricing_snapshot_resolution_and_cost_estimation(tmp_path: Path) -> None
         encoding="utf-8",
     )
     reasoning_specific = run_eval._pricing_snapshot_for_model(
-        Namespace(
-            model_id="model-a",
-            model_pricing_catalog=str(catalog_path),
-            price_input_per_1m_tokens_usd="",
-            price_output_per_1m_tokens_usd="",
-            openai_reasoning_effort="high",
-        )
+        _pricing_snapshot_args(catalog_path, openai_reasoning_effort="high")
     )
     assert reasoning_specific["pricing_model_key"] == "model-a:reasoning-high"
     assert reasoning_specific["input_per_1m_tokens_usd"] == 3.0
     assert reasoning_specific["output_per_1m_tokens_usd"] == 4.0
 
+
+def test_pricing_snapshot_validation_and_overrides(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "pricing.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "version": "v-test",
+                "models": {
+                    "model-a": {
+                        "input_per_1m_tokens_usd": 1.0,
+                        "output_per_1m_tokens_usd": 2.0,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     override = run_eval._pricing_snapshot_for_model(
-        Namespace(
+        _pricing_snapshot_args(
+            catalog_path,
             model_id="model-b",
-            model_pricing_catalog=str(catalog_path),
             price_input_per_1m_tokens_usd="3",
             price_output_per_1m_tokens_usd="4",
             openai_reasoning_effort="low",
@@ -778,25 +691,17 @@ def test_pricing_snapshot_resolution_and_cost_estimation(tmp_path: Path) -> None
 
     with pytest.raises(ValueError):
         run_eval._pricing_snapshot_for_model(
-            Namespace(
+            _pricing_snapshot_args(
+                catalog_path,
                 model_id="model-b",
-                model_pricing_catalog=str(catalog_path),
                 price_input_per_1m_tokens_usd="3",
-                price_output_per_1m_tokens_usd="",
-                openai_reasoning_effort="medium",
             )
         )
     with pytest.raises(ValueError):
-        run_eval._pricing_snapshot_for_model(
-            Namespace(
-                model_id="missing-model",
-                model_pricing_catalog=str(catalog_path),
-                price_input_per_1m_tokens_usd="",
-                price_output_per_1m_tokens_usd="",
-                openai_reasoning_effort="medium",
-            )
-        )
+        run_eval._pricing_snapshot_for_model(_pricing_snapshot_args(catalog_path, model_id="missing-model"))
 
+
+def test_estimate_cost_usd_supports_million_token_inputs() -> None:
     estimated = run_eval._estimate_cost_usd(
         llm_input_tokens=1_000_000,
         llm_output_tokens=2_000_000,

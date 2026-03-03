@@ -18,6 +18,23 @@ def _import_lambda_module(name: str) -> Any:
     return importlib.import_module(name)
 
 
+def _fake_urlopen_response(payload: Dict[str, Any]) -> Any:
+    class _Response:
+        def __init__(self, raw: Dict[str, Any]) -> None:
+            self._payload = raw
+
+        def __enter__(self) -> "_Response":
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(self._payload).encode("utf-8")
+
+    return _Response(payload)
+
+
 def test_write_actions_runtime_config_and_bedrock_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     write_actions = _import_lambda_module("write_actions")
     runtime_config = _import_lambda_module("runtime_config")
@@ -76,14 +93,13 @@ def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) 
     assert llm_gateway_client._resolve_openai_api_key("eu-west-1") == "cached"
     llm_gateway_client._OPENAI_API_KEY_CACHE = ""
 
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setenv("OPENAI_API_KEY_SECRET_ARN", "arn:aws:secretsmanager:eu-west-1:123:secret:x")
-
     class _Secrets:
         def get_secret_value(self, SecretId: str) -> Dict[str, Any]:  # noqa: N803
             assert SecretId.endswith(":secret:x")
             return {"SecretString": '{"bad":"value"}'}
 
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY_SECRET_ARN", "arn:aws:secretsmanager:eu-west-1:123:secret:x")
     monkeypatch.setattr(llm_gateway_client.boto3, "client", lambda *_args, **_kwargs: _Secrets())
     with pytest.raises(RuntimeError, match="openai_api_key_missing:secret_value_not_parseable"):
         llm_gateway_client._resolve_openai_api_key("eu-west-1")
@@ -95,10 +111,14 @@ def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) 
         llm_gateway_client._extract_openai_response_text({"output": []})
     with pytest.raises(ValueError, match="openai_response_missing_output"):
         llm_gateway_client._openai_output_text_parts({"output": "bad"})
+
+
+def test_llm_gateway_client_openai_call_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    llm_gateway_client = _import_lambda_module("llm_gateway_client")
+
     assert llm_gateway_client._openai_output_item_texts({"content": "bad"}) == []
     assert llm_gateway_client._openai_output_item_texts({"content": ["x"]}) == []
     assert llm_gateway_client._openai_output_item_texts("bad") == []
-
     with pytest.raises(ValueError, match="openai_http_timeout_seconds_invalid"):
         llm_gateway_client._parse_openai_http_timeout_seconds("abc")
     with pytest.raises(ValueError, match="openai_http_timeout_seconds_invalid"):
@@ -112,9 +132,12 @@ def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) 
     assert llm_gateway_client._is_openai_timeout_exception(URLError(TimeoutError("timeout"))) is True
     assert llm_gateway_client._is_retryable_openai_http_status(408) is True
     assert llm_gateway_client._openai_incomplete_reason({"status": "incomplete", "incomplete_details": "bad"}) == "unknown"
-    assert llm_gateway_client._openai_incomplete_reason(
-        {"status": "incomplete", "incomplete_details": {"reason": 7}}
-    ) == "unknown"
+    assert (
+        llm_gateway_client._openai_incomplete_reason(
+            {"status": "incomplete", "incomplete_details": {"reason": 7}}
+        )
+        == "unknown"
+    )
     usage = llm_gateway_client._usage_from_openai_payload(
         {"usage": {"input_tokens": True, "output_tokens": 2.4, "total_tokens": "x"}}
     )
@@ -126,6 +149,7 @@ def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) 
         {"reasoning_effort": "", "verbosity": "", "max_output_tokens": "2048"}
     )
     assert opts["max_output_tokens"] == 2048
+
     with pytest.raises(ValueError, match="openai_max_output_tokens_invalid"):
         llm_gateway_client._parse_max_output_tokens("nope")
     with pytest.raises(ValueError, match="openai_max_output_tokens_too_small"):
@@ -153,19 +177,6 @@ def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) 
     assert llm_gateway_client._should_retry_openai_exception(exc=Exception("x"), attempt=0, max_attempts=2) is False
     assert llm_gateway_client._should_retry_openai_exception(exc=URLError("offline"), attempt=0, max_attempts=2) is False
 
-    class _Response:
-        def __init__(self, payload: Dict[str, Any]) -> None:
-            self._payload = payload
-
-        def __enter__(self) -> "_Response":
-            return self
-
-        def __exit__(self, *_args: Any) -> None:
-            return None
-
-        def read(self) -> bytes:
-            return json.dumps(self._payload).encode("utf-8")
-
     monkeypatch.setenv("OPENAI_API_KEY", "k-test")
     monkeypatch.setenv("OPENAI_HTTP_TIMEOUT_SECONDS", "5")
     monkeypatch.setenv("OPENAI_HTTP_MAX_ATTEMPTS", "1")
@@ -173,16 +184,18 @@ def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(
         llm_gateway_client,
         "urlopen",
-        lambda *_args, **_kwargs: _Response({"status": "incomplete", "incomplete_details": {"reason": "content_filter"}}),
+        lambda *_args, **_kwargs: _fake_urlopen_response(
+            {"status": "incomplete", "incomplete_details": {"reason": "content_filter"}}
+        ),
     )
     with pytest.raises(RuntimeError, match="openai_response_incomplete:content_filter"):
         llm_gateway_client.call_openai_with_usage("gpt-5.2-codex", "prompt", "eu-west-1")
 
     captured: Dict[str, Any] = {}
 
-    def _capture_urlopen(req: Any, **_kwargs: Any) -> _Response:
+    def _capture_urlopen(req: Any, **_kwargs: Any) -> Any:
         captured["payload"] = json.loads(req.data.decode("utf-8"))
-        return _Response({"output_text": "ok"})
+        return _fake_urlopen_response({"output_text": "ok"})
 
     monkeypatch.setattr(llm_gateway_client, "urlopen", _capture_urlopen)
     text, _usage = llm_gateway_client.call_openai_with_usage(
@@ -203,7 +216,7 @@ def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(
         llm_gateway_client,
         "urlopen",
-        lambda *_args, **_kwargs: _Response({"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}}),
+        lambda *_args, **_kwargs: _fake_urlopen_response({"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}}),
     )
     monkeypatch.setattr(llm_gateway_client.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(llm_gateway_client, "_should_retry_for_max_output_tokens", lambda *_args, **_kwargs: True)
@@ -325,9 +338,8 @@ def test_request_grounding_and_native_stage_branches(monkeypatch: pytest.MonkeyP
     assert fetch_native_stage._grounding_failure_reason({"grounding": "bad"}) == ""
 
 
-def test_fetch_mcp_stage_and_evaluate_stage_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_mcp_stage_parsing_and_attempt_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
     fetch_mcp_stage = _import_lambda_module("fetch_mcp_stage")
-    evaluate_stage = _import_lambda_module("evaluate_stage")
 
     with pytest.raises(ValueError, match="mcp_call_construction_max_attempts_invalid"):
         fetch_mcp_stage._parse_max_attempts("bad")
@@ -347,7 +359,11 @@ def test_fetch_mcp_stage_and_evaluate_stage_branches(monkeypatch: pytest.MonkeyP
     catalog = fetch_mcp_stage.McpCatalog(
         all_tools=[],
         scoped_tools=[],
-        tool_map={"jira_get_issue_by_key": {"inputSchema": {"required": ["issue_key"], "properties": {"issue_key": {"type": "string"}}}}},
+        tool_map={
+            "jira_get_issue_by_key": {
+                "inputSchema": {"required": ["issue_key"], "properties": {"issue_key": {"type": "string"}}}
+            }
+        },
         scope=fetch_mcp_stage.StageToolScope(intent="general_triage", scoped_tool_count=1, catalog_tool_count=1),
     )
     monkeypatch.setattr(
@@ -369,7 +385,17 @@ def test_fetch_mcp_stage_and_evaluate_stage_branches(monkeypatch: pytest.MonkeyP
     )
     assert selected_arguments == {}
 
-    monkeypatch.setattr(fetch_mcp_stage, "_max_call_construction_attempts", lambda: 1)
+
+def test_evaluate_stage_metrics_and_resolution_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+    fetch_mcp_stage = _import_lambda_module("fetch_mcp_stage")
+    evaluate_stage = _import_lambda_module("evaluate_stage")
+
+    catalog = fetch_mcp_stage.McpCatalog(
+        all_tools=[],
+        scoped_tools=[],
+        tool_map={"jira_get_issue_by_key": {"inputSchema": {"required": ["issue_key"]}}},
+        scope=fetch_mcp_stage.StageToolScope(intent="general_triage", scoped_tool_count=1, catalog_tool_count=1),
+    )
     monkeypatch.setattr(
         fetch_mcp_stage,
         "_selection_attempt",
@@ -380,6 +406,7 @@ def test_fetch_mcp_stage_and_evaluate_stage_branches(monkeypatch: pytest.MonkeyP
             {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
         ),
     )
+    monkeypatch.setattr(fetch_mcp_stage, "_max_call_construction_attempts", lambda: 1)
     resolution = fetch_mcp_stage._resolve_tool_call_selection(
         intake={"request_text": "r", "issue_key": "JRASERVER-1"},
         catalog=catalog,
@@ -407,8 +434,12 @@ def test_fetch_mcp_stage_and_evaluate_stage_branches(monkeypatch: pytest.MonkeyP
     )
     assert unknown_tool["tool_result"]["failure_reason"].startswith("selected_unknown_tool")
 
-    assert evaluate_stage._selected_tool_for_metrics({"flow": "mcp", "mcp_selection": {"selected_tool": "mcp_tool"}}) == "mcp_tool"
-    assert evaluate_stage._selected_tool_for_metrics({"flow": "native", "native_selection": {"selected_tool": "native_tool"}}) == "native_tool"
+    assert evaluate_stage._selected_tool_for_metrics(
+        {"flow": "mcp", "mcp_selection": {"selected_tool": "mcp_tool"}}
+    ) == "mcp_tool"
+    assert evaluate_stage._selected_tool_for_metrics(
+        {"flow": "native", "native_selection": {"selected_tool": "native_tool"}}
+    ) == "native_tool"
     assert evaluate_stage._int_metric(True) == 1
     assert evaluate_stage._int_metric(2.7) == 2
     assert evaluate_stage._int_metric("bad") == 0
@@ -431,7 +462,12 @@ def test_fetch_mcp_stage_and_evaluate_stage_branches(monkeypatch: pytest.MonkeyP
         }
     )
     assert taxonomy == {"mcp_tool_args_missing_required": 2}
-    assert evaluate_stage._mcp_call_construction_error_taxonomy({"flow": "mcp", "mcp_call_construction": {"attempt_trace": "bad"}}) == {}
+    assert (
+        evaluate_stage._mcp_call_construction_error_taxonomy(
+            {"flow": "mcp", "mcp_call_construction": {"attempt_trace": "bad"}}
+        )
+        == {}
+    )
     assert evaluate_stage._mcp_call_construction_error_taxonomy({"flow": "mcp", "mcp_call_construction": "bad"}) == {}
     assert evaluate_stage._grounding_metrics({"grounding": "bad"})["failure"] is False
     assert evaluate_stage._aggregate_llm_usage({"llm_usage": "bad"}) == {
@@ -439,7 +475,9 @@ def test_fetch_mcp_stage_and_evaluate_stage_branches(monkeypatch: pytest.MonkeyP
         "output_tokens": 0,
         "total_tokens": 0,
     }
-    assert evaluate_stage._aggregate_llm_usage({"llm_usage": {"a": "bad", "b": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}}}) == {
+    assert evaluate_stage._aggregate_llm_usage(
+        {"llm_usage": {"a": "bad", "b": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}}}
+    ) == {
         "input_tokens": 1,
         "output_tokens": 2,
         "total_tokens": 3,
@@ -468,7 +506,7 @@ def test_jira_tool_target_argument_and_write_paths(monkeypatch: pytest.MonkeyPat
     assert out["key"] == "JRASERVER-7"
 
 
-def test_runner_metrics_and_run_eval_helper_branches(tmp_path: Path) -> None:
+def test_runner_metrics_and_run_eval_helper_metrics(tmp_path: Path) -> None:
     execution_input = aws_pipeline_runner.AwsPipelineRunner._execution_input(
         aws_pipeline_runner.PipelineRunRequest(
             flow="native",
@@ -523,6 +561,8 @@ def test_runner_metrics_and_run_eval_helper_branches(tmp_path: Path) -> None:
     assert summary["call_construction_recovery_rate"] == 1.0
     assert summary["write_tool_match_rate"] == 1.0
 
+
+def test_run_eval_helper_parsing_and_pricing_validation(tmp_path: Path) -> None:
     assert run_eval._to_int(True) == 1
     assert run_eval._to_int("bad") == 0
     assert run_eval._to_float(True) == 1.0
@@ -616,9 +656,8 @@ def test_runner_metrics_and_run_eval_helper_branches(tmp_path: Path) -> None:
     assert run_eval._is_bedrock_model_identifier("") is False
 
 
-def test_lambda_llm_gateway_stage_and_invoke_client_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_llm_gateway_stage_parsing_and_handler_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     stage = _import_lambda_module("llm_gateway_stage")
-    invoke_client = _import_lambda_module("llm_gateway_invoke_client")
 
     assert stage._safe_dict({"a": 1}) == {"a": 1}
     assert stage._safe_dict("bad") == {}
@@ -657,6 +696,10 @@ def test_lambda_llm_gateway_stage_and_invoke_client_branches(monkeypatch: pytest
     assert failed["ok"] is False
     assert failed["error_code"] == "boom"
     assert stage.lambda_handler({"model_id": "model-a", "provider": "auto", "region": "eu-west-1", "prompt": "hello"}, None)["ok"] is False
+
+
+def test_lambda_invoke_client_config_and_parse_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    invoke_client = _import_lambda_module("llm_gateway_invoke_client")
 
     monkeypatch.delenv("LLM_GATEWAY_FUNCTION_NAME", raising=False)
     with pytest.raises(RuntimeError, match="llm_gateway_unconfigured"):
@@ -702,6 +745,8 @@ def test_lambda_llm_gateway_stage_and_invoke_client_branches(monkeypatch: pytest
     assert invoke_client._safe_int(True) == 1
     assert invoke_client._safe_int("bad") == 0
     assert invoke_client._safe_int(None) == 0
+    assert invoke_client._retryable_error(RuntimeError("llm_gateway_invoke_status:503")) is True
+    assert invoke_client._retryable_error(RuntimeError("other")) is False
 
     with pytest.raises(RuntimeError, match="llm_gateway_error:gateway_error:unknown_error"):
         invoke_client._parse_invoke_payload({"ok": False, "error_code": "", "error_message": ""})
@@ -710,13 +755,16 @@ def test_lambda_llm_gateway_stage_and_invoke_client_branches(monkeypatch: pytest
     )
     assert parsed.text == "x"
     assert parsed.usage["total_tokens"] == 0
-    assert invoke_client._retryable_error(RuntimeError("llm_gateway_invoke_status:503")) is True
-    assert invoke_client._retryable_error(RuntimeError("other")) is False
+
     slept: Dict[str, float] = {}
     monkeypatch.setattr(invoke_client.random, "uniform", lambda *_args: 0.01)
     monkeypatch.setattr(invoke_client.time, "sleep", lambda seconds: slept.setdefault("seconds", seconds))
     invoke_client._sleep_backoff(2)
     assert slept["seconds"] > 0.0
+
+
+def test_lambda_invoke_client_request_execution_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    invoke_client = _import_lambda_module("llm_gateway_invoke_client")
 
     class _Payload:
         def __init__(self, raw: str) -> None:
@@ -749,11 +797,7 @@ def test_lambda_llm_gateway_stage_and_invoke_client_branches(monkeypatch: pytest
     )
     with pytest.raises(RuntimeError, match="llm_gateway_function_error:Unhandled:raw"):
         invoke_client._invoke_once(request)
-    monkeypatch.setattr(
-        invoke_client,
-        "_client",
-        lambda _region: _Client({"StatusCode": 200, "Payload": _Payload("{bad")}),
-    )
+    monkeypatch.setattr(invoke_client, "_client", lambda _region: _Client({"StatusCode": 200, "Payload": _Payload("{bad")}))
     with pytest.raises(RuntimeError, match="llm_gateway_invoke_response_invalid_json"):
         invoke_client._invoke_once(request)
     monkeypatch.setattr(
@@ -774,6 +818,7 @@ def test_lambda_llm_gateway_stage_and_invoke_client_branches(monkeypatch: pytest
     attempts = {"count": 0}
     monkeypatch.setattr(invoke_client, "_retryable_error", lambda _exc: True)
     monkeypatch.setattr(invoke_client, "_sleep_backoff", lambda _attempt: None)
+
     def _retry_once(_request: Any) -> Any:
         attempts["count"] += 1
         if attempts["count"] == 1:
@@ -785,6 +830,7 @@ def test_lambda_llm_gateway_stage_and_invoke_client_branches(monkeypatch: pytest
             model_used="m",
             latency_ms=1.0,
         )
+
     monkeypatch.setattr(invoke_client, "_invoke_once", _retry_once)
     assert invoke_client.invoke_llm_gateway_with_usage(model_id="m", prompt="p", region="eu-west-1")[0] == "ok"
     monkeypatch.setattr(invoke_client, "_invoke_once", lambda _request: (_ for _ in ()).throw(RuntimeError("bad")))
