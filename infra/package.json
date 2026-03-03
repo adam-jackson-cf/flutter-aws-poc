@@ -5,8 +5,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -w -p tsconfig.json",
-    "cdk:synth": "cdk synth",
-    "cdk:synth:ci": "MODEL_ID=${MODEL_ID:-eu.amazon.nova-lite-v1:0} BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-eu.amazon.nova-lite-v1:0} cdk synth",
+    "cdk:synth": "AWS_REGION=eu-west-1 BEDROCK_REGION=eu-west-1 CDK_DEFAULT_REGION=eu-west-1 cdk synth",
+    "cdk:synth:ci": "AWS_REGION=eu-west-1 BEDROCK_REGION=eu-west-1 CDK_DEFAULT_REGION=eu-west-1 MODEL_ID=${MODEL_ID:-eu.amazon.nova-lite-v1:0} BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-eu.amazon.nova-lite-v1:0} cdk synth",
     "cdk:diff": "cdk diff",
     "cdk:deploy": "cdk deploy --require-approval broadening",
     "lint": "tsc --noEmit -p tsconfig.json",
