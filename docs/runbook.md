@@ -6,7 +6,7 @@ This runbook is intentionally thin and only covers operational troubleshooting t
 
 ## Operational troubleshooting
 - AWS auth failures (`ExpiredToken`, `aws_auth_preflight_failed`): refresh credentials for the active profile, then re-run the command.
-- Missing `expected_tool` in Step Functions input: include `expected_tool` for manual invocations or runs will fail deterministically.
+- Manual Step Functions payloads are shaped by your caller (`run_eval` for benchmark runs); missing optional fields in that caller are handled before Lambda handlers are invoked.
 - Empty CloudWatch dashboard graphs: confirm `RunId`, `Scope`, and `Dataset` passed to `create-cloudwatch-dashboard.sh` exactly match eval publish dimensions.
 - Judge widgets empty: run eval with `--enable-judge`.
 

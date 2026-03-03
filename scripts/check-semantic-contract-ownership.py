@@ -32,12 +32,10 @@ CONSTANT_OWNERS: dict[str, set[str]] = {
 FUNCTION_OWNERS: dict[str, set[str]] = {
     "classify_intent": {
         "runtime/sop_agent/domain/intake.py",
-        "runtime/sop_agent/stages/intake_stage.py",
         "aws/lambda/intake_domain.py",
     },
     "extract_risk_hints": {
         "runtime/sop_agent/domain/intake.py",
-        "runtime/sop_agent/stages/intake_stage.py",
         "aws/lambda/intake_domain.py",
     },
     "extract_intake": {

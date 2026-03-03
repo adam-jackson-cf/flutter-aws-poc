@@ -9,8 +9,7 @@ from typing import Any
 import pytest
 
 from runtime.sop_agent.domain import contracts as runtime_contracts
-from runtime.sop_agent.stages import intake_stage
-from runtime.sop_agent.tools import jira_mcp_flow, strands_native_flow
+from runtime.sop_agent.domain import intake as runtime_intake_domain
 
 
 def _import_lambda_module(module_name: str) -> Any:
@@ -45,38 +44,30 @@ def _load_contract_generator() -> Any:
 )
 def test_intent_classification_parity(request_text: str, expected_intent: str) -> None:
     intake_domain = _import_lambda_module("intake_domain")
-    assert intake_stage.classify_intent(request_text) == expected_intent
+    assert runtime_intake_domain.classify_intent(request_text) == expected_intent
     assert intake_domain.classify_intent(request_text) == expected_intent
 
 
 def test_intake_risk_hint_parity() -> None:
     intake_domain = _import_lambda_module("intake_domain")
     request_text = "Need update for JRASERVER-2 regarding security escalation and compliance"
-    runtime_intake = intake_stage.run_intake(
-        request_text,
-        intake_stage.IntakeModelConfig(
-            model_id="eu.amazon.nova-lite-v1:0",
-            region="eu-west-1",
-            dry_run=True,
-        ),
-    )
+    runtime_intake = runtime_intake_domain.extract_intake(request_text)
     lambda_intake = intake_domain.extract_intake(request_text)
     assert runtime_intake["risk_hints"] == lambda_intake["risk_hints"]
+    assert runtime_intake["candidate_issue_keys"] == lambda_intake["candidate_issue_keys"]
+    assert runtime_intake["intent_hint"] == lambda_intake["intent_hint"]
 
 
 def test_scope_maps_snapshot() -> None:
     tooling_domain = _import_lambda_module("tooling_domain")
-    fetch_native_stage = _import_lambda_module("fetch_native_stage")
     contract = _load_contract()
 
     expected_mcp_scope = contract["mcp_tool_scope_by_intent"]
-    assert jira_mcp_flow.TOOL_SCOPE_BY_INTENT == expected_mcp_scope
     assert tooling_domain.MCP_TOOL_SCOPE_BY_INTENT == expected_mcp_scope
     assert runtime_contracts.MCP_TOOL_SCOPE_BY_INTENT == expected_mcp_scope
 
     expected_native_scope = contract["native_tool_scope_by_intent"]
-    assert strands_native_flow.TOOL_SCOPE_BY_INTENT == expected_native_scope
-    assert fetch_native_stage.NATIVE_TOOL_SCOPE_BY_INTENT == expected_native_scope
+    assert tooling_domain.NATIVE_TOOL_SCOPE_BY_INTENT == expected_native_scope
     assert runtime_contracts.NATIVE_TOOL_SCOPE_BY_INTENT == expected_native_scope
 
 

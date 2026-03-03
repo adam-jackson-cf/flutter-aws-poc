@@ -11,8 +11,6 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
-import * as events from "aws-cdk-lib/aws-events";
-import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as sfnTasks from "aws-cdk-lib/aws-stepfunctions-tasks";
@@ -106,14 +104,8 @@ interface PipelineLambdas {
   jiraToolLambda: lambda.Function;
 }
 
-interface RuntimeResources {
-  runtime: agentcore.Runtime;
-  runtimeEndpoint: ReturnType<agentcore.Runtime["addEndpoint"]>;
-}
-
 interface StackOutputResources {
   datasetBucket: s3.Bucket;
-  runtimeResources: RuntimeResources;
   gateway: agentcore.Gateway;
   stateMachine: sfn.StateMachine;
 }
@@ -139,10 +131,6 @@ export class FlutterAgentCorePocStack extends Stack {
       makeLambda,
       modelGatewayConfig,
     );
-    const runtimeResources = this.createRuntimeResources(
-      modelGatewayConfig,
-      pipelineLambdas.llmGatewayLambda,
-    );
     const gateway = this.createGateway(
       pipelineLambdas.jiraToolLambda,
       pipelineLambdas.mcpLambda,
@@ -151,10 +139,8 @@ export class FlutterAgentCorePocStack extends Stack {
       pipelineLambdas,
       lifecycleConfig.logRetention,
     );
-    this.createNightlyEvaluationRule(stateMachine);
     this.emitOutputs({
       datasetBucket,
-      runtimeResources,
       gateway,
       stateMachine,
     });
@@ -348,48 +334,6 @@ export class FlutterAgentCorePocStack extends Stack {
     });
   }
 
-  private createRuntimeResources(
-    modelGatewayConfig: ModelGatewayEnvConfig,
-    llmGatewayLambda: lambda.Function,
-  ): RuntimeResources {
-    const runtimeArtifact = agentcore.AgentRuntimeArtifact.fromCodeAsset({
-      path: path.join(__dirname, "../../runtime"),
-      runtime: agentcore.AgentCoreRuntime.PYTHON_3_12,
-      entrypoint: ["main.py"],
-    });
-    const runtime = new agentcore.Runtime(this, "SopAgentRuntime", {
-      runtimeName: "flutterSopPocRuntime",
-      description:
-        "SOP runtime for native vs MCP Jira orchestration comparison",
-      agentRuntimeArtifact: runtimeArtifact,
-      networkConfiguration:
-        agentcore.RuntimeNetworkConfiguration.usingPublicNetwork(),
-      lifecycleConfiguration: {
-        idleRuntimeSessionTimeout: Duration.minutes(15),
-        maxLifetime: Duration.hours(8),
-      },
-      environmentVariables: {
-        JIRA_BASE_URL: "https://jira.atlassian.com",
-        MODEL_ID: modelGatewayConfig.modelId,
-        BEDROCK_REGION: this.region,
-        MODEL_PROVIDER: modelGatewayConfig.modelProvider,
-        OPENAI_REASONING_EFFORT: modelGatewayConfig.openAiReasoningEffort,
-        OPENAI_TEXT_VERBOSITY: modelGatewayConfig.openAiTextVerbosity,
-        OPENAI_MAX_OUTPUT_TOKENS: modelGatewayConfig.openAiMaxOutputTokens,
-        LLM_GATEWAY_FUNCTION_NAME: llmGatewayLambda.functionName,
-      },
-      authorizerConfiguration:
-        agentcore.RuntimeAuthorizerConfiguration.usingIAM(),
-      tags: { project: "flutter-agentcore-poc" },
-    });
-    llmGatewayLambda.grantInvoke(runtime);
-    const runtimeEndpoint = runtime.addEndpoint("production", {
-      version: "1",
-      description: "Stable endpoint for PoC orchestration runs",
-    });
-    return { runtime, runtimeEndpoint };
-  }
-
   private createGateway(
     jiraToolLambda: lambda.Function,
     mcpLambda: lambda.Function,
@@ -477,30 +421,7 @@ export class FlutterAgentCorePocStack extends Stack {
     });
   }
 
-  private createNightlyEvaluationRule(stateMachine: sfn.StateMachine): void {
-    new events.Rule(this, "NightlyEvaluationRule", {
-      schedule: events.Schedule.cron({ minute: "15", hour: "1" }),
-      targets: [
-        new targets.SfnStateMachine(stateMachine, {
-          input: events.RuleTargetInput.fromObject({
-            flow: "mcp",
-            request_text:
-              "Please triage JRASERVER-79286 and draft a customer-safe response update.",
-            case_id: "scheduled_jira_case",
-            expected_tool: "jira_get_issue_priority_context",
-          }),
-        }),
-      ],
-    });
-  }
-
   private emitOutputs(resources: StackOutputResources): void {
-    new CfnOutput(this, "RuntimeId", {
-      value: resources.runtimeResources.runtime.agentRuntimeId,
-    });
-    new CfnOutput(this, "RuntimeEndpointArn", {
-      value: resources.runtimeResources.runtimeEndpoint.agentRuntimeEndpointArn,
-    });
     new CfnOutput(this, "GatewayId", { value: resources.gateway.gatewayId });
     new CfnOutput(this, "GatewayUrl", {
       value: resources.gateway.gatewayUrl ?? "",

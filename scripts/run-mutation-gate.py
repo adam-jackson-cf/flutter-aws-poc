@@ -72,12 +72,6 @@ TARGETS: tuple[MutationTarget, ...] = (
         package_dirs=("evals", "runtime", "aws"),
         coverage_target="evals",
     ),
-    MutationTarget(
-        file_path="runtime/sop_agent/main.py",
-        test_paths=("tests/test_runtime_core_full.py",),
-        package_dirs=("runtime", "evals", "aws"),
-        coverage_target="runtime",
-    ),
 )
 
 

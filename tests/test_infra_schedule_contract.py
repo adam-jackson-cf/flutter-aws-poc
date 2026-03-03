@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_nightly_rule_includes_expected_tool_input() -> None:
+def test_no_nightly_evaluation_rule_configured() -> None:
     stack_file = (
         Path(__file__).resolve().parents[1]
         / "infra"
@@ -10,10 +10,8 @@ def test_nightly_rule_includes_expected_tool_input() -> None:
     )
     content = stack_file.read_text(encoding="utf-8")
 
-    assert "createNightlyEvaluationRule" in content
-    assert 'flow: "mcp"' in content
-    assert "expected_tool" in content
-    assert 'expected_tool: "jira_get_issue_priority_context"' in content
+    assert "createNightlyEvaluationRule" not in content
+    assert "NightlyEvaluationRule" not in content
 
 
 def test_runtime_model_binding_uses_gateway_model_setting() -> None:
@@ -27,7 +25,6 @@ def test_runtime_model_binding_uses_gateway_model_setting() -> None:
 
     assert "modelGatewayConfig.modelId" in content
     assert "MODEL_ID: modelGatewayConfig.modelId" in content
-    assert "createRuntimeResources(" in content
 
 
 def test_stack_has_no_openai_runtime_bedrock_guard() -> None:

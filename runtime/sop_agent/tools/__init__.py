@@ -1,1 +1,0 @@
-"""SOP tool adapters."""

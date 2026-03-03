@@ -6,7 +6,7 @@ Scale:
 
 | ID | Risk | Severity | Likelihood | Current evidence | Mitigation |
 |---|---|---|---|---|---|
-| R-01 | Scheduler contract regression (`expected_tool`) reappears | Medium | Low | Guard test enforces scheduler contract | Keep scheduler contract test mandatory in CI |
+| R-01 | Scheduled-flow contract regression (`expected_tool`) reappears if scheduler is reintroduced | Medium | Medium | Canonical scheduler is removed; no scheduled execution path exists | Keep the schedule contract test and runbook guidance aligned with canonical route |
 | R-02 | Eval payload schema drift corrupts metrics | Medium | Low | Artifact schema fail-fast checks are active | Keep `artifact_schema_invalid:*` hard fail behavior |
 | R-03 | Tool-prefix normalization regression causes false mismatch scoring | Medium | Low | Prefix handling tests exist across lambda/runtime/eval layers | Keep normalization tests as required quality gate |
 | R-04 | MCP write-tool alias mismatch persists | High | High | Latest run has 8 MCP failures from unknown write tools | Add alias normalization and scoped mapping for write tools |

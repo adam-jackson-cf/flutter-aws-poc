@@ -96,9 +96,9 @@ Impact:
 
 ## Contradictions and Knock-on Effects
 
-1. **Nightly rule likely fails by construction**
-   - Nightly Step Functions input omits `expected_tool`, while both fetch stages treat it as required and fail when missing.
-   - Knock-on: scheduled runs can create deterministic failure noise and weaken evidence quality.
+1. **Nightly rule removed from canonical infra**
+   - Previous nightly scheduler behavior no longer exists in the deployed stack.
+   - Knock-on: evidence now depends on controlled benchmark invocations and no longer on scheduled executions.
 
 2. **Evidence artifact schema drift risk**
    - Existing reports in `reports/` do not include fields now expected by current eval code path (`tool_match_rate`, `composite_reflection`), and native selected tools appear inconsistent with current dataset expectations.
@@ -135,7 +135,7 @@ Priority 1 (must-have for credible architecture critique)
    - B: MCP transport with deterministic tool choice (no model selection)
    - C: MCP transport with model tool selection
    - This separates protocol overhead from selector behavior.
-3. Fix **nightly input contract** (`expected_tool`) and add contract test to prevent recurrence.
+3. Keep nightly scheduler behavior gated by explicit design intent; if reintroduced, enforce `expected_tool` input contract with an automated test.
 
 Priority 2 (architecture-alignment validation)
 4. Introduce **risk-tier scenarios (R1 vs R2)** with explicit workflow contract-like checks and at least one compensation/HITL path.
@@ -183,9 +183,10 @@ PoC implementation and evaluation:
 - `aws/lambda/fetch_native_stage.py`
 - `aws/lambda/fetch_mcp_stage.py`
 - `aws/lambda/evaluate_stage.py`
-- `runtime/sop_agent/tools/agentcore_mcp_client.py`
-- `runtime/sop_agent/tools/strands_native_flow.py`
-- `runtime/sop_agent/tools/jira_mcp_flow.py`
+ - `aws/lambda/jira_tool_target.py`
+ - `aws/lambda/tooling_domain.py`
+ - `aws/lambda/fetch_native_stage.py`
+ - `aws/lambda/fetch_mcp_stage.py`
 - `evals/run_eval.py`
 - `evals/golden/sop_cases.jsonl`
 - `reports/eval-comparison-live-route-100.json`

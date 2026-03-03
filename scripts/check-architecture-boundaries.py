@@ -14,8 +14,6 @@ LAMBDA_ROOT = REPO_ROOT / "aws" / "lambda"
 FORBIDDEN_DOMAIN_IMPORT_PREFIXES = (
     "aws",
     "evals",
-    "runtime.sop_agent.tools",
-    "runtime.sop_agent.stages",
     "boto3",
     "botocore",
     "requests",

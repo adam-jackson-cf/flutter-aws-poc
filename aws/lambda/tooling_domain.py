@@ -1,6 +1,10 @@
 from typing import Any, Dict, List
 
-from contract_values import MCP_TOOL_SCOPE_BY_INTENT, TOOL_COMPLETENESS_FIELDS_BY_OPERATION
+from contract_values import (
+    MCP_TOOL_SCOPE_BY_INTENT,
+    NATIVE_TOOL_SCOPE_BY_INTENT,
+    TOOL_COMPLETENESS_FIELDS_BY_OPERATION,
+)
 
 
 def strip_gateway_tool_prefix(tool_name: str) -> str:

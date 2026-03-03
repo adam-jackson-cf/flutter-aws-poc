@@ -178,7 +178,7 @@ Notes:
 - direct runtime MCP checks require `MCP_GATEWAY_URL`
 - non-dry-run evals perform AWS identity preflight (`sts:GetCallerIdentity`)
 - dataset rows must include `expected_tool.native` and `expected_tool.mcp`
-- runtime execution input must include `expected_tool` for each case (manual or scheduled)
+- runtime execution input used by `run_eval` includes scalar `expected_tool` per flow (from the dataset row `expected_tool.<flow>`)
 - eval runner validates artifact schema per flow and fails fast on drift (`artifact_schema_invalid:*`)
 - lambda model calls route through `llm_gateway_client` with `MODEL_ID` and provider mode `MODEL_PROVIDER=auto|bedrock|openai`
 - AgentCore runtime model calls also route through the LLM gateway and read `MODEL_ID` + `MODEL_PROVIDER`
@@ -231,10 +231,6 @@ Dashboard:
 
 AgentCore online eval config:
 - `python scripts/configure-agentcore-online-eval.py --name flutter-sop-poc-online-eval --role-arn "<EVAL_EXECUTION_ROLE_ARN>" --log-group "/aws/bedrock-agentcore/runtimes/flutterSopPocRuntime" --service-name bedrock-agentcore --evaluator-id "<EVALUATOR_ID_1>" --evaluator-id "<EVALUATOR_ID_2>" --aws-region "$AWS_REGION"`
-
-Direct runtime checks:
-- Native dry-run: `python -m runtime.sop_agent.main --flow native --input-file samples/case_001.json --dry-run`
-- MCP dry-run: `python -m runtime.sop_agent.main --flow mcp --input-file samples/case_001.json --dry-run`
 
 Manual pipeline invocation:
 - `aws stepfunctions start-execution --state-machine-arn "<STATE_MACHINE_ARN>" --input '{"flow":"mcp","request_text":"Need customer sentiment and status update for JRASERVER-79286 before escalation.","case_id":"manual_run_001","expected_tool":"jira_get_issue_status_snapshot"}'`

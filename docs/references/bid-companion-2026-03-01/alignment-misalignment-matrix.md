@@ -15,7 +15,7 @@ Legend: `Accurate` = implemented and evidenced; `Partial` = some implementation 
 | Native vs MCP route parity with same task/model | Same dataset/harness and parity metadata (`gateway_model_id`, `runtime_model_id`) are recorded per run | Accurate | Comparison integrity is auditable and reproducible |
 | Deterministic metrics are release truth | `tool_failure_rate`, `business_success_rate`, `call_construction_*`, token/cost metrics, and release score are persisted per flow | Accurate | Decision signal is measurable and deterministic |
 | Contract governance across layers | Contract artifacts and semantic ownership checks run in quality gates | Accurate | Contract drift is less likely to pass silently |
-| Scheduler respects required execution contract | Nightly EventBridge input includes `expected_tool`; guard test enforces this | Accurate | Scheduled runs do not fail by construction on missing contract fields |
+| Scheduler respects required execution contract | Canonical route has no scheduled execution path; therefore no nightly scheduler contract to enforce | Accurate | Evidence quality is controlled through benchmark flows only |
 
 ## High-priority notes
 

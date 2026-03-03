@@ -3,47 +3,12 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from runtime.sop_agent.tools.jira_mcp_flow import McpJiraFlow
-
 
 def _import_lambda_module(name: str) -> Any:
     lambda_path = Path(__file__).resolve().parents[1] / "aws" / "lambda"
     if str(lambda_path) not in sys.path:
         sys.path.insert(0, str(lambda_path))
     return importlib.import_module(name)
-
-
-def test_runtime_mcp_flow_scores_missing_issue_payload() -> None:
-    class DummyMcpClient:
-        def list_tools(self) -> list[Dict[str, Any]]:
-            return [{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}]
-
-        def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-            return {"tool_name": tool_name, "arguments": arguments}
-
-        def extract_json_payload(self, call_result: Dict[str, Any]) -> Dict[str, Any]:
-            return {"result": {"summary": "missing key"}}
-
-    flow = McpJiraFlow.__new__(McpJiraFlow)
-    flow._mcp_client = DummyMcpClient()
-    flow._model_id = "model"
-    flow._region = "eu-west-1"
-    flow._model_provider = "auto"
-    flow._provider_options = {}
-    flow._select_tool = lambda _selection_input: {
-        "tool": "jira_get_issue_by_key",
-        "arguments": {"issue_key": "JRASERVER-1"},
-        "reason": "test",
-    }
-
-    result = flow.fetch_issue_with_selection(
-        intake={"issue_key": "JRASERVER-1", "request_text": "Please triage JRASERVER-1"},
-        dry_run=False,
-    )
-
-    assert result["tool_failure"] is True
-    assert result["issue"]["key"] == "JRASERVER-1"
-    assert result["issue"]["failure_reason"] == "mcp_missing_issue_payload"
 
 
 def test_fetch_mcp_stage_scores_missing_issue_payload(monkeypatch: Any) -> None:
