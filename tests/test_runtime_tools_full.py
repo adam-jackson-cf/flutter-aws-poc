@@ -158,7 +158,7 @@ def test_jira_sdk_client(monkeypatch: pytest.MonkeyPatch) -> None:
     write_result = client.write_issue_followup_note("JRASERVER-1", "follow up note")
     assert write_result["write_status"] == "committed"
     assert write_result["comment_id"] == "12345"
-    assert write_result["write_artifact_s3_uri"].startswith("https://jira.example.com/browse/JRASERVER-1")
+    assert write_result["write_artifact_uri"].startswith("https://jira.example.com/browse/JRASERVER-1")
 
     class _NoCommentId(_Comment):
         id = ""
@@ -190,7 +190,7 @@ def test_strands_native_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
         write_issue_followup_note=lambda issue_key, note_text: {
             "key": issue_key,
             "write_status": "committed",
-            "write_artifact_s3_uri": "s3://bucket/artifact.json",
+            "write_artifact_uri": "s3://bucket/artifact.json",
             "note_text": note_text,
         },
     )

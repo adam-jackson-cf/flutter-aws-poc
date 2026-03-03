@@ -58,7 +58,7 @@ def test_write_actions_runtime_config_and_bedrock_branches(monkeypatch: pytest.M
     out = write_actions.write_issue_followup_note({"key": "JRASERVER-1"}, "follow-up", "bucket-a")
     assert captured["Bucket"] == "bucket-a"
     assert out["write_status"] == "committed"
-    assert out["write_artifact_s3_uri"].startswith("s3://bucket-a/writes/JRASERVER-1/")
+    assert out["write_artifact_uri"].startswith("s3://bucket-a/writes/JRASERVER-1/")
 
 
 def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) -> None:

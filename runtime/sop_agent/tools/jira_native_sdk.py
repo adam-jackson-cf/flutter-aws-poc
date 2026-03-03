@@ -59,5 +59,5 @@ class JiraSdkClient:
             "write_status": "committed",
             "note_digest": hashlib.sha256(text.encode("utf-8")).hexdigest()[:12],
             "comment_id": comment_id,
-            "write_artifact_s3_uri": artifact_uri,
+            "write_artifact_uri": artifact_uri,
         }

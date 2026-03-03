@@ -119,7 +119,7 @@ def test_fetch_native_tool_catalog_and_invoke(monkeypatch: pytest.MonkeyPatch) -
         lambda **_kwargs: {
             "key": "JRASERVER-1",
             "write_status": "committed",
-            "write_artifact_s3_uri": "s3://bucket/key",
+            "write_artifact_uri": "s3://bucket/key",
             "note_digest": "abc",
         },
     )

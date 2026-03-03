@@ -41,7 +41,7 @@
     "get_issue_labels": ["key", "labels"],
     "get_issue_project_key": ["key", "project_key"],
     "get_issue_update_timestamp": ["key", "updated"],
-    "write_issue_followup_note": ["key", "write_status", "write_artifact_s3_uri"],
+    "write_issue_followup_note": ["key", "write_status", "write_artifact_uri"],
     "get_issue_risk_flags": ["key"]
   },
   "gateway_tools": [
@@ -188,10 +188,10 @@
         "properties": {
           "key": {"type": "string"},
           "write_status": {"type": "string"},
-          "write_artifact_s3_uri": {"type": "string"},
+          "write_artifact_uri": {"type": "string"},
           "note_digest": {"type": "string"}
         },
-        "required": ["key", "write_status", "write_artifact_s3_uri", "note_digest"]
+        "required": ["key", "write_status", "write_artifact_uri", "note_digest"]
       }
     },
     {

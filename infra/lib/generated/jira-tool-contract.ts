@@ -257,7 +257,7 @@ export const GATEWAY_TOOLS: GatewayToolContract[] = [
         "note_digest": {
           "type": "string"
         },
-        "write_artifact_s3_uri": {
+        "write_artifact_uri": {
           "type": "string"
         },
         "write_status": {
@@ -267,7 +267,7 @@ export const GATEWAY_TOOLS: GatewayToolContract[] = [
       "required": [
         "key",
         "write_status",
-        "write_artifact_s3_uri",
+        "write_artifact_uri",
         "note_digest"
       ]
     }

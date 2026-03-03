@@ -124,6 +124,6 @@ TOOL_COMPLETENESS_FIELDS_BY_OPERATION = {
     "write_issue_followup_note": [
         "key",
         "write_status",
-        "write_artifact_s3_uri"
+        "write_artifact_uri"
     ]
 }

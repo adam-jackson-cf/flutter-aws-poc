@@ -43,6 +43,6 @@ def write_issue_followup_note(issue: Dict[str, Any], note_text: str, result_buck
     return {
         "key": issue_key,
         "write_status": "committed",
-        "write_artifact_s3_uri": f"s3://{result_bucket}/{artifact_key}",
+        "write_artifact_uri": f"s3://{result_bucket}/{artifact_key}",
         "note_digest": _note_digest(normalized_note),
     }
