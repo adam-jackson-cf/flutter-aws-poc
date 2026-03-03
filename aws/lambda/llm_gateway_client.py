@@ -10,6 +10,8 @@ import boto3
 
 from bedrock_client import call_bedrock_with_usage
 from network_security import validate_endpoint_url
+from quality_helpers import merge_usage as _quality_merge_usage
+from quality_helpers import safe_int as _quality_safe_int
 
 _OPENAI_API_KEY_CACHE = ""
 
@@ -179,18 +181,7 @@ def _empty_usage() -> Dict[str, int]:
 
 
 def _safe_int(value: Any) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        try:
-            return int(value.strip())
-        except ValueError:
-            return 0
-    return 0
+    return _quality_safe_int(value)
 
 
 def _usage_from_openai_payload(payload: Dict[str, Any]) -> Dict[str, int]:
@@ -214,11 +205,7 @@ def _usage_from_openai_payload(payload: Dict[str, Any]) -> Dict[str, int]:
 
 
 def _merge_usage(base: Dict[str, int], additional: Dict[str, int]) -> Dict[str, int]:
-    return {
-        "input_tokens": max(0, _safe_int(base.get("input_tokens", 0)) + _safe_int(additional.get("input_tokens", 0))),
-        "output_tokens": max(0, _safe_int(base.get("output_tokens", 0)) + _safe_int(additional.get("output_tokens", 0))),
-        "total_tokens": max(0, _safe_int(base.get("total_tokens", 0)) + _safe_int(additional.get("total_tokens", 0))),
-    }
+    return _quality_merge_usage(base, additional)
 
 
 def _resolved_openai_call_options(openai_options: Dict[str, Any] | None) -> Dict[str, Any]:

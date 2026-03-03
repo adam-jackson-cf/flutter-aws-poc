@@ -439,12 +439,8 @@ def test_tooling_and_selection_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_gateway_client_runtime_config_stage_metrics_and_artifacts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_mcp_gateway_client_transport_and_tool_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     mcp_gateway_client = _import_lambda_module("mcp_gateway_client")
-    runtime_config = _import_lambda_module("runtime_config")
-    stage_metrics = _import_lambda_module("stage_metrics")
-    artifact_store = _import_lambda_module("artifact_store")
-    response_generation = _import_lambda_module("response_generation")
 
     class _FakeCreds:
         def get_frozen_credentials(self) -> object:
@@ -504,6 +500,13 @@ def test_gateway_client_runtime_config_stage_metrics_and_artifacts(monkeypatch: 
         mcp_gateway_client.extract_gateway_tool_payload({"result": {"content": []}})
     with pytest.raises(RuntimeError):
         mcp_gateway_client.extract_gateway_tool_payload({"result": {"content": [{"text": ""}]}})
+
+
+def test_runtime_config_and_auxiliary_module_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime_config = _import_lambda_module("runtime_config")
+    stage_metrics = _import_lambda_module("stage_metrics")
+    artifact_store = _import_lambda_module("artifact_store")
+    response_generation = _import_lambda_module("response_generation")
 
     monkeypatch.setenv("MODEL_ID", "env-model")
     monkeypatch.setenv("BEDROCK_REGION", "env-region")

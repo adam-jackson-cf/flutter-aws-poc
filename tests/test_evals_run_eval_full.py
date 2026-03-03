@@ -381,7 +381,7 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     assert outcome.business_success is True
 
 
-def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_runtime_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     args = Namespace(
         state_machine_arn="arn",
         aws_region="eu-west-1",
@@ -571,6 +571,9 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
     with pytest.raises(RuntimeError):
         run_eval._resolve_aws_identity(_IncompleteRunner(), dry_run=False)
 
+
+
+def test_eval_output_and_comparison_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     assert run_eval._selected_flows("native") == ["native"]
     assert run_eval._selected_flows("both") == ["native", "mcp"]
 

@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 from json_extract import extract_json_object
 from llm_gateway_invoke_client import invoke_llm_gateway_with_usage
+from quality_helpers import parse_positive_int, merge_usage as _quality_merge_usage, safe_int as _quality_safe_int
 
 ALLOWED_INTENTS = ("bug_triage", "feature_request", "status_update", "general_triage")
 
@@ -22,34 +23,15 @@ def _empty_usage() -> Dict[str, int]:
 
 
 def _safe_int(value: Any) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, (int, float)):
-        return int(value)
-    if isinstance(value, str):
-        try:
-            return int(value.strip())
-        except ValueError:
-            return 0
-    return 0
+    return _quality_safe_int(value)
 
 
 def _merge_usage(base: Dict[str, int], additional: Dict[str, int]) -> Dict[str, int]:
-    return {
-        "input_tokens": max(0, _safe_int(base.get("input_tokens", 0)) + _safe_int(additional.get("input_tokens", 0))),
-        "output_tokens": max(0, _safe_int(base.get("output_tokens", 0)) + _safe_int(additional.get("output_tokens", 0))),
-        "total_tokens": max(0, _safe_int(base.get("total_tokens", 0)) + _safe_int(additional.get("total_tokens", 0))),
-    }
+    return _quality_merge_usage(base, additional)
 
 
 def _parse_max_attempts(value: str) -> int:
-    try:
-        parsed = int(value)
-    except ValueError as exc:
-        raise ValueError("grounding_max_attempts_invalid") from exc
-    if parsed < 1:
-        raise ValueError("grounding_max_attempts_invalid")
-    return parsed
+    return parse_positive_int(value, error_code="grounding_max_attempts_invalid")
 
 
 def _max_grounding_attempts() -> int:

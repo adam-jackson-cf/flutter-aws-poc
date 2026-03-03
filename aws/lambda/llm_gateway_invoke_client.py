@@ -7,6 +7,7 @@ from typing import Any, Dict, Tuple
 
 import boto3
 from botocore.config import Config
+from quality_helpers import safe_int as _quality_safe_int
 
 
 @dataclass(frozen=True)
@@ -82,16 +83,7 @@ def _client(region: str) -> Any:
 
 
 def _safe_int(value: Any) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, (int, float)):
-        return int(value)
-    if isinstance(value, str):
-        try:
-            return int(value.strip())
-        except ValueError:
-            return 0
-    return 0
+    return _quality_safe_int(value)
 
 
 def _parse_invoke_payload(raw_payload: Dict[str, Any]) -> GatewayInvokeResponse:

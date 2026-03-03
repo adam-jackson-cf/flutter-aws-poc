@@ -2,21 +2,11 @@ from typing import Any, Dict, Tuple
 
 import boto3
 from json_extract import extract_json_object
+from quality_helpers import safe_int as _quality_safe_int
 
 
 def _safe_int(value: Any) -> int:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        try:
-            return int(value.strip())
-        except ValueError:
-            return 0
-    return 0
+    return _quality_safe_int(value)
 
 
 def _bedrock_usage(response: Dict[str, Any]) -> Dict[str, int]:

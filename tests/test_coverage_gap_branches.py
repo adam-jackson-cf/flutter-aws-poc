@@ -211,12 +211,8 @@ def test_llm_gateway_client_uncovered_branches(monkeypatch: pytest.MonkeyPatch) 
         llm_gateway_client.call_openai_with_usage("gpt-5.2-codex", "prompt", "eu-west-1")
 
 
-def test_tool_selection_request_grounding_fetch_and_evaluate_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tool_selection_schema_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     tool_selection = _import_lambda_module("tool_selection")
-    request_grounding = _import_lambda_module("request_grounding")
-    fetch_native_stage = _import_lambda_module("fetch_native_stage")
-    fetch_mcp_stage = _import_lambda_module("fetch_mcp_stage")
-    evaluate_stage = _import_lambda_module("evaluate_stage")
 
     schema = tool_selection._mcp_call_response_schema(["jira_get_issue_by_key"])
     assert schema["properties"]["tool"]["enum"] == ["jira_get_issue_by_key"]
@@ -277,6 +273,11 @@ def test_tool_selection_request_grounding_fetch_and_evaluate_branches(monkeypatc
     assert tool_selection._argument_type_error(arguments={"x": "y"}, properties={"x": "bad"}) == ""
     assert tool_selection._tool_input_schema_summary({"inputSchema": {"required": "x", "properties": []}}) == "required=[]; properties=[]"
 
+
+def test_request_grounding_and_native_stage_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    request_grounding = _import_lambda_module("request_grounding")
+    fetch_native_stage = _import_lambda_module("fetch_native_stage")
+
     assert request_grounding._safe_int(True) == 1
     assert request_grounding._safe_int("bad") == 0
     assert request_grounding._safe_int(None) == 0
@@ -322,6 +323,11 @@ def test_tool_selection_request_grounding_fetch_and_evaluate_branches(monkeypatc
         "total_tokens": 0,
     }
     assert fetch_native_stage._grounding_failure_reason({"grounding": "bad"}) == ""
+
+
+def test_fetch_mcp_stage_and_evaluate_stage_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    fetch_mcp_stage = _import_lambda_module("fetch_mcp_stage")
+    evaluate_stage = _import_lambda_module("evaluate_stage")
 
     with pytest.raises(ValueError, match="mcp_call_construction_max_attempts_invalid"):
         fetch_mcp_stage._parse_max_attempts("bad")
