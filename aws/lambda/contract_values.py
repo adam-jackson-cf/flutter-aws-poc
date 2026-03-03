@@ -33,9 +33,6 @@ RISK_HINT_TOKENS = [
     "escalation"
 ]
 
-MCP_EXPECTED_TOOL = "jira_get_issue_by_key"
-NATIVE_EXPECTED_TOOL = "jira_api_get_issue_by_key"
-
 MCP_TOOL_SCOPE_BY_INTENT = {
     "bug_triage": [
         "jira_get_issue_by_key",

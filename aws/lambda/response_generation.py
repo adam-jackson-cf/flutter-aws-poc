@@ -3,8 +3,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
-from bedrock_client import extract_json_object
-from llm_gateway_client import call_llm_gateway_with_usage
+from json_extract import extract_json_object
+from llm_gateway_invoke_client import invoke_llm_gateway_with_usage
 
 
 @dataclass(frozen=True)
@@ -74,7 +74,7 @@ def generate_customer_response_with_usage(
     )
     request_provider_options = _provider_options_with_response_schema(config.provider_options)
 
-    raw, usage = call_llm_gateway_with_usage(
+    raw, usage = invoke_llm_gateway_with_usage(
         model_id=config.model_id,
         prompt=prompt,
         region=config.region,

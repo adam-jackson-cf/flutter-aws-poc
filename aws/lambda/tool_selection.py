@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from copy import deepcopy
 from typing import Any, Dict, List
 
-from bedrock_client import extract_json_object
-from llm_gateway_client import call_llm_gateway_with_usage
+from json_extract import extract_json_object
+from llm_gateway_invoke_client import invoke_llm_gateway_with_usage
 from tooling_domain import build_failure_issue
 
 
@@ -129,7 +129,7 @@ def select_tool_with_model(selection: ToolSelectionRequest, config: ToolSelector
         schema_name="tool_selection",
         response_schema=_selection_response_schema(tool_names),
     )
-    raw, llm_usage = call_llm_gateway_with_usage(
+    raw, llm_usage = invoke_llm_gateway_with_usage(
         model_id=config.model_id,
         prompt=prompt,
         region=config.region,
@@ -216,7 +216,7 @@ def select_mcp_tool_call(selection: ToolSelectionRequest, config: ToolSelectorCo
         schema_name="mcp_tool_call",
         response_schema=_mcp_call_response_schema(list(tool_map.keys())),
     )
-    raw, llm_usage = call_llm_gateway_with_usage(
+    raw, llm_usage = invoke_llm_gateway_with_usage(
         model_id=config.model_id,
         prompt=prompt,
         region=config.region,

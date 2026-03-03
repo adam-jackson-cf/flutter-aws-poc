@@ -78,7 +78,7 @@ class EvaluationConfig:
     scope: str
     iterations: int
     model_id: str
-    runtime_bedrock_model_id: str
+    runtime_model_id: str
     bedrock_region: str
     model_provider: str
     runner: AwsPipelineRunner
@@ -88,6 +88,10 @@ class EvaluationConfig:
     openai_max_output_tokens: int = 2000
     pricing_input_per_1m_tokens_usd: float = 0.0
     pricing_output_per_1m_tokens_usd: float = 0.0
+    llm_route_path: str = "gateway_service"
+    execution_mode: str = "route_parity"
+    mcp_binding_mode: str = "model_constructed_schema_validated"
+    route_semantics_version: str = "2"
 
 
 @dataclass(frozen=True)
@@ -192,8 +196,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--execution-timeout-seconds", type=int, default=900)
     parser.add_argument("--model-id", default=os.environ.get("MODEL_ID", "eu.amazon.nova-lite-v1:0"))
     parser.add_argument(
-        "--runtime-bedrock-model-id",
-        default=os.environ.get("BEDROCK_MODEL_ID", "eu.amazon.nova-lite-v1:0"),
+        "--runtime-model-id",
+        default=os.environ.get("RUNTIME_MODEL_ID", os.environ.get("MODEL_ID", "eu.amazon.nova-lite-v1:0")),
     )
     parser.add_argument("--bedrock-region", default=os.environ.get("BEDROCK_REGION", os.environ.get("AWS_REGION", "")))
     parser.add_argument("--model-provider", choices=["auto", "bedrock", "openai"], default=os.environ.get("MODEL_PROVIDER", "auto"))
@@ -208,6 +212,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--price-output-per-1m-tokens-usd", default=os.environ.get("PRICE_OUTPUT_PER_1M_TOKENS_USD", ""))
     parser.add_argument("--publish-cloudwatch", action="store_true")
     parser.add_argument("--cloudwatch-namespace", default="FlutterAgentCorePoc/Evals")
+    parser.add_argument("--execution-mode", default=os.environ.get("EXECUTION_MODE", "route_parity"))
+    parser.add_argument(
+        "--mcp-binding-mode",
+        default=os.environ.get("MCP_BINDING_MODE", "model_constructed_schema_validated"),
+    )
+    parser.add_argument(
+        "--route-semantics-version",
+        default=os.environ.get("ROUTE_SEMANTICS_VERSION", "2"),
+    )
     parser.add_argument("--enable-judge", action="store_true")
     parser.add_argument(
         "--judge-model-id",
@@ -671,12 +684,16 @@ def _evaluate_single_case(
             expected_tool=expected_tool_for_flow(case, flow),
             dry_run=config.dry_run,
             model_id=config.model_id,
-            runtime_bedrock_model_id=config.runtime_bedrock_model_id,
+            runtime_model_id=config.runtime_model_id,
             bedrock_region=config.bedrock_region,
             model_provider=config.model_provider,
             openai_reasoning_effort=config.openai_reasoning_effort,
             openai_text_verbosity=config.openai_text_verbosity,
             openai_max_output_tokens=config.openai_max_output_tokens,
+            llm_route_path=config.llm_route_path,
+            execution_mode=config.execution_mode,
+            mcp_binding_mode=config.mcp_binding_mode,
+            route_semantics_version=config.route_semantics_version,
         )
     )
     context = CaseRunContext(flow=flow, scope=config.scope, iteration=iteration)
@@ -1011,13 +1028,9 @@ def _validate_runtime_args(args: argparse.Namespace) -> None:
     _require_non_empty_arg(args.aws_region, "AWS_REGION is required (set env var or pass --aws-region)")
     _require_non_empty_arg(args.model_id, "model_id is required (set MODEL_ID or pass --model-id)")
     _require_non_empty_arg(
-        args.runtime_bedrock_model_id,
-        "runtime bedrock model id is required (set BEDROCK_MODEL_ID or pass --runtime-bedrock-model-id)",
+        args.runtime_model_id,
+        "runtime model id is required (set RUNTIME_MODEL_ID or pass --runtime-model-id)",
     )
-    if not _is_bedrock_model_identifier(str(args.runtime_bedrock_model_id)):
-        raise ValueError(
-            "runtime bedrock model id must be a Bedrock model identifier or Bedrock ARN"
-        )
     _require_non_empty_arg(args.bedrock_region, "bedrock region is required (set BEDROCK_REGION or pass --bedrock-region)")
     _validate_judge_args(args)
     if int(args.openai_max_output_tokens) < 64:
@@ -1135,9 +1148,23 @@ def _maybe_add_comparison(payload: Dict[str, Any], selected_flow: str) -> None:
     payload["comparison"] = _build_comparison_payload(payload["results"])
 
 
+def _route_semantics_args(args: argparse.Namespace) -> Dict[str, str]:
+    return {
+        "llm_route_path": "gateway_service",
+        "execution_mode": str(getattr(args, "execution_mode", "route_parity")).strip()
+        or "route_parity",
+        "mcp_binding_mode": str(
+            getattr(args, "mcp_binding_mode", "model_constructed_schema_validated")
+        ).strip()
+        or "model_constructed_schema_validated",
+        "route_semantics_version": str(getattr(args, "route_semantics_version", "2")).strip() or "2",
+    }
+
+
 def _maybe_publish_cloudwatch(args: argparse.Namespace, payload: Dict[str, Any], run_id: str) -> None:
     if not args.publish_cloudwatch:
         return
+    route_semantics = _route_semantics_args(args)
     publish_eval_summary_metrics(
         summaries=payload["results"],
         config=CloudWatchPublishConfig(
@@ -1147,6 +1174,10 @@ def _maybe_publish_cloudwatch(args: argparse.Namespace, payload: Dict[str, Any],
             scope=args.scope,
             aws_region=args.aws_region,
             aws_profile=args.aws_profile or None,
+            llm_route_path=route_semantics["llm_route_path"],
+            execution_mode=route_semantics["execution_mode"],
+            mcp_binding_mode=route_semantics["mcp_binding_mode"],
+            route_semantics_version=route_semantics["route_semantics_version"],
         ),
     )
     print(f"PUBLISHED_CLOUDWATCH_NAMESPACE={args.cloudwatch_namespace}")
@@ -1165,12 +1196,13 @@ def _build_evaluation_config(
     judge: BedrockJudge | None,
     pricing_snapshot: Dict[str, Any],
 ) -> EvaluationConfig:
+    route_semantics = _route_semantics_args(args)
     return EvaluationConfig(
         dry_run=args.dry_run,
         scope=args.scope,
         iterations=args.iterations,
         model_id=args.model_id,
-        runtime_bedrock_model_id=args.runtime_bedrock_model_id,
+        runtime_model_id=args.runtime_model_id,
         bedrock_region=args.bedrock_region,
         model_provider=args.model_provider,
         runner=runner,
@@ -1180,13 +1212,17 @@ def _build_evaluation_config(
         openai_max_output_tokens=int(args.openai_max_output_tokens),
         pricing_input_per_1m_tokens_usd=float(pricing_snapshot["input_per_1m_tokens_usd"]),
         pricing_output_per_1m_tokens_usd=float(pricing_snapshot["output_per_1m_tokens_usd"]),
+        llm_route_path=route_semantics["llm_route_path"],
+        execution_mode=route_semantics["execution_mode"],
+        mcp_binding_mode=route_semantics["mcp_binding_mode"],
+        route_semantics_version=route_semantics["route_semantics_version"],
     )
 
 
 def _payload_model_section(args: argparse.Namespace, evaluation: EvaluationConfig) -> Dict[str, Any]:
     return {
         "model_id": args.model_id,
-        "runtime_bedrock_model_id": args.runtime_bedrock_model_id,
+        "runtime_model_id": args.runtime_model_id,
         "bedrock_region": args.bedrock_region,
         "provider": args.model_provider,
         "openai_reasoning_effort": evaluation.openai_reasoning_effort,
@@ -1206,7 +1242,7 @@ def _payload_pricing_snapshot_section(args: argparse.Namespace, pricing_snapshot
         "gateway_model_id": args.model_id,
         "pricing_model_key": str(pricing_snapshot["pricing_model_key"]),
         "reasoning_effort": str(pricing_snapshot["reasoning_effort"]),
-        "runtime_bedrock_model_id": args.runtime_bedrock_model_id,
+        "runtime_model_id": args.runtime_model_id,
         "provider": args.model_provider,
         "pricing_unit": "usd_per_1m_tokens",
         "input_per_1m_tokens_usd": float(pricing_snapshot["input_per_1m_tokens_usd"]),
@@ -1220,6 +1256,7 @@ def _build_run_payload(
     results: List[Dict[str, Any]],
     context: RunPayloadContext,
 ) -> Dict[str, Any]:
+    route_semantics = _route_semantics_args(args)
     return {
         "run_id": run_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -1230,13 +1267,18 @@ def _build_run_payload(
         "state_machine_arn": args.state_machine_arn,
         "aws_region": args.aws_region,
         "model": _payload_model_section(args, context.evaluation),
+        "route_semantics": route_semantics,
         "model_pricing_snapshot": _payload_pricing_snapshot_section(args, context.pricing_snapshot),
         "model_parity": {
             "gateway_model_id": args.model_id,
-            "runtime_bedrock_model_id": args.runtime_bedrock_model_id,
+            "runtime_model_id": args.runtime_model_id,
             "judge_model_id": args.judge_model_id if args.enable_judge else "",
             "provider": args.model_provider,
             "bedrock_region": args.bedrock_region,
+            "llm_route_path": route_semantics["llm_route_path"],
+            "execution_mode": route_semantics["execution_mode"],
+            "mcp_binding_mode": route_semantics["mcp_binding_mode"],
+            "route_semantics_version": route_semantics["route_semantics_version"],
         },
         "aws_identity": context.aws_identity,
         "judge": {

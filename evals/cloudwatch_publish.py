@@ -70,6 +70,10 @@ class MetricContext:
     flow: str
     scope: str
     dataset: str
+    llm_route_path: str
+    execution_mode: str
+    mcp_binding_mode: str
+    route_semantics_version: str
 
 
 @dataclass(frozen=True)
@@ -80,6 +84,10 @@ class CloudWatchPublishConfig:
     scope: str
     aws_region: str
     aws_profile: str | None = None
+    llm_route_path: str = "gateway_service"
+    execution_mode: str = "route_parity"
+    mcp_binding_mode: str = "model_constructed_schema_validated"
+    route_semantics_version: str = "2"
 
 
 Dimensions = Sequence[Dict[str, str]]
@@ -95,6 +103,10 @@ def _build_dimensions(context: MetricContext) -> tuple[Dict[str, str], ...]:
         {"Name": "Flow", "Value": context.flow},
         {"Name": "Scope", "Value": context.scope},
         {"Name": "Dataset", "Value": context.dataset},
+        {"Name": "LlmRoutePath", "Value": context.llm_route_path},
+        {"Name": "ExecutionMode", "Value": context.execution_mode},
+        {"Name": "McpBindingMode", "Value": context.mcp_binding_mode},
+        {"Name": "RouteSemanticsVersion", "Value": context.route_semantics_version},
     )
 
 
@@ -292,6 +304,10 @@ def publish_eval_summary_metrics(
                 flow=flow,
                 scope=config.scope,
                 dataset=config.dataset,
+                llm_route_path=config.llm_route_path,
+                execution_mode=config.execution_mode,
+                mcp_binding_mode=config.mcp_binding_mode,
+                route_semantics_version=config.route_semantics_version,
             )
         )
         metric_data.extend(_build_base_summary_metrics(summary=summary, dimensions=dimensions))

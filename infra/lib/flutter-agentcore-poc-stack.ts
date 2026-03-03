@@ -96,12 +96,8 @@ interface ModelGatewayEnvConfig {
   openAiMaxOutputTokens: string;
 }
 
-interface RuntimeBedrockModelConfig {
-  modelId: string;
-  isExplicit: boolean;
-}
-
 interface PipelineLambdas {
+  llmGatewayLambda: lambda.Function;
   parseLambda: lambda.Function;
   nativeLambda: lambda.Function;
   mcpLambda: lambda.Function;
@@ -133,11 +129,6 @@ export class FlutterAgentCorePocStack extends Stack {
 
     const lifecycleConfig = this.stackLifecycleConfig();
     const modelGatewayConfig = this.modelGatewayConfig();
-    const runtimeBedrockModelConfig = this.runtimeBedrockModelConfig();
-    this.validateModelPlaneConfiguration(
-      modelGatewayConfig,
-      runtimeBedrockModelConfig,
-    );
     const datasetBucket = this.createDatasetBucket(lifecycleConfig.ephemeral);
     const makeLambda = this.createLambdaFactory(
       datasetBucket,
@@ -149,7 +140,8 @@ export class FlutterAgentCorePocStack extends Stack {
       modelGatewayConfig,
     );
     const runtimeResources = this.createRuntimeResources(
-      runtimeBedrockModelConfig.modelId,
+      modelGatewayConfig,
+      pipelineLambdas.llmGatewayLambda,
     );
     const gateway = this.createGateway(
       pipelineLambdas.jiraToolLambda,
@@ -232,19 +224,6 @@ export class FlutterAgentCorePocStack extends Stack {
     };
   }
 
-  private runtimeBedrockModelConfig(): RuntimeBedrockModelConfig {
-    const modelIdSource = this.readTrimmed(
-      "runtimeBedrockModelId",
-      "BEDROCK_MODEL_ID",
-      "",
-    );
-    const modelId = modelIdSource || DEFAULT_BEDROCK_MODEL_ID;
-    return {
-      modelId,
-      isExplicit: modelIdSource.length > 0,
-    };
-  }
-
   private readTrimmed(
     contextKey: string,
     envKey: string,
@@ -260,20 +239,6 @@ export class FlutterAgentCorePocStack extends Stack {
       return value;
     }
     return "auto";
-  }
-
-  private validateModelPlaneConfiguration(
-    modelGatewayConfig: ModelGatewayEnvConfig,
-    runtimeBedrockModelConfig: RuntimeBedrockModelConfig,
-  ): void {
-    if (
-      modelGatewayConfig.modelProvider === "openai" &&
-      !runtimeBedrockModelConfig.isExplicit
-    ) {
-      throw new Error(
-        "MODEL_PROVIDER=openai requires explicit BEDROCK_MODEL_ID/runtimeBedrockModelId",
-      );
-    }
   }
 
   private createLambdaFactory(
@@ -311,12 +276,6 @@ export class FlutterAgentCorePocStack extends Stack {
         logGroup: lambdaLogGroup,
       });
       datasetBucket.grantReadWrite(fn);
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ["bedrock:Converse", "bedrock:InvokeModel"],
-          resources: ["*"],
-        }),
-      );
       return fn;
     };
   }
@@ -326,6 +285,7 @@ export class FlutterAgentCorePocStack extends Stack {
     modelGatewayConfig: ModelGatewayEnvConfig,
   ): PipelineLambdas {
     const lambdas = {
+      llmGatewayLambda: makeLambda("LlmGatewayFn", "llm_gateway_stage.handler"),
       parseLambda: makeLambda("ParseSopInputFn", "parse_stage.handler"),
       nativeLambda: makeLambda("RunNativeToolFn", "fetch_native_stage.handler"),
       mcpLambda: makeLambda("RunMcpToolFn", "fetch_mcp_stage.handler"),
@@ -339,6 +299,8 @@ export class FlutterAgentCorePocStack extends Stack {
         "jira_tool_target.handler",
       ),
     };
+    this.grantGatewayModelProviderAccess(lambdas.llmGatewayLambda);
+    this.configureLlmGatewayRouting(lambdas);
     this.grantModelGatewaySecrets(
       lambdas,
       modelGatewayConfig.openAiApiKeySecretArn,
@@ -358,13 +320,37 @@ export class FlutterAgentCorePocStack extends Stack {
       "OpenAiApiKeySecret",
       openAiApiKeySecretArn,
     );
-    openAiApiKeySecret.grantRead(lambdas.nativeLambda);
-    openAiApiKeySecret.grantRead(lambdas.mcpLambda);
-    openAiApiKeySecret.grantRead(lambdas.generateLambda);
+    openAiApiKeySecret.grantRead(lambdas.llmGatewayLambda);
+  }
+
+  private grantGatewayModelProviderAccess(
+    llmGatewayLambda: lambda.Function,
+  ): void {
+    llmGatewayLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:Converse", "bedrock:InvokeModel"],
+        resources: ["*"],
+      }),
+    );
+  }
+
+  private configureLlmGatewayRouting(lambdas: PipelineLambdas): void {
+    const gatewayFunctionName = lambdas.llmGatewayLambda.functionName;
+    const callers = [
+      lambdas.parseLambda,
+      lambdas.nativeLambda,
+      lambdas.mcpLambda,
+      lambdas.generateLambda,
+    ];
+    callers.forEach((caller) => {
+      caller.addEnvironment("LLM_GATEWAY_FUNCTION_NAME", gatewayFunctionName);
+      lambdas.llmGatewayLambda.grantInvoke(caller);
+    });
   }
 
   private createRuntimeResources(
-    runtimeBedrockModelId: string,
+    modelGatewayConfig: ModelGatewayEnvConfig,
+    llmGatewayLambda: lambda.Function,
   ): RuntimeResources {
     const runtimeArtifact = agentcore.AgentRuntimeArtifact.fromCodeAsset({
       path: path.join(__dirname, "../../runtime"),
@@ -384,19 +370,19 @@ export class FlutterAgentCorePocStack extends Stack {
       },
       environmentVariables: {
         JIRA_BASE_URL: "https://jira.atlassian.com",
-        BEDROCK_MODEL_ID: runtimeBedrockModelId,
+        MODEL_ID: modelGatewayConfig.modelId,
         BEDROCK_REGION: this.region,
+        MODEL_PROVIDER: modelGatewayConfig.modelProvider,
+        OPENAI_REASONING_EFFORT: modelGatewayConfig.openAiReasoningEffort,
+        OPENAI_TEXT_VERBOSITY: modelGatewayConfig.openAiTextVerbosity,
+        OPENAI_MAX_OUTPUT_TOKENS: modelGatewayConfig.openAiMaxOutputTokens,
+        LLM_GATEWAY_FUNCTION_NAME: llmGatewayLambda.functionName,
       },
       authorizerConfiguration:
         agentcore.RuntimeAuthorizerConfiguration.usingIAM(),
       tags: { project: "flutter-agentcore-poc" },
     });
-    runtime.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["bedrock:Converse", "bedrock:InvokeModel"],
-        resources: ["*"],
-      }),
-    );
+    llmGatewayLambda.grantInvoke(runtime);
     const runtimeEndpoint = runtime.addEndpoint("production", {
       version: "1",
       description: "Stable endpoint for PoC orchestration runs",

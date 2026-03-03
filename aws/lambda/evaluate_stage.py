@@ -112,6 +112,12 @@ def _calculate_run_metrics(event: Dict[str, Any]) -> Dict[str, Any]:
         "issue_key": intake_issue_key,
         "flow": event.get("flow", "native"),
         "tool_path": event.get("tool_path"),
+        "llm_route_path": str(event.get("llm_route_path", "gateway_service")),
+        "execution_mode": str(event.get("execution_mode", "route_parity")),
+        "mcp_binding_mode": str(
+            event.get("mcp_binding_mode", "model_constructed_schema_validated")
+        ),
+        "route_semantics_version": str(event.get("route_semantics_version", "2")),
         "tool_failure": tool_failure,
         "failure_reason": failure_reason,
         "issue_payload_complete": issue_payload_complete,

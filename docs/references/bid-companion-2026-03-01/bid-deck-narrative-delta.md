@@ -6,7 +6,7 @@ Run source: `reports/runs/nova-adv-large-postfix-20260302T214400Z/eval/eval-both
 ## What changed in the evidence position
 
 - The PoC is now evaluated against a model-driven adversarial dataset that stresses grounding ambiguity and MCP call-construction fragility.
-- Latest run uses parity-pinned model settings (`gateway_model_id == runtime_bedrock_model_id == eu.amazon.nova-lite-v1:0`).
+- Latest run uses parity-pinned model settings (`gateway_model_id == runtime_model_id == eu.amazon.nova-lite-v1:0`).
 - Both routes now pass deterministic release threshold in this benchmark, but MCP retains measurable penalties.
 
 ## Current narrative for the deck

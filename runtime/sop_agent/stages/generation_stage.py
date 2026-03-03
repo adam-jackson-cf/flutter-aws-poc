@@ -1,12 +1,22 @@
 import json
 import re
+from dataclasses import dataclass
 from typing import Any, Dict
 
-import boto3
+from ..tools.llm_gateway_invoke_client import invoke_llm_gateway
 
 
 class GenerationError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class GenerationModelConfig:
+    model_id: str
+    region: str
+    model_provider: str = "auto"
+    provider_options: Dict[str, Any] | None = None
+    dry_run: bool = False
 
 
 def _extract_json(raw_text: str) -> Dict[str, Any]:
@@ -25,11 +35,9 @@ def _extract_json(raw_text: str) -> Dict[str, Any]:
 def generate_response(
     intake: Dict[str, Any],
     issue: Dict[str, Any],
-    model_id: str,
-    region: str,
-    dry_run: bool = False,
+    config: GenerationModelConfig,
 ) -> Dict[str, Any]:
-    if dry_run:
+    if config.dry_run:
         return {
             "customer_response": f"We are tracking {issue.get('key', intake['issue_key'])} and will share the next update shortly.",
             "internal_actions": [
@@ -47,15 +55,14 @@ def generate_response(
         f"Issue data: {json.dumps(issue)}"
     )
 
-    client = boto3.client("bedrock-runtime", region_name=region)
-    response = client.converse(
-        modelId=model_id,
-        messages=[{"role": "user", "content": [{"text": prompt}]}],
-        inferenceConfig={"temperature": 0.2, "maxTokens": 700},
+    raw = invoke_llm_gateway(
+        model_id=config.model_id,
+        prompt=prompt,
+        region=config.region,
+        provider=config.model_provider,
+        provider_options=config.provider_options,
     )
-
-    text_parts = [chunk.get("text", "") for chunk in response["output"]["message"]["content"] if "text" in chunk]
-    payload = _extract_json("\n".join(text_parts))
+    payload = _extract_json(raw)
 
     if not isinstance(payload.get("internal_actions", []), list):
         raise GenerationError("internal_actions is not an array")

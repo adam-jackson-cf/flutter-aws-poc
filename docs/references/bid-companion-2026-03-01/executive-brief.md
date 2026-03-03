@@ -21,7 +21,7 @@ The PoC now has a stable and useful baseline on adversarial evaluation:
 ## What this PoC can credibly claim now
 
 - Real AgentCore Gateway MCP route and native route are both running under one deterministic harness.
-- Model/runtime parity is auditable in artifacts (`gateway_model_id`, `runtime_bedrock_model_id`).
+- Model/runtime parity is auditable in artifacts (`gateway_model_id`, `runtime_model_id`).
 - MCP penalties are measurable and attributable in metrics (`call_construction_failure_rate`, retries, latency, tokens, cost).
 
 ## What remains out of scope

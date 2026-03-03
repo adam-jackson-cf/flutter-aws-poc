@@ -12,7 +12,7 @@ Legend: `Accurate` = implemented and evidenced; `Partial` = some implementation 
 | Immutable synchronous audit semantics | Artifacts are persisted to S3, but no immutable Object Lock compliance-mode evidence path is shown | Misrepresented | Compliance-grade audit claim is not supported |
 | Private/no-direct-agent egress | Runtime network mode remains `PUBLIC`; Jira access is public endpoint egress | Misrepresented | Network-isolation narrative mismatch remains |
 | MCP path exists and is exercised through AgentCore Gateway | Gateway is deployed/READY and used by `mcp` flow in live evaluations | Accurate | Confirms real AgentCore MCP integration is under test |
-| Native vs MCP route parity with same task/model | Same dataset/harness and parity metadata (`gateway_model_id`, `runtime_bedrock_model_id`) are recorded per run | Accurate | Comparison integrity is auditable and reproducible |
+| Native vs MCP route parity with same task/model | Same dataset/harness and parity metadata (`gateway_model_id`, `runtime_model_id`) are recorded per run | Accurate | Comparison integrity is auditable and reproducible |
 | Deterministic metrics are release truth | `tool_failure_rate`, `business_success_rate`, `call_construction_*`, token/cost metrics, and release score are persisted per flow | Accurate | Decision signal is measurable and deterministic |
 | Contract governance across layers | Contract artifacts and semantic ownership checks run in quality gates | Accurate | Contract drift is less likely to pass silently |
 | Scheduler respects required execution contract | Nightly EventBridge input includes `expected_tool`; guard test enforces this | Accurate | Scheduled runs do not fail by construction on missing contract fields |

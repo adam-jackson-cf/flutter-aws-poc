@@ -376,7 +376,7 @@ def test_tooling_and_selection_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         tool_selection,
-        "call_llm_gateway_with_usage",
+        "invoke_llm_gateway_with_usage",
         lambda **kwargs: (_selection_llm_call(**kwargs), {"input_tokens": 3, "output_tokens": 1, "total_tokens": 4}),
     )
     selection = tool_selection.select_tool_with_model(
@@ -551,7 +551,7 @@ def test_gateway_client_runtime_config_stage_metrics_and_artifacts(monkeypatch: 
 
     monkeypatch.setattr(
         response_generation,
-        "call_llm_gateway_with_usage",
+        "invoke_llm_gateway_with_usage",
         lambda **kwargs: (_generation_llm_call(**kwargs), {"input_tokens": 4, "output_tokens": 2, "total_tokens": 6}),
     )
     parsed = response_generation.generate_customer_response(
@@ -568,7 +568,7 @@ def test_gateway_client_runtime_config_stage_metrics_and_artifacts(monkeypatch: 
 
     monkeypatch.setattr(
         response_generation,
-        "call_llm_gateway_with_usage",
+        "invoke_llm_gateway_with_usage",
         lambda **_kwargs: ('{"customer_response":"ok","internal_actions":"bad","risk_level":"low"}', {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
     )
     with pytest.raises(ValueError):
@@ -638,7 +638,7 @@ def test_request_grounding_module(monkeypatch: pytest.MonkeyPatch) -> None:
             {"input_tokens": 7, "output_tokens": 2, "total_tokens": 9},
         )
 
-    monkeypatch.setattr(request_grounding, "call_llm_gateway_with_usage", _llm_call)
+    monkeypatch.setattr(request_grounding, "invoke_llm_gateway_with_usage", _llm_call)
     monkeypatch.setenv("GROUNDING_MAX_ATTEMPTS", "2")
     grounded = request_grounding.resolve_request_grounding(
         intake_seed={

@@ -201,13 +201,13 @@ def test_runner_run_case_includes_openai_provider_options(monkeypatch: pytest.Mo
             expected_tool="jira_get_issue_by_key",
             dry_run=False,
             model_id="gpt-5.2-codex",
-            runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+            runtime_model_id="eu.amazon.nova-lite-v1:0",
             model_provider="openai",
             openai_reasoning_effort="high",
             openai_text_verbosity="medium",
         )
     )
-    assert captured["input"]["runtime_bedrock_model_id"] == "eu.amazon.nova-lite-v1:0"
+    assert captured["input"]["runtime_model_id"] == "eu.amazon.nova-lite-v1:0"
     assert captured["input"]["model_provider"] == "openai"
     assert captured["input"]["openai_reasoning_effort"] == "high"
     assert captured["input"]["openai_text_verbosity"] == "medium"

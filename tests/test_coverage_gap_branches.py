@@ -238,7 +238,7 @@ def test_tool_selection_request_grounding_fetch_and_evaluate_branches(monkeypatc
 
     monkeypatch.setattr(
         tool_selection,
-        "call_llm_gateway_with_usage",
+        "invoke_llm_gateway_with_usage",
         lambda **_kwargs: ('{"tool":"jira_get_issue_by_key","arguments":{"issue_key":"JRASERVER-1"},"reason":"ok"}', {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}),
     )
     selection = tool_selection.select_mcp_tool_call(
@@ -295,7 +295,7 @@ def test_tool_selection_request_grounding_fetch_and_evaluate_branches(monkeypatc
     monkeypatch.setenv("GROUNDING_MAX_ATTEMPTS", "1")
     monkeypatch.setattr(
         request_grounding,
-        "call_llm_gateway_with_usage",
+        "invoke_llm_gateway_with_usage",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("bad")),
     )
     grounding_result = request_grounding.resolve_request_grounding(
@@ -504,7 +504,7 @@ def test_runner_metrics_and_run_eval_helper_branches(tmp_path: Path) -> None:
             expected_tool="jira_get_issue_by_key",
             dry_run=False,
             model_id="gpt-5.2-codex",
-            runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+            runtime_model_id="eu.amazon.nova-lite-v1:0",
             bedrock_region="eu-west-1",
             model_provider="openai",
             openai_reasoning_effort="high",
@@ -641,3 +641,490 @@ def test_runner_metrics_and_run_eval_helper_branches(tmp_path: Path) -> None:
     assert run_eval._is_bedrock_model_identifier("arn:aws-cn:bedrock:cn-north-1:123:model/x") is True
     assert run_eval._is_bedrock_model_identifier("eu.amazon.nova-lite-v1:0") is True
     assert run_eval._is_bedrock_model_identifier("") is False
+
+
+def test_lambda_llm_gateway_stage_and_invoke_client_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    stage = _import_lambda_module("llm_gateway_stage")
+    invoke_client = _import_lambda_module("llm_gateway_invoke_client")
+
+    assert stage._safe_dict({"a": 1}) == {"a": 1}
+    assert stage._safe_dict("bad") == {}
+    assert stage._safe_str("  x  ") == "x"
+    assert stage._safe_str(1) == ""
+    with pytest.raises(ValueError, match="model_id_missing"):
+        stage._parse_request({"region": "eu-west-1", "prompt": "x"})
+    with pytest.raises(ValueError, match="region_missing"):
+        stage._parse_request({"model_id": "m", "prompt": "x"})
+    with pytest.raises(ValueError, match="prompt_missing"):
+        stage._parse_request({"model_id": "m", "region": "eu-west-1"})
+    assert stage._safe_usage("bad") == {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
+    monkeypatch.setattr(
+        stage,
+        "call_llm_gateway_with_usage",
+        lambda **_kwargs: ("ok", {"input_tokens": "2", "output_tokens": 3.7, "total_tokens": None}),
+    )
+    success = stage.handler(
+        {
+            "model_id": "model-a",
+            "provider": "openai",
+            "region": "eu-west-1",
+            "prompt": "hello",
+            "provider_options": {"openai": {"verbosity": "low"}},
+        },
+        None,
+    )
+    assert success["ok"] is True
+    assert success["text"] == "ok"
+    assert success["usage"]["input_tokens"] == 2
+    assert success["provider_used"] == "openai"
+
+    monkeypatch.setattr(stage, "call_llm_gateway_with_usage", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("boom:bad")))
+    failed = stage.handler({"model_id": "model-a", "provider": "auto", "region": "eu-west-1", "prompt": "hello"}, None)
+    assert failed["ok"] is False
+    assert failed["error_code"] == "boom"
+    assert stage.lambda_handler({"model_id": "model-a", "provider": "auto", "region": "eu-west-1", "prompt": "hello"}, None)["ok"] is False
+
+    monkeypatch.delenv("LLM_GATEWAY_FUNCTION_NAME", raising=False)
+    with pytest.raises(RuntimeError, match="llm_gateway_unconfigured"):
+        invoke_client._function_name()
+    monkeypatch.setenv("LLM_GATEWAY_FUNCTION_NAME", "fn")
+    assert invoke_client._function_name() == "fn"
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_MAX_ATTEMPTS", "bad")
+    with pytest.raises(ValueError, match="llm_gateway_invoke_max_attempts_invalid"):
+        invoke_client._max_attempts()
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_MAX_ATTEMPTS", "0")
+    with pytest.raises(ValueError, match="llm_gateway_invoke_max_attempts_invalid"):
+        invoke_client._max_attempts()
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_MAX_ATTEMPTS", "2")
+    assert invoke_client._max_attempts() == 2
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_TIMEOUT_SECONDS", "bad")
+    with pytest.raises(ValueError, match="llm_gateway_invoke_timeout_invalid"):
+        invoke_client._timeout_seconds()
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_TIMEOUT_SECONDS", "0")
+    with pytest.raises(ValueError, match="llm_gateway_invoke_timeout_invalid"):
+        invoke_client._timeout_seconds()
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_TIMEOUT_SECONDS", "2")
+    assert invoke_client._timeout_seconds() == 2.0
+
+    payload = invoke_client._payload(
+        invoke_client.GatewayInvokeRequest(
+            model_id="m",
+            provider="auto",
+            region="eu-west-1",
+            prompt="p",
+            provider_options=None,
+        )
+    )
+    assert b'"provider_options": {}' in payload
+
+    captured: Dict[str, Any] = {}
+    monkeypatch.setattr(
+        invoke_client.boto3,
+        "client",
+        lambda service, **kwargs: captured.update({"service": service, **kwargs}) or "client",
+    )
+    assert invoke_client._client("eu-west-1") == "client"
+    assert captured["service"] == "lambda"
+    assert invoke_client._safe_int(True) == 1
+    assert invoke_client._safe_int("bad") == 0
+    assert invoke_client._safe_int(None) == 0
+
+    with pytest.raises(RuntimeError, match="llm_gateway_error:gateway_error:unknown_error"):
+        invoke_client._parse_invoke_payload({"ok": False, "error_code": "", "error_message": ""})
+    parsed = invoke_client._parse_invoke_payload(
+        {"ok": True, "text": "x", "usage": "bad", "provider_used": "p", "model_used": "m", "latency_ms": 1.5}
+    )
+    assert parsed.text == "x"
+    assert parsed.usage["total_tokens"] == 0
+    assert invoke_client._retryable_error(RuntimeError("llm_gateway_invoke_status:503")) is True
+    assert invoke_client._retryable_error(RuntimeError("other")) is False
+    slept: Dict[str, float] = {}
+    monkeypatch.setattr(invoke_client.random, "uniform", lambda *_args: 0.01)
+    monkeypatch.setattr(invoke_client.time, "sleep", lambda seconds: slept.setdefault("seconds", seconds))
+    invoke_client._sleep_backoff(2)
+    assert slept["seconds"] > 0.0
+
+    class _Payload:
+        def __init__(self, raw: str) -> None:
+            self._raw = raw
+
+        def read(self) -> bytes:
+            return self._raw.encode("utf-8")
+
+    class _Client:
+        def __init__(self, response: Dict[str, Any]) -> None:
+            self._response = response
+
+        def invoke(self, **_kwargs: Any) -> Dict[str, Any]:
+            return self._response
+
+    request = invoke_client.GatewayInvokeRequest(
+        model_id="m",
+        provider="auto",
+        region="eu-west-1",
+        prompt="p",
+    )
+    monkeypatch.setenv("LLM_GATEWAY_FUNCTION_NAME", "fn")
+    monkeypatch.setattr(invoke_client, "_client", lambda _region: _Client({"StatusCode": 500}))
+    with pytest.raises(RuntimeError, match="llm_gateway_invoke_status:500"):
+        invoke_client._invoke_once(request)
+    monkeypatch.setattr(
+        invoke_client,
+        "_client",
+        lambda _region: _Client({"StatusCode": 200, "FunctionError": "Unhandled", "Payload": _Payload("raw")}),
+    )
+    with pytest.raises(RuntimeError, match="llm_gateway_function_error:Unhandled:raw"):
+        invoke_client._invoke_once(request)
+    monkeypatch.setattr(
+        invoke_client,
+        "_client",
+        lambda _region: _Client({"StatusCode": 200, "Payload": _Payload("{bad")}),
+    )
+    with pytest.raises(RuntimeError, match="llm_gateway_invoke_response_invalid_json"):
+        invoke_client._invoke_once(request)
+    monkeypatch.setattr(
+        invoke_client,
+        "_client",
+        lambda _region: _Client({"StatusCode": 200, "Payload": _Payload("[]")}),
+    )
+    with pytest.raises(RuntimeError, match="llm_gateway_invoke_response_invalid_payload"):
+        invoke_client._invoke_once(request)
+    monkeypatch.setattr(
+        invoke_client,
+        "_client",
+        lambda _region: _Client({"StatusCode": 200, "Payload": _Payload('{"ok": true, "text": "ok", "usage": {"input_tokens": 1}}')}),
+    )
+    assert invoke_client._invoke_once(request).text == "ok"
+
+    monkeypatch.setattr(invoke_client, "_max_attempts", lambda: 2)
+    attempts = {"count": 0}
+    monkeypatch.setattr(invoke_client, "_retryable_error", lambda _exc: True)
+    monkeypatch.setattr(invoke_client, "_sleep_backoff", lambda _attempt: None)
+    def _retry_once(_request: Any) -> Any:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("llm_gateway_invoke_status:503")
+        return invoke_client.GatewayInvokeResponse(
+            text="ok",
+            usage={"input_tokens": 1, "output_tokens": 2, "total_tokens": 3},
+            provider_used="auto",
+            model_used="m",
+            latency_ms=1.0,
+        )
+    monkeypatch.setattr(invoke_client, "_invoke_once", _retry_once)
+    assert invoke_client.invoke_llm_gateway_with_usage(model_id="m", prompt="p", region="eu-west-1")[0] == "ok"
+    monkeypatch.setattr(invoke_client, "_invoke_once", lambda _request: (_ for _ in ()).throw(RuntimeError("bad")))
+    monkeypatch.setattr(invoke_client, "_retryable_error", lambda _exc: False)
+    with pytest.raises(RuntimeError, match="llm_gateway_invoke_failed:bad"):
+        invoke_client.invoke_llm_gateway_with_usage(model_id="m", prompt="p", region="eu-west-1")
+    monkeypatch.setattr(invoke_client, "invoke_llm_gateway_with_usage", lambda **_kwargs: ("text", {"total_tokens": 1}))
+    assert invoke_client.invoke_llm_gateway(model_id="m", prompt="p", region="eu-west-1") == "text"
+
+
+def test_runtime_llm_gateway_invoke_and_grounding_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime_invoke = importlib.import_module("runtime.sop_agent.tools.llm_gateway_invoke_client")
+    grounding = importlib.import_module("runtime.sop_agent.stages.request_grounding_stage")
+    intake_domain = importlib.import_module("runtime.sop_agent.domain.intake")
+    intake_stage = importlib.import_module("runtime.sop_agent.stages.intake_stage")
+
+    assert intake_domain.extract_intake("JRASERVER-1 and JRASERVER-1")["candidate_issue_keys"] == ["JRASERVER-1"]
+    monkeypatch.setattr(intake_stage, "resolve_request_grounding", lambda **_kwargs: {"failure_reason": "x"})
+    with pytest.raises(intake_stage.IntakeError, match="grounding_resolution_failed:x"):
+        intake_stage.run_intake(
+            "JRASERVER-1",
+            intake_stage.IntakeModelConfig(model_id="m", region="eu-west-1", dry_run=True),
+        )
+
+    monkeypatch.delenv("LLM_GATEWAY_FUNCTION_NAME", raising=False)
+    with pytest.raises(RuntimeError, match="llm_gateway_unconfigured"):
+        runtime_invoke._function_name()
+    monkeypatch.setenv("LLM_GATEWAY_FUNCTION_NAME", "fn")
+    assert runtime_invoke._function_name() == "fn"
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_MAX_ATTEMPTS", "bad")
+    with pytest.raises(ValueError, match="llm_gateway_invoke_max_attempts_invalid"):
+        runtime_invoke._max_attempts()
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_MAX_ATTEMPTS", "0")
+    with pytest.raises(ValueError, match="llm_gateway_invoke_max_attempts_invalid"):
+        runtime_invoke._max_attempts()
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_MAX_ATTEMPTS", "1")
+    assert runtime_invoke._max_attempts() == 1
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_TIMEOUT_SECONDS", "bad")
+    with pytest.raises(ValueError, match="llm_gateway_invoke_timeout_invalid"):
+        runtime_invoke._timeout_seconds()
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_TIMEOUT_SECONDS", "0")
+    with pytest.raises(ValueError, match="llm_gateway_invoke_timeout_invalid"):
+        runtime_invoke._timeout_seconds()
+    monkeypatch.setenv("LLM_GATEWAY_INVOKE_TIMEOUT_SECONDS", "2")
+    assert runtime_invoke._timeout_seconds() == 2.0
+    assert b'"provider_options": {}' in runtime_invoke._invoke_payload(
+        runtime_invoke.GatewayInvokeRequest("m", "auto", "eu-west-1", "p", None)
+    )
+    assert runtime_invoke._safe_int(True) == 1
+    assert runtime_invoke._safe_int("bad") == 0
+    assert runtime_invoke._safe_int(None) == 0
+    monkeypatch.setattr(runtime_invoke.boto3, "client", lambda service, **kwargs: {"service": service, **kwargs})
+    assert runtime_invoke._lambda_client("eu-west-1")["service"] == "lambda"
+    assert runtime_invoke._retryable_error(RuntimeError("llm_gateway_invoke_status:429")) is True
+    assert runtime_invoke._retryable_error(RuntimeError("bad")) is False
+    monkeypatch.setattr(runtime_invoke.random, "uniform", lambda *_args: 0.0)
+    monkeypatch.setattr(runtime_invoke.time, "sleep", lambda _seconds: None)
+    runtime_invoke._sleep_backoff(1)
+    with pytest.raises(RuntimeError, match="llm_gateway_error:gateway_error:unknown_error"):
+        runtime_invoke._parse_response({"ok": False, "error_code": "", "error_message": ""})
+    assert runtime_invoke._parse_response({"ok": True, "text": "x", "usage": "bad"})[0] == "x"
+
+    class _Payload:
+        def __init__(self, raw: str) -> None:
+            self._raw = raw
+
+        def read(self) -> bytes:
+            return self._raw.encode("utf-8")
+
+    class _Client:
+        def __init__(self, response: Dict[str, Any]) -> None:
+            self._response = response
+
+        def invoke(self, **_kwargs: Any) -> Dict[str, Any]:
+            return self._response
+
+    request = runtime_invoke.GatewayInvokeRequest("m", "auto", "eu-west-1", "p", None)
+    monkeypatch.setattr(runtime_invoke, "_lambda_client", lambda _region: _Client({"StatusCode": 500}))
+    with pytest.raises(RuntimeError, match="llm_gateway_invoke_status:500"):
+        runtime_invoke._invoke_once(request)
+    monkeypatch.setattr(
+        runtime_invoke,
+        "_lambda_client",
+        lambda _region: _Client({"StatusCode": 200, "FunctionError": "Unhandled", "Payload": _Payload("x")}),
+    )
+    with pytest.raises(RuntimeError, match="llm_gateway_function_error:Unhandled:x"):
+        runtime_invoke._invoke_once(request)
+    monkeypatch.setattr(runtime_invoke, "_lambda_client", lambda _region: _Client({"StatusCode": 200, "Payload": _Payload("{bad")}))
+    with pytest.raises(RuntimeError, match="llm_gateway_invoke_response_invalid_json"):
+        runtime_invoke._invoke_once(request)
+    monkeypatch.setattr(runtime_invoke, "_lambda_client", lambda _region: _Client({"StatusCode": 200, "Payload": _Payload("[]")}))
+    with pytest.raises(RuntimeError, match="llm_gateway_invoke_response_invalid_payload"):
+        runtime_invoke._invoke_once(request)
+    monkeypatch.setattr(
+        runtime_invoke,
+        "_lambda_client",
+        lambda _region: _Client({"StatusCode": 200, "Payload": _Payload('{"ok": true, "text": "ok", "usage": {"input_tokens": 1}}')}),
+    )
+    assert runtime_invoke._invoke_once(request)[0] == "ok"
+
+    monkeypatch.setattr(runtime_invoke, "_max_attempts", lambda: 2)
+    calls = {"count": 0}
+    def _invoke_retry(_request: Any) -> tuple[str, Dict[str, int]]:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("llm_gateway_invoke_status:503")
+        return "ok", {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+    monkeypatch.setattr(runtime_invoke, "_invoke_once", _invoke_retry)
+    monkeypatch.setattr(runtime_invoke, "_retryable_error", lambda _exc: True)
+    monkeypatch.setattr(runtime_invoke, "_sleep_backoff", lambda _attempt: None)
+    assert runtime_invoke.invoke_llm_gateway_with_usage(model_id="m", prompt="p", region="eu-west-1")[0] == "ok"
+    monkeypatch.setattr(runtime_invoke, "_retryable_error", lambda _exc: False)
+    monkeypatch.setattr(runtime_invoke, "_invoke_once", lambda _request: (_ for _ in ()).throw(RuntimeError("bad")))
+    with pytest.raises(RuntimeError, match="llm_gateway_invoke_failed:bad"):
+        runtime_invoke.invoke_llm_gateway_with_usage(model_id="m", prompt="p", region="eu-west-1")
+    monkeypatch.setattr(runtime_invoke, "invoke_llm_gateway_with_usage", lambda **_kwargs: ("wrapped", {"total_tokens": 1}))
+    assert runtime_invoke.invoke_llm_gateway(model_id="m", prompt="p", region="eu-west-1") == "wrapped"
+
+    monkeypatch.setenv("GROUNDING_MAX_ATTEMPTS", "bad")
+    with pytest.raises(ValueError, match="grounding_max_attempts_invalid"):
+        grounding._max_attempts()
+    monkeypatch.setenv("GROUNDING_MAX_ATTEMPTS", "0")
+    with pytest.raises(ValueError, match="grounding_max_attempts_invalid"):
+        grounding._max_attempts()
+    monkeypatch.setenv("GROUNDING_MAX_ATTEMPTS", "2")
+    assert grounding._max_attempts() == 2
+    assert grounding._validation_error("bad", "JRASERVER-1", ["JRASERVER-1"]).startswith("grounding_invalid_intent")
+    assert grounding._validation_error("status_update", "BAD-1", ["JRASERVER-1"]).startswith("grounding_invalid_issue_key")
+    assert grounding._validation_error("status_update", "JRASERVER-1", ["JRASERVER-1"]) == ""
+    prompt = grounding._grounding_prompt(
+        intake_seed={"request_text": "Need JRASERVER-1"},
+        candidate_issue_keys=["JRASERVER-1"],
+        intent_hint="status_update",
+        retry_feedback="retry",
+    )
+    assert "Need JRASERVER-1" in prompt
+    monkeypatch.setattr(
+        grounding,
+        "invoke_llm_gateway",
+        lambda **_kwargs: '{"intent":"status_update","issue_key":"JRASERVER-1","reason":"ok"}',
+    )
+    assert grounding._grounding_attempt(
+        intake_seed={"request_text": "Need JRASERVER-1"},
+        config=grounding.GroundingConfig(model_id="m", region="eu-west-1", model_provider="auto", provider_options=None),
+        candidate_issue_keys=["JRASERVER-1"],
+        intent_hint="status_update",
+        retry_feedback="",
+    )[0] == "status_update"
+    monkeypatch.setattr(grounding, "invoke_llm_gateway", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert grounding._grounding_attempt(
+        intake_seed={"request_text": "Need JRASERVER-1"},
+        config=grounding.GroundingConfig(model_id="m", region="eu-west-1", model_provider="auto", provider_options=None),
+        candidate_issue_keys=["JRASERVER-1"],
+        intent_hint="status_update",
+        retry_feedback="",
+    )[3].startswith("grounding_response_invalid:")
+
+    with pytest.raises(ValueError, match="grounding_candidate_issue_keys_missing"):
+        grounding.resolve_request_grounding(
+            intake_seed={"request_text": "x", "candidate_issue_keys": []},
+            config=grounding.GroundingConfig(model_id="m", region="eu-west-1", model_provider="auto", provider_options=None),
+        )
+    dry = grounding.resolve_request_grounding(
+        intake_seed={"request_text": "x", "candidate_issue_keys": ["JRASERVER-1"], "intent_hint": "status_update"},
+        config=grounding.GroundingConfig(model_id="m", region="eu-west-1", model_provider="auto", provider_options=None, dry_run=True),
+    )
+    assert dry["issue_key"] == "JRASERVER-1"
+    attempts = {"count": 0}
+    def _grounding_retry(**_kwargs: Any) -> tuple[str, str, str, str]:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            return "", "", "", "grounding_invalid_issue_key:BAD-1"
+        return "status_update", "JRASERVER-1", "ok", ""
+    monkeypatch.setattr(grounding, "_grounding_attempt", _grounding_retry)
+    monkeypatch.setattr(grounding, "_max_attempts", lambda: 2)
+    recovered = grounding.resolve_request_grounding(
+        intake_seed={"request_text": "x", "candidate_issue_keys": ["JRASERVER-1"], "intent_hint": "status_update"},
+        config=grounding.GroundingConfig(model_id="m", region="eu-west-1", model_provider="auto", provider_options=None),
+    )
+    assert recovered["attempts"] == 2
+    assert recovered["failures"] == 1
+    monkeypatch.setattr(grounding, "_grounding_attempt", lambda **_kwargs: ("", "", "", "grounding_invalid_intent:bad"))
+    monkeypatch.setattr(grounding, "_max_attempts", lambda: 1)
+    exhausted = grounding.resolve_request_grounding(
+        intake_seed={"request_text": "x", "candidate_issue_keys": ["JRASERVER-1"], "intent_hint": "status_update"},
+        config=grounding.GroundingConfig(model_id="m", region="eu-west-1", model_provider="auto", provider_options=None),
+    )
+    assert exhausted["failure_reason"].startswith("grounding_invalid_intent")
+
+
+def test_runtime_tool_helper_branch_gaps(monkeypatch: pytest.MonkeyPatch) -> None:
+    mcp_flow = importlib.import_module("runtime.sop_agent.tools.jira_mcp_flow")
+    native_flow = importlib.import_module("runtime.sop_agent.tools.strands_native_flow")
+
+    assert mcp_flow._safe_int(True) == 1
+    assert mcp_flow._safe_int(2.4) == 2
+    assert mcp_flow._safe_int("bad") == 0
+    assert mcp_flow._safe_int(None) == 0
+    monkeypatch.setenv("MCP_CALL_CONSTRUCTION_MAX_ATTEMPTS", "bad")
+    with pytest.raises(ValueError, match="mcp_call_construction_max_attempts_invalid"):
+        mcp_flow._max_attempts()
+    monkeypatch.setenv("MCP_CALL_CONSTRUCTION_MAX_ATTEMPTS", "0")
+    with pytest.raises(ValueError, match="mcp_call_construction_max_attempts_invalid"):
+        mcp_flow._max_attempts()
+    monkeypatch.setenv("MCP_CALL_CONSTRUCTION_MAX_ATTEMPTS", "2")
+    assert mcp_flow._max_attempts() == 2
+
+    assert (
+        mcp_flow._tool_input_schema_summary(
+            {"inputSchema": {"required": "bad", "properties": {"issue_key": {"type": "string"}, "x": "bad"}}}
+        )
+        == "required=[]; properties=['issue_key:string']"
+    )
+    assert (
+        mcp_flow._tool_input_schema_summary(
+            {"inputSchema": {"required": ["issue_key"], "properties": ["bad"]}}
+        )
+        == "required=['issue_key']; properties=[]"
+    )
+    assert mcp_flow._default_arguments({"inputSchema": {"required": "bad"}}, "JRASERVER-1", "help") == {}
+    assert mcp_flow._default_arguments(
+        {"inputSchema": {"required": ["issue_key", "query", "note_text"]}},
+        "JRASERVER-1",
+        "help",
+    ) == {"issue_key": "JRASERVER-1", "query": "help", "note_text": "help"}
+    assert (
+        mcp_flow._validate_gateway_tool_arguments({"inputSchema": {"properties": {"issue_key": {"type": "string"}}}}, "bad")
+        == "mcp_tool_args_invalid:arguments_not_object"
+    )
+    assert (
+        mcp_flow._validate_gateway_tool_arguments({"inputSchema": "bad"}, {})
+        == "mcp_tool_args_invalid:input_schema_not_object"
+    )
+    assert (
+        mcp_flow._required_and_unknown_argument_error(
+            arguments={"extra": "x"},
+            required=[],
+            properties={"issue_key": {"type": "string"}},
+        )
+        == "mcp_tool_args_unknown_arguments:extra"
+    )
+    assert mcp_flow._input_schema_parts({"inputSchema": {"properties": [], "required": "x"}}) == ({}, [], "")
+    assert (
+        mcp_flow._argument_type_error(arguments={"x": "y"}, properties={"x": "bad"})
+        == ""
+    )
+    assert (
+        mcp_flow._argument_type_error(
+            arguments={"x": 1},
+            properties={"x": {"type": "string"}},
+        )
+        == "mcp_tool_args_invalid_type:x:expected_string"
+    )
+    assert (
+        mcp_flow._argument_type_error(
+            arguments={"x": [1]},
+            properties={"x": {"type": "array_string"}},
+        )
+        == "mcp_tool_args_invalid_type:x:expected_array_string"
+    )
+
+    flow = mcp_flow.McpJiraFlow.__new__(mcp_flow.McpJiraFlow)
+    flow._model_id = "m"
+    flow._region = "eu-west-1"
+    flow._model_provider = "auto"
+    flow._provider_options = {}
+    flow._mcp_client = type(
+        "DummyMcp",
+        (),
+        {
+            "list_tools": lambda self: [{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}],
+            "call_tool": lambda self, **_kwargs: {"result": {"key": "JRASERVER-1", "summary": "ok", "status": "Done"}},
+            "extract_json_payload": lambda self, payload: payload,
+        },
+    )()
+    monkeypatch.setenv("MCP_CALL_CONSTRUCTION_MAX_ATTEMPTS", "1")
+    monkeypatch.setattr(
+        flow,
+        "_select_tool",
+        lambda _selection_input: {"tool": "jira_get_issue_by_key", "arguments": "bad", "reason": "x"},
+    )
+    failed = flow.fetch_issue_with_selection(
+        intake={"issue_key": "JRASERVER-1", "request_text": "x", "intent": "general_triage"},
+        dry_run=False,
+    )
+    assert failed["tool_failure"] is True
+
+    assert native_flow.StrandsNativeFlow._status_snapshot({"key": "K", "status": "Done", "updated": "now"})["status"] == "Done"
+    assert native_flow.StrandsNativeFlow._priority_context({"key": "K", "priority": "High"})["risk_band"] == "high"
+    assert native_flow.StrandsNativeFlow._labels({"key": "K", "labels": ["a"]})["labels"] == ["a"]
+    assert native_flow.StrandsNativeFlow._project_key({"key": "JRASERVER-1"})["project_key"] == "JRASERVER"
+    assert native_flow.StrandsNativeFlow._updated({"key": "K", "updated": "now"})["updated"] == "now"
+
+    native = native_flow.StrandsNativeFlow(
+        jira_client=type(
+            "Jira",
+            (),
+            {
+                "get_issue": lambda self, _issue_key: {"key": "K"},
+                "write_issue_followup_note": lambda self, **_kwargs: {"key": "K"},
+            },
+        )(),
+        config=native_flow.NativeModelConfig(model_id="m", region="eu-west-1"),
+    )
+    with pytest.raises(native_flow.StrandsNativeFlowError, match="unsupported_native_tool"):
+        native._invoke_native_tool("unknown", {"issue_key": "JRASERVER-1", "request_text": "x"})
+    monkeypatch.setattr(
+        native,
+        "_invoke_native_tool",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    failed_native = native.fetch_issue_with_agent(
+        intake={"issue_key": "JRASERVER-1", "intent": "general_triage", "request_text": "x"},
+        dry_run=True,
+    )
+    assert failed_native["tool_failure"] is True

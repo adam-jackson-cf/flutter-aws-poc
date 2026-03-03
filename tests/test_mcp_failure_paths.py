@@ -26,8 +26,15 @@ def test_runtime_mcp_flow_scores_missing_issue_payload() -> None:
 
     flow = McpJiraFlow.__new__(McpJiraFlow)
     flow._mcp_client = DummyMcpClient()
-    flow._find_expected_tool = lambda tools: "jira_get_issue_by_key"
-    flow._select_tool = lambda _selection_input: {"tool": "jira_get_issue_by_key", "reason": "test"}
+    flow._model_id = "model"
+    flow._region = "eu-west-1"
+    flow._model_provider = "auto"
+    flow._provider_options = {}
+    flow._select_tool = lambda _selection_input: {
+        "tool": "jira_get_issue_by_key",
+        "arguments": {"issue_key": "JRASERVER-1"},
+        "reason": "test",
+    }
 
     result = flow.fetch_issue_with_selection(
         intake={"issue_key": "JRASERVER-1", "request_text": "Please triage JRASERVER-1"},

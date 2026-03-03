@@ -16,7 +16,7 @@ def test_nightly_rule_includes_expected_tool_input() -> None:
     assert 'expected_tool: "jira_get_issue_priority_context"' in content
 
 
-def test_runtime_model_binding_uses_bedrock_specific_setting() -> None:
+def test_runtime_model_binding_uses_gateway_model_setting() -> None:
     stack_file = (
         Path(__file__).resolve().parents[1]
         / "infra"
@@ -25,13 +25,12 @@ def test_runtime_model_binding_uses_bedrock_specific_setting() -> None:
     )
     content = stack_file.read_text(encoding="utf-8")
 
-    assert "runtimeBedrockModelConfig" in content
-    assert "BEDROCK_MODEL_ID: runtimeBedrockModelId" in content
+    assert "modelGatewayConfig.modelId" in content
+    assert "MODEL_ID: modelGatewayConfig.modelId" in content
     assert "createRuntimeResources(" in content
-    assert "runtimeBedrockModelConfig.modelId" in content
 
 
-def test_openai_requires_explicit_runtime_bedrock_model() -> None:
+def test_stack_has_no_openai_runtime_bedrock_guard() -> None:
     stack_file = (
         Path(__file__).resolve().parents[1]
         / "infra"
@@ -40,8 +39,8 @@ def test_openai_requires_explicit_runtime_bedrock_model() -> None:
     )
     content = stack_file.read_text(encoding="utf-8")
 
-    assert "MODEL_PROVIDER=openai requires explicit BEDROCK_MODEL_ID/runtimeBedrockModelId" in content
-    assert "runtimeBedrockModelConfig.isExplicit" in content
+    assert "MODEL_PROVIDER=openai requires explicit BEDROCK_MODEL_ID/runtimeBedrockModelId" not in content
+    assert "runtimeBedrockModelConfig.isExplicit" not in content
 
 
 def test_stack_does_not_hardcode_non_eu_region_model_guard() -> None:

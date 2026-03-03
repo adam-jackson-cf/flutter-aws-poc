@@ -24,7 +24,7 @@ def test_runtime_main_wrappers(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_sop_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JIRA_BASE_URL", "https://jira.example.com")
     monkeypatch.setenv("BEDROCK_REGION", "eu-west-2")
-    monkeypatch.setenv("BEDROCK_MODEL_ID", "model-x")
+    monkeypatch.setenv("MODEL_ID", "model-x")
     monkeypatch.setenv("MCP_GATEWAY_URL", "https://gateway.example.com")
     config_module = importlib.reload(importlib.import_module("runtime.sop_agent.config"))
     cfg = config_module.SopConfig()
@@ -121,7 +121,11 @@ def test_sop_pipeline_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pipeline_mod, "JiraSdkClient", _JiraClient)
     monkeypatch.setattr(pipeline_mod, "StrandsNativeFlow", _Native)
     monkeypatch.setattr(pipeline_mod, "McpJiraFlow", _Mcp)
-    monkeypatch.setattr(pipeline_mod, "run_intake", lambda text: {"request_text": text, "issue_key": "JRASERVER-1", "intent": "status_update"})
+    monkeypatch.setattr(
+        pipeline_mod,
+        "run_intake",
+        lambda text, _config: {"request_text": text, "issue_key": "JRASERVER-1", "intent": "status_update"},
+    )
     monkeypatch.setattr(
         pipeline_mod,
         "generate_response",
@@ -168,46 +172,42 @@ def test_generation_stage_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     dry = generation_mod.generate_response(
         intake={"issue_key": "JRASERVER-1", "intent": "bug_triage"},
         issue={},
-        model_id="m",
-        region="eu-west-1",
-        dry_run=True,
+        config=generation_mod.GenerationModelConfig(
+            model_id="m",
+            region="eu-west-1",
+            dry_run=True,
+        ),
     )
     assert dry["risk_level"] == "medium"
 
-    class _Client:
-        def converse(self, **_kwargs: Any) -> Dict[str, Any]:
-            return {
-                "output": {
-                    "message": {
-                        "content": [
-                            {
-                                "text": '{"customer_response":"ok","internal_actions":["a","b"],"risk_level":"high"}'
-                            }
-                        ]
-                    }
-                }
-            }
-
-    monkeypatch.setattr(generation_mod.boto3, "client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr(
+        generation_mod,
+        "invoke_llm_gateway",
+        lambda **_kwargs: '{"customer_response":"ok","internal_actions":["a","b"],"risk_level":"high"}',
+    )
     out = generation_mod.generate_response(
         intake={"issue_key": "JRASERVER-1", "intent": "feature_request"},
         issue={"key": "JRASERVER-1"},
-        model_id="m",
-        region="eu-west-1",
+        config=generation_mod.GenerationModelConfig(
+            model_id="m",
+            region="eu-west-1",
+        ),
     )
     assert out["risk_level"] == "high"
 
-    class _BadClient:
-        def converse(self, **_kwargs: Any) -> Dict[str, Any]:
-            return {"output": {"message": {"content": [{"text": '{"customer_response":"ok","internal_actions":"bad","risk_level":"low"}'}]}}}
-
-    monkeypatch.setattr(generation_mod.boto3, "client", lambda *_args, **_kwargs: _BadClient())
+    monkeypatch.setattr(
+        generation_mod,
+        "invoke_llm_gateway",
+        lambda **_kwargs: '{"customer_response":"ok","internal_actions":"bad","risk_level":"low"}',
+    )
     with pytest.raises(generation_mod.GenerationError):
         generation_mod.generate_response(
             intake={"issue_key": "JRASERVER-1", "intent": "feature_request"},
             issue={"key": "JRASERVER-1"},
-            model_id="m",
-            region="eu-west-1",
+            config=generation_mod.GenerationModelConfig(
+                model_id="m",
+                region="eu-west-1",
+            ),
         )
 
     intake_mod = importlib.import_module("runtime.sop_agent.stages.intake_stage")

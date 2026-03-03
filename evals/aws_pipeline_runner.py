@@ -35,12 +35,16 @@ class PipelineRunRequest:
     expected_tool: str
     dry_run: bool
     model_id: str = ""
-    runtime_bedrock_model_id: str = ""
+    runtime_model_id: str = ""
     bedrock_region: str = ""
     model_provider: str = ""
     openai_reasoning_effort: str = ""
     openai_text_verbosity: str = ""
     openai_max_output_tokens: int = 0
+    llm_route_path: str = ""
+    execution_mode: str = ""
+    mcp_binding_mode: str = ""
+    route_semantics_version: str = ""
 
 
 @dataclass(frozen=True)
@@ -106,21 +110,29 @@ class AwsPipelineRunner:
             "expected_tool": request.expected_tool,
             "dry_run": request.dry_run,
         }
-        if request.model_id:
-            payload["model_id"] = request.model_id
-        if request.runtime_bedrock_model_id:
-            payload["runtime_bedrock_model_id"] = request.runtime_bedrock_model_id
-        if request.bedrock_region:
-            payload["bedrock_region"] = request.bedrock_region
-        if request.model_provider:
-            payload["model_provider"] = request.model_provider
-        if request.openai_reasoning_effort:
-            payload["openai_reasoning_effort"] = request.openai_reasoning_effort
-        if request.openai_text_verbosity:
-            payload["openai_text_verbosity"] = request.openai_text_verbosity
-        if request.openai_max_output_tokens > 0:
-            payload["openai_max_output_tokens"] = request.openai_max_output_tokens
+        payload.update(AwsPipelineRunner._optional_execution_fields(request))
         return payload
+
+    @staticmethod
+    def _optional_execution_fields(request: PipelineRunRequest) -> Dict[str, Any]:
+        optional: Dict[str, Any] = {}
+        for key, value in (
+            ("model_id", request.model_id),
+            ("runtime_model_id", request.runtime_model_id),
+            ("bedrock_region", request.bedrock_region),
+            ("model_provider", request.model_provider),
+            ("openai_reasoning_effort", request.openai_reasoning_effort),
+            ("openai_text_verbosity", request.openai_text_verbosity),
+            ("llm_route_path", request.llm_route_path),
+            ("execution_mode", request.execution_mode),
+            ("mcp_binding_mode", request.mcp_binding_mode),
+            ("route_semantics_version", request.route_semantics_version),
+        ):
+            if value:
+                optional[key] = value
+        if request.openai_max_output_tokens > 0:
+            optional["openai_max_output_tokens"] = request.openai_max_output_tokens
+        return optional
 
     def _wait_for_execution_result(
         self,

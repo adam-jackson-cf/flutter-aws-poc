@@ -181,9 +181,8 @@ Notes:
 - runtime execution input must include `expected_tool` for each case (manual or scheduled)
 - eval runner validates artifact schema per flow and fails fast on drift (`artifact_schema_invalid:*`)
 - lambda model calls route through `llm_gateway_client` with `MODEL_ID` and provider mode `MODEL_PROVIDER=auto|bedrock|openai`
-- AgentCore runtime remains Bedrock-only and reads `BEDROCK_MODEL_ID` (not gateway `MODEL_ID`)
-- CDK deploy guard: `MODEL_PROVIDER=openai` always requires explicit `BEDROCK_MODEL_ID` (or `runtimeBedrockModelId` context); default value is allowed when explicitly set
-- CDK region guard: deployments outside `eu-west-1` require explicit `MODEL_ID` and `BEDROCK_MODEL_ID`/`runtimeBedrockModelId`
+- AgentCore runtime model calls also route through the LLM gateway and read `MODEL_ID` + `MODEL_PROVIDER`
+- CDK region guard: deployments outside `eu-west-1` require explicit `MODEL_ID`
 - PoC lifecycle guard: `EPHEMERAL_STACK=false` retains logs and artifacts; set `EPHEMERAL_STACK=true` for disposable stacks
 - for OpenAI models in deployed lambdas, set `OPENAI_API_KEY_SECRET_ARN` (Secrets Manager) and redeploy infra
 - OpenAI runtime options default to `OPENAI_REASONING_EFFORT=medium`, `OPENAI_TEXT_VERBOSITY=medium`, and `OPENAI_MAX_OUTPUT_TOKENS=2000` (or override with eval CLI flags)
@@ -208,7 +207,6 @@ Evaluations:
 - Adversarial run (point-1 stress): `python evals/run_eval.py --dataset evals/golden/sop_cases_adversarial.jsonl --flow both --scope route --iterations 1 --run-id 20260302T220000Z --state-machine-arn "$STATE_MACHINE_ARN" --aws-region "$AWS_REGION"`
 - Adversarial run with CloudWatch: append `--publish-cloudwatch`
 - Model override for controlled comparisons: append `--model-id "<MODEL_ID>" --bedrock-region "$AWS_REGION"`
-- Runtime parity pin for auditable runs: append `--runtime-bedrock-model-id "<BEDROCK_MODEL_ID>"`
 - Provider override for controlled comparisons: append `--model-provider auto|bedrock|openai`
 - OpenAI option override: append `--openai-reasoning-effort <low|medium|high> --openai-text-verbosity <low|medium|high> --openai-max-output-tokens <int>`
 - Pricing override for a run (optional): append `--price-input-per-1m-tokens-usd <float> --price-output-per-1m-tokens-usd <float>`

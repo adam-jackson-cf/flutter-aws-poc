@@ -71,6 +71,10 @@ run_architecture_boundary_check() {
   python3 scripts/check-architecture-boundaries.py
 }
 
+run_llm_gateway_boundary_check() {
+  python3 scripts/check-llm-gateway-boundary.py
+}
+
 run_cdk_synth() {
   if [[ "${CI:-}" == "true" ]] && [[ -f "infra/package.json" ]] && grep -q '"cdk:synth:ci"' "infra/package.json"; then
     npm --prefix infra run cdk:synth:ci
@@ -190,6 +194,8 @@ run_step "Cross-runtime complexity lint (cc <= ${COMPLEXITY_MAX}, length <= ${LE
 run_step "Semantic contract ownership guard" run_semantic_contract_ownership_check
 
 run_step "Architecture boundary guard" run_architecture_boundary_check
+
+run_step "LLM gateway non-bypass guard" run_llm_gateway_boundary_check
 
 if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; then
   run_step "CDK synth (infra)" run_cdk_synth

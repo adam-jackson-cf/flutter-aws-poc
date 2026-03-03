@@ -52,7 +52,14 @@ def test_intent_classification_parity(request_text: str, expected_intent: str) -
 def test_intake_risk_hint_parity() -> None:
     intake_domain = _import_lambda_module("intake_domain")
     request_text = "Need update for JRASERVER-2 regarding security escalation and compliance"
-    runtime_intake = intake_stage.run_intake(request_text)
+    runtime_intake = intake_stage.run_intake(
+        request_text,
+        intake_stage.IntakeModelConfig(
+            model_id="eu.amazon.nova-lite-v1:0",
+            region="eu-west-1",
+            dry_run=True,
+        ),
+    )
     lambda_intake = intake_domain.extract_intake(request_text)
     assert runtime_intake["risk_hints"] == lambda_intake["risk_hints"]
 

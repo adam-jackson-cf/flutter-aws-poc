@@ -1,7 +1,5 @@
 from .contracts import (
-    MCP_EXPECTED_TOOL,
     MCP_TOOL_SCOPE_BY_INTENT,
-    NATIVE_EXPECTED_TOOL,
     NATIVE_TOOL_SCOPE_BY_INTENT,
     TOOL_COMPLETENESS_FIELDS_BY_OPERATION,
 )
@@ -15,9 +13,7 @@ from .tooling import (
 )
 
 __all__ = [
-    "MCP_EXPECTED_TOOL",
     "MCP_TOOL_SCOPE_BY_INTENT",
-    "NATIVE_EXPECTED_TOOL",
     "NATIVE_TOOL_SCOPE_BY_INTENT",
     "TOOL_COMPLETENESS_FIELDS_BY_OPERATION",
     "build_tool_arguments",

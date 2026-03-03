@@ -3,8 +3,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from bedrock_client import extract_json_object
-from llm_gateway_client import call_llm_gateway_with_usage
+from json_extract import extract_json_object
+from llm_gateway_invoke_client import invoke_llm_gateway_with_usage
 
 ALLOWED_INTENTS = ("bug_triage", "feature_request", "status_update", "general_triage")
 
@@ -176,7 +176,7 @@ def _grounding_attempt_payload(
         schema_name="request_grounding",
         response_schema=_grounding_response_schema(candidate_issue_keys),
     )
-    raw, usage = call_llm_gateway_with_usage(
+    raw, usage = invoke_llm_gateway_with_usage(
         model_id=llm_config.model_id,
         prompt=prompt,
         region=llm_config.region,

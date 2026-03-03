@@ -60,7 +60,7 @@ def test_parse_args_and_simple_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     assert args.price_input_per_1m_tokens_usd == ""
     assert args.price_output_per_1m_tokens_usd == ""
     assert args.model_id == "gpt-5.2-codex"
-    assert args.runtime_bedrock_model_id == "eu.amazon.nova-lite-v1:0"
+    assert args.runtime_model_id == "gpt-5.2-codex"
     assert args.judge_model_id == "eu.amazon.nova-lite-v1:0"
     assert run_eval.utc_compact_now().endswith("Z")
     assert run_eval.sanitize_run_id(" bad id ") == "bad-id"
@@ -84,7 +84,7 @@ def test_eval_input_dataclasses_are_frozen() -> None:
         scope="route",
         iterations=1,
         model_id="eu.amazon.nova-lite-v1:0",
-        runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+        runtime_model_id="eu.amazon.nova-lite-v1:0",
         bedrock_region="eu-west-1",
         model_provider="auto",
         runner=object(),
@@ -317,7 +317,7 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Runner:
         def run_case(self, request: Any) -> PipelineRunResult:
             assert request.model_id == "eu.amazon.nova-lite-v1:0"
-            assert request.runtime_bedrock_model_id == "eu.amazon.nova-lite-v1:0"
+            assert request.runtime_model_id == "eu.amazon.nova-lite-v1:0"
             assert request.bedrock_region == "eu-west-1"
             assert request.model_provider == "auto"
             assert request.openai_reasoning_effort == "medium"
@@ -335,7 +335,7 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
         scope="route",
         iterations=2,
         model_id="eu.amazon.nova-lite-v1:0",
-        runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+        runtime_model_id="eu.amazon.nova-lite-v1:0",
         bedrock_region="eu-west-1",
         model_provider="auto",
         runner=_Runner(),
@@ -386,7 +386,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
         state_machine_arn="arn",
         aws_region="eu-west-1",
         model_id="eu.amazon.nova-lite-v1:0",
-        runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+        runtime_model_id="eu.amazon.nova-lite-v1:0",
         bedrock_region="eu-west-1",
         model_provider="auto",
         enable_judge=False,
@@ -401,7 +401,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 state_machine_arn="",
                 aws_region="eu-west-1",
                 model_id="eu.amazon.nova-lite-v1:0",
-                runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+                runtime_model_id="eu.amazon.nova-lite-v1:0",
                 bedrock_region="eu-west-1",
                 model_provider="auto",
                 enable_judge=False,
@@ -416,7 +416,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 state_machine_arn="arn",
                 aws_region="",
                 model_id="eu.amazon.nova-lite-v1:0",
-                runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+                runtime_model_id="eu.amazon.nova-lite-v1:0",
                 bedrock_region="eu-west-1",
                 model_provider="auto",
                 enable_judge=False,
@@ -431,7 +431,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 state_machine_arn="arn",
                 aws_region="eu-west-1",
                 model_id="",
-                runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+                runtime_model_id="eu.amazon.nova-lite-v1:0",
                 bedrock_region="eu-west-1",
                 model_provider="auto",
                 enable_judge=False,
@@ -446,7 +446,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 state_machine_arn="arn",
                 aws_region="eu-west-1",
                 model_id="eu.amazon.nova-lite-v1:0",
-                runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+                runtime_model_id="eu.amazon.nova-lite-v1:0",
                 bedrock_region="",
                 model_provider="auto",
                 enable_judge=False,
@@ -461,7 +461,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 state_machine_arn="arn",
                 aws_region="eu",
                 model_id="eu.amazon.nova-lite-v1:0",
-                runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+                runtime_model_id="eu.amazon.nova-lite-v1:0",
                 bedrock_region="eu-west-1",
                 model_provider="auto",
                 enable_judge=True,
@@ -476,7 +476,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 state_machine_arn="arn",
                 aws_region="eu-west-1",
                 model_id="gpt-5.2-codex",
-                runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+                runtime_model_id="eu.amazon.nova-lite-v1:0",
                 bedrock_region="eu-west-1",
                 model_provider="openai",
                 enable_judge=True,
@@ -491,7 +491,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 state_machine_arn="arn",
                 aws_region="eu-west-1",
                 model_id="eu.amazon.nova-lite-v1:0",
-                runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+                runtime_model_id="eu.amazon.nova-lite-v1:0",
                 bedrock_region="eu-west-1",
                 model_provider="auto",
                 enable_judge=False,
@@ -506,7 +506,7 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 state_machine_arn="arn",
                 aws_region="eu-west-1",
                 model_id="eu.amazon.nova-lite-v1:0",
-                runtime_bedrock_model_id="",
+                runtime_model_id="",
                 bedrock_region="eu-west-1",
                 model_provider="auto",
                 enable_judge=False,
@@ -515,21 +515,20 @@ def test_runtime_validation_and_plumbing(tmp_path: Path, monkeypatch: pytest.Mon
                 openai_max_output_tokens=2000,
             )
         )
-    with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(
-            Namespace(
-                state_machine_arn="arn",
-                aws_region="eu-west-1",
-                model_id="eu.amazon.nova-lite-v1:0",
-                runtime_bedrock_model_id="gpt-5.2-codex",
-                bedrock_region="eu-west-1",
-                model_provider="auto",
-                enable_judge=False,
-                judge_model_id="eu.amazon.nova-lite-v1:0",
-                judge_region="",
-                openai_max_output_tokens=2000,
-            )
+    run_eval._validate_runtime_args(
+        Namespace(
+            state_machine_arn="arn",
+            aws_region="eu-west-1",
+            model_id="eu.amazon.nova-lite-v1:0",
+            runtime_model_id="gpt-5.2-codex",
+            bedrock_region="eu-west-1",
+            model_provider="auto",
+            enable_judge=False,
+            judge_model_id="eu.amazon.nova-lite-v1:0",
+            judge_region="",
+            openai_max_output_tokens=2000,
         )
+    )
 
     captured_runner_config: Dict[str, Any] = {}
 
@@ -834,7 +833,7 @@ def test_main_and_module_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
             poll_interval_seconds=0.1,
             execution_timeout_seconds=1,
             model_id="eu.amazon.nova-lite-v1:0",
-            runtime_bedrock_model_id="eu.amazon.nova-lite-v1:0",
+            runtime_model_id="eu.amazon.nova-lite-v1:0",
             bedrock_region="eu-west-1",
             model_provider="auto",
             openai_reasoning_effort="medium",
@@ -856,7 +855,7 @@ def test_main_and_module_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert written["run_id"] == "run-1"
     assert "comparison" in written
     assert written["model"]["model_id"] == "eu.amazon.nova-lite-v1:0"
-    assert written["model"]["runtime_bedrock_model_id"] == "eu.amazon.nova-lite-v1:0"
+    assert written["model"]["runtime_model_id"] == "eu.amazon.nova-lite-v1:0"
     assert written["model"]["provider"] == "auto"
     assert written["model"]["openai_reasoning_effort"] == "medium"
     assert written["model"]["openai_text_verbosity"] == "medium"
@@ -868,7 +867,7 @@ def test_main_and_module_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert written["model_pricing_snapshot"]["pricing_model_key"] == "eu.amazon.nova-lite-v1:0"
     assert written["model_pricing_snapshot"]["reasoning_effort"] == "medium"
     assert written["model_parity"]["gateway_model_id"] == "eu.amazon.nova-lite-v1:0"
-    assert written["model_parity"]["runtime_bedrock_model_id"] == "eu.amazon.nova-lite-v1:0"
+    assert written["model_parity"]["runtime_model_id"] == "eu.amazon.nova-lite-v1:0"
 
     # Execute __main__ path via subprocess CLI smoke test (argument validation path).
     completed = subprocess.run(

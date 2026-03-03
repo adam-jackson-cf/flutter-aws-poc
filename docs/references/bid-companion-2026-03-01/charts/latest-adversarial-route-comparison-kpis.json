@@ -6,7 +6,7 @@
   "iterations": 4,
   "model": {
     "gateway_model_id": "eu.amazon.nova-lite-v1:0",
-    "runtime_bedrock_model_id": "eu.amazon.nova-lite-v1:0",
+    "runtime_model_id": "eu.amazon.nova-lite-v1:0",
     "provider": "bedrock",
     "bedrock_region": "eu-west-1"
   },

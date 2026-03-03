@@ -20,7 +20,6 @@ export interface GatewayToolContract {
   output_schema: ContractSchema;
 }
 
-export const MCP_EXPECTED_TOOL = "jira_get_issue_by_key";
 export const MCP_TOOL_SCOPE_BY_INTENT: Record<string, string[]> = {
   "bug_triage": [
     "jira_get_issue_by_key",

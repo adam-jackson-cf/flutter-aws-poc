@@ -159,90 +159,74 @@ def test_strands_native_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     tool_result = importlib.import_module("runtime.sop_agent.tools.tool_flow_result")
     assert tool_result.failure_issue("JRASERVER-1", "x")["failure_reason"] == "x"
 
-    jira_client = SimpleNamespace(get_issue=lambda issue_key: {"key": issue_key, "status": "Done", "summary": "ok"})
-    flow = mod.StrandsNativeFlow(jira_client=jira_client, model_id="model", region="eu-west-1")
-    dry = flow.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "general_triage"}, dry_run=True)
-    assert dry["tool_failure"] is False
-
-    monkeypatch.setattr(mod, "tool", lambda fn: fn)
-    monkeypatch.setattr(mod, "BedrockModel", lambda **_kwargs: object())
-
-    class _ErrAgent:
-        def __init__(self, **_kwargs: Any) -> None:
-            pass
-
-        def __call__(self, _prompt: str) -> Any:
-            raise RuntimeError("agent boom")
-
-    monkeypatch.setattr(mod, "Agent", _ErrAgent)
-    out = flow.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "general_triage"}, dry_run=False)
-    assert out["tool_failure"] is True
-    assert out["issue"]["failure_reason"].startswith("native_agent_error")
-
-    class _Result:
-        def __init__(self, payload: Dict[str, Any]) -> None:
-            self._payload = payload
-
-        def to_dict(self) -> Dict[str, Any]:
-            return {"message": {"content": [{"text": json.dumps(self._payload)}]}}
-
-    def _agent_for(payload: Dict[str, Any]) -> Any:
-        class _Agent:
-            def __init__(self, **_kwargs: Any) -> None:
-                pass
-
-            def __call__(self, _prompt: str) -> _Result:
-                return _Result(payload)
-
-        return _Agent
-
-    monkeypatch.setattr(mod, "Agent", _agent_for({"selected_tool": "unknown", "reason": "x", "issue": {"key": "JRASERVER-1"}}))
-    out = flow.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "general_triage"}, dry_run=False)
-    assert out["issue"]["failure_reason"].startswith("selected_unknown_tool")
-
-    monkeypatch.setattr(mod, "Agent", _agent_for({"selected_tool": "jira_api_get_issue_status_snapshot", "reason": "x", "issue": {"key": "JRASERVER-1"}}))
-    out = flow.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "general_triage"}, dry_run=False)
-    assert out["issue"]["failure_reason"].startswith("selected_wrong_tool")
-
-    monkeypatch.setattr(mod, "Agent", _agent_for({"selected_tool": "jira_api_get_issue_by_key", "reason": "x", "issue": {"summary": "missing key"}}))
-    out = flow.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "general_triage"}, dry_run=False)
-    assert out["issue"]["failure_reason"] == "native_missing_issue_payload"
-
-    monkeypatch.setattr(mod, "Agent", _agent_for({"selected_tool": "jira_api_get_issue_by_key", "reason": "ok", "issue": {"key": "JRASERVER-1"}}))
-    out = flow.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "general_triage"}, dry_run=False)
-    assert out["tool_failure"] is False
-    assert out["selection"]["tool"] == "jira_api_get_issue_by_key"
-
-    class _InvokeToolsAgent:
-        def __init__(self, **kwargs: Any) -> None:
-            self._tools = kwargs["tools"]
-
-        def __call__(self, _prompt: str) -> _Result:
-            for fn in self._tools:
-                fn("JRASERVER-1")
-            return _Result({"selected_tool": "jira_api_get_issue_by_key", "reason": "ok", "issue": {"key": "JRASERVER-1"}})
-
-    rich_jira_client = SimpleNamespace(
-        get_issue=lambda issue_key: {
-            "key": issue_key,
-            "status": "Done",
-            "updated": "today",
-            "priority": "High",
-            "labels": ["a", "b"],
-            "summary": "ok",
-        },
+    jira_client = SimpleNamespace(
+        get_issue=lambda issue_key: {"key": issue_key, "status": "Done", "summary": "ok"},
         write_issue_followup_note=lambda issue_key, note_text: {
             "key": issue_key,
             "write_status": "committed",
-            "note_digest": "digest",
+            "write_artifact_s3_uri": "s3://bucket/artifact.json",
             "note_text": note_text,
         },
     )
-    flow2 = mod.StrandsNativeFlow(jira_client=rich_jira_client, model_id="model", region="eu-west-1")
-    monkeypatch.setattr(mod, "Agent", _InvokeToolsAgent)
-    flow2.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "bug_triage"}, dry_run=False)
-    flow2.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "status_update"}, dry_run=False)
-    flow2.fetch_issue_with_agent({"issue_key": "JRASERVER-1", "intent": "feature_request"}, dry_run=False)
+    flow = mod.StrandsNativeFlow(
+        jira_client=jira_client,
+        config=mod.NativeModelConfig(model_id="model", region="eu-west-1"),
+    )
+    dry = flow.fetch_issue_with_agent(
+        {"issue_key": "JRASERVER-1", "intent": "general_triage", "request_text": "need update"},
+        dry_run=True,
+    )
+    assert dry["tool_failure"] is False
+
+    monkeypatch.setattr(mod, "invoke_llm_gateway", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("agent boom")))
+    out = flow.fetch_issue_with_agent(
+        {"issue_key": "JRASERVER-1", "intent": "general_triage", "request_text": "need update"},
+        dry_run=False,
+    )
+    assert out["tool_failure"] is True
+    assert out["issue"]["failure_reason"].startswith("native_agent_error")
+
+    monkeypatch.setattr(mod, "invoke_llm_gateway", lambda **_kwargs: '{"tool":"unknown","reason":"x"}')
+    out = flow.fetch_issue_with_agent(
+        {"issue_key": "JRASERVER-1", "intent": "general_triage", "request_text": "need update"},
+        dry_run=False,
+    )
+    assert out["issue"]["failure_reason"].startswith("selected_unknown_tool")
+
+    monkeypatch.setattr(mod, "invoke_llm_gateway", lambda **_kwargs: '{"tool":"jira_api_get_issue_by_key","reason":"x"}')
+    flow_missing = mod.StrandsNativeFlow(
+        jira_client=SimpleNamespace(
+            get_issue=lambda _issue_key: {"summary": "missing key"},
+            write_issue_followup_note=jira_client.write_issue_followup_note,
+        ),
+        config=mod.NativeModelConfig(model_id="model", region="eu-west-1"),
+    )
+    out = flow_missing.fetch_issue_with_agent(
+        {"issue_key": "JRASERVER-1", "intent": "general_triage", "request_text": "need update"},
+        dry_run=False,
+    )
+    assert out["issue"]["failure_reason"] == "native_missing_issue_payload"
+
+    monkeypatch.setattr(mod, "invoke_llm_gateway", lambda **_kwargs: '{"tool":"jira_api_get_issue_by_key","reason":"ok"}')
+    out = flow.fetch_issue_with_agent(
+        {"issue_key": "JRASERVER-1", "intent": "general_triage", "request_text": "need update"},
+        dry_run=False,
+    )
+    assert out["tool_failure"] is False
+    assert out["selection"]["tool"] == "jira_api_get_issue_by_key"
+
+    monkeypatch.setattr(
+        mod,
+        "invoke_llm_gateway",
+        lambda **_kwargs: '{"tool":"jira_api_write_issue_followup_note","reason":"write requested"}',
+    )
+    out = flow.fetch_issue_with_agent(
+        {"issue_key": "JRASERVER-1", "intent": "bug_triage", "request_text": "post note"},
+        dry_run=False,
+    )
+    assert out["tool_failure"] is False
+    assert out["selection"]["tool"] == "jira_api_write_issue_followup_note"
+    assert out["issue"]["write_status"] == "committed"
 
 
 def test_mcp_jira_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -254,7 +238,11 @@ def test_mcp_jira_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
         mod._extract_json("bad")
 
     monkeypatch.setattr(mod, "AgentCoreMcpClient", lambda gateway_url, region: {"gateway_url": gateway_url, "region": region})
-    init_flow = mod.McpJiraFlow(jira_client=SimpleNamespace(), model_id="m", region="eu-west-1", gateway_url="https://gateway")
+    init_flow = mod.McpJiraFlow(
+        jira_client=SimpleNamespace(),
+        gateway_url="https://gateway",
+        config=mod.McpModelConfig(model_id="m", region="eu-west-1"),
+    )
     assert init_flow._model_id == "m"
     assert init_flow._region == "eu-west-1"
 
@@ -262,18 +250,13 @@ def test_mcp_jira_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     flow._model_id = "model"
     flow._region = "eu-west-1"
     flow._jira_client = SimpleNamespace()
+    flow._model_provider = "auto"
+    flow._provider_options = {}
 
     assert flow._strip_target_prefix("x__jira_get_issue_by_key") == "jira_get_issue_by_key"
-    assert flow._find_expected_tool([{"name": "x__jira_get_issue_by_key"}]) == "x__jira_get_issue_by_key"
-    with pytest.raises(mod.McpSelectionError):
-        flow._find_expected_tool([{"name": "x__jira_get_issue_labels"}])
     assert flow._scope_tools_for_intent([{"name": "x__jira_get_issue_by_key"}], "general_triage")[0]["name"] == "x__jira_get_issue_by_key"
     with pytest.raises(mod.McpSelectionError):
         flow._scope_tools_for_intent([{"name": "x__jira_get_issue_labels"}], "general_triage")
-
-    args = flow._build_tool_arguments({"inputSchema": {"required": ["issue_key", "query"]}}, {"issue_key": "JRASERVER-1", "request_text": "help"})
-    assert args == {"issue_key": "JRASERVER-1", "query": "help"}
-    assert flow._build_tool_arguments({"inputSchema": {"required": "bad"}}, {"issue_key": "JRASERVER-1", "request_text": "help"}) == {}
 
     assert (
         flow._select_tool(
@@ -281,28 +264,27 @@ def test_mcp_jira_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
                 request_text="r",
                 issue_key="JRASERVER-1",
                 tools=[{"name": "x"}],
-                expected_tool_name="x",
                 dry_run=True,
             )
         )["reason"]
         == "dry_run"
     )
 
-    class _Client:
-        def converse(self, **_kwargs: Any) -> Dict[str, Any]:
-            return {"output": {"message": {"content": [{"text": '{"tool":"jira_get_issue_by_key","reason":"ok"}'}]}}}
-
-    monkeypatch.setattr(mod.boto3, "client", lambda *_args, **_kwargs: _Client())
+    monkeypatch.setattr(
+        mod,
+        "invoke_llm_gateway",
+        lambda **_kwargs: '{"tool":"jira_get_issue_by_key","arguments":{"issue_key":"JRASERVER-1"},"reason":"ok"}',
+    )
     sel = flow._select_tool(
         mod.SelectionInput(
             request_text="r",
             issue_key="JRASERVER-1",
-            tools=[{"name": "jira_get_issue_by_key"}],
-            expected_tool_name="jira_get_issue_by_key",
+            tools=[{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}],
             dry_run=False,
         )
     )
     assert sel["tool"] == "jira_get_issue_by_key"
+    assert sel["arguments"] == {"issue_key": "JRASERVER-1"}
 
     class _Mcp:
         def __init__(self, tools: list[Dict[str, Any]], payload: Dict[str, Any] | Exception) -> None:
@@ -327,34 +309,57 @@ def test_mcp_jira_flow_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out["tool_failure"] is True
     assert out["issue"]["failure_reason"].startswith("mcp_catalog_error")
 
-    flow._mcp_client = _Mcp([{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}], {"result": {"key": "JRASERVER-1"}})
-    flow._find_expected_tool = lambda tools: "jira_get_issue_by_key"
-    flow._select_tool = lambda _selection_input: {"tool": "unknown_tool", "reason": "x"}
-    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
+    monkeypatch.setenv("MCP_CALL_CONSTRUCTION_MAX_ATTEMPTS", "1")
+    flow._mcp_client = _Mcp(
+        [{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}],
+        {"result": {"key": "JRASERVER-1", "summary": "ok", "status": "Done"}},
+    )
+    monkeypatch.setattr(
+        mod,
+        "invoke_llm_gateway",
+        lambda **_kwargs: '{"tool":"unknown_tool","arguments":{},"reason":"x"}',
+    )
+    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x", "intent": "general_triage"}, dry_run=False)
     assert out["issue"]["failure_reason"].startswith("selected_unknown_tool")
 
-    flow._select_tool = lambda _selection_input: {"tool": "jira_get_issue_by_key", "reason": "x"}
+    monkeypatch.setenv("MCP_CALL_CONSTRUCTION_MAX_ATTEMPTS", "2")
+    calls = {"count": 0}
+    def _retry_selection(**_kwargs: Any) -> str:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return '{"tool":"jira_get_issue_by_key","arguments":{},"reason":"x"}'
+        return '{"tool":"jira_get_issue_by_key","arguments":{"issue_key":"JRASERVER-1"},"reason":"ok"}'
+    monkeypatch.setattr(mod, "invoke_llm_gateway", _retry_selection)
+    flow._mcp_client = _Mcp(
+        [{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}],
+        {"result": {"key": "JRASERVER-1", "summary": "ok", "status": "Done"}},
+    )
+    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x", "intent": "general_triage"}, dry_run=False)
+    assert out["tool_failure"] is False
+    assert out["selection"]["construction_retries"] == 1
+
+    monkeypatch.setenv("MCP_CALL_CONSTRUCTION_MAX_ATTEMPTS", "1")
+    monkeypatch.setattr(
+        mod,
+        "invoke_llm_gateway",
+        lambda **_kwargs: '{"tool":"jira_get_issue_by_key","arguments":{"issue_key":"JRASERVER-1"},"reason":"x"}',
+    )
+    flow._mcp_client = _Mcp(
+        [{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}],
+        {"result": {"key": "JRASERVER-1", "summary": "ok", "status": "Done"}},
+    )
     flow._mcp_client = _Mcp([{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}], RuntimeError("invoke"))
-    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
+    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x", "intent": "general_triage"}, dry_run=False)
     assert out["issue"]["failure_reason"].startswith("mcp_invocation_error")
 
-    flow._mcp_client = _Mcp(
-        [
-            {"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}},
-            {"name": "jira_get_issue_status_snapshot", "inputSchema": {"required": ["issue_key"]}},
-        ],
-        {"result": {"key": "JRASERVER-1"}},
-    )
-    flow._select_tool = lambda _selection_input: {"tool": "jira_get_issue_status_snapshot", "reason": "x"}
-    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
-    assert out["issue"]["failure_reason"].startswith("selected_wrong_tool")
-
-    flow._select_tool = lambda _selection_input: {"tool": "jira_get_issue_by_key", "reason": "x"}
     flow._mcp_client = _Mcp([{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}], {"result": {"summary": "missing key"}})
-    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
+    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x", "intent": "general_triage"}, dry_run=False)
     assert out["issue"]["failure_reason"] == "mcp_missing_issue_payload"
 
-    flow._mcp_client = _Mcp([{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}], {"result": {"key": "JRASERVER-1"}})
-    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x"}, dry_run=False)
+    flow._mcp_client = _Mcp(
+        [{"name": "jira_get_issue_by_key", "inputSchema": {"required": ["issue_key"]}}],
+        {"result": {"key": "JRASERVER-1", "summary": "ok", "status": "Done"}},
+    )
+    out = flow.fetch_issue_with_selection({"issue_key": "JRASERVER-1", "request_text": "x", "intent": "general_triage"}, dry_run=False)
     assert out["tool_failure"] is False
     assert out["issue"]["key"] == "JRASERVER-1"

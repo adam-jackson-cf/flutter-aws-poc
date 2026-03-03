@@ -23,8 +23,6 @@ EXCLUDED_DIRS = {
 CONSTANT_OWNERS: dict[str, set[str]] = {
     "INTENT_KEYWORDS": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
     "RISK_HINT_TOKENS": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
-    "MCP_EXPECTED_TOOL": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
-    "NATIVE_EXPECTED_TOOL": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
     "MCP_TOOL_SCOPE_BY_INTENT": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
     "NATIVE_TOOL_SCOPE_BY_INTENT": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
     "NATIVE_TOOL_DESCRIPTIONS": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
