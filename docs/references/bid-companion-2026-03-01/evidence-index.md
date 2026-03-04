@@ -4,8 +4,8 @@
 
 - Stack and deployment topology: `infra/lib/flutter-agentcore-poc-stack.ts`
 - Eval harness + schema expectations: `evals/run_eval.py`, `evals/metrics.py`, `evals/aws_pipeline_runner.py`
-- Stage contracts: `aws/lambda/fetch_native_stage.py`, `aws/lambda/fetch_mcp_stage.py`, `aws/lambda/evaluate_stage.py`
-- Lambda workflow stages: `aws/lambda/parse_stage.py`, `aws/lambda/fetch_native_stage.py`, `aws/lambda/fetch_mcp_stage.py`, `aws/lambda/evaluate_stage.py`
+- Stage contracts: `runtime/sop_agent/stages/fetch_native_stage.py`, `runtime/sop_agent/stages/fetch_mcp_stage.py`, `runtime/sop_agent/stages/evaluate_stage.py`
+- Runtime workflow stages: `runtime/sop_agent/stages/parse_stage.py`, `runtime/sop_agent/stages/fetch_native_stage.py`, `runtime/sop_agent/stages/fetch_mcp_stage.py`, `runtime/sop_agent/stages/generate_stage.py`, `runtime/sop_agent/stages/evaluate_stage.py`
 - Contract governance checks: `scripts/check-architecture-boundaries.py`, `scripts/check-semantic-contract-ownership.py`
 
 ## Design anchors

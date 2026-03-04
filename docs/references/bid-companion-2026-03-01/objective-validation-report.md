@@ -4,6 +4,8 @@ Date: 2026-03-02
 Region: `eu-west-1`  
 Assessment basis: latest deployed stack and latest post-fix adversarial both-flow run.
 
+Scope note: this PoC deliberately does not align to full Flutter R2/R3 process-scope architecture controls (workflow contract orchestration, compensation, HITL) because the PoC objective is DSPy optimization and MCP-vs-native tool-calling comparison in route scope.
+
 ## 1. Access/Auth and Deployment Preflight
 
 - AWS identity preflight is passed in non-dry-run evaluations.
@@ -49,7 +51,7 @@ Test AgentCore CDK (alpha) implementation in a working PoC.
 Verdict: **PARTIALLY MET**
 
 What is validated:
-- Deployed runtime/gateway/state-machine path executes the benchmark harness reliably.
+- Deployed runtime/gateway path executes the benchmark harness reliably.
 - Contract and schema guardrails are active in quality gates and run-time validation.
 
 What remains unvalidated:

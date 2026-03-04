@@ -67,6 +67,25 @@ EXPECTED_TOOLS_BY_FLOW = {
 }
 
 
+def _configure_live_output_streams() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(line_buffering=True, write_through=True)
+        except Exception:
+            continue
+
+
+def _progress_log(event: str, **fields: Any) -> None:
+    payload = {"event": event, **fields}
+    print(
+        f"EVAL_PROGRESS={json.dumps(payload, sort_keys=True, separators=(',', ':'))}",
+        flush=True,
+    )
+
+
 class PipelineRunner(Protocol):
     def preflight_identity(self) -> Dict[str, str]:
         ...
@@ -1035,20 +1054,26 @@ def _selected_operation(row: Dict[str, Any]) -> str:
     return _canonical_tool_operation(selected_tool)
 
 
-def evaluate_flow(flow: str, cases: List[Dict[str, Any]], config: EvaluationConfig) -> Dict[str, Any]:
-    results = []
+def _should_emit_case_progress(processed_cases: int, total_cases: int, result: Dict[str, Any]) -> bool:
+    if processed_cases in (1, total_cases):
+        return True
+    if processed_cases % 10 == 0:
+        return True
+    case_metrics = result.get("metrics", {})
+    return bool(case_metrics.get("tool_failure", False))
 
-    for iteration in range(config.iterations):
-        for case in cases:
-            results.append(
-                _evaluate_single_case(
-                    flow=flow,
-                    case=case,
-                    iteration=iteration + 1,
-                    config=config,
-                )
-            )
 
+def _complete_flow_progress(flow: str, total_cases: int, summary: Dict[str, Any]) -> None:
+    _progress_log(
+        "flow_complete",
+        flow=flow,
+        total_cases=total_cases,
+        tool_failure_rate=float(summary.get("tool_failure_rate", 0.0) or 0.0),
+        business_success_rate=float(summary.get("business_success_rate", 0.0) or 0.0),
+    )
+
+
+def _summarize_flow_results(results: List[Dict[str, Any]], config: EvaluationConfig) -> Dict[str, Any]:
     summary = aggregate_case_metrics(results)
     summary = {
         **summary,
@@ -1068,6 +1093,58 @@ def evaluate_flow(flow: str, cases: List[Dict[str, Any]], config: EvaluationConf
     judge_summary = aggregate_judge_metrics(results)
     composite_reflection = build_overall_reflection(summary=summary, judge_summary=judge_summary)
     failure_reason_counts = _count_failure_reasons(results)
+    return {
+        "summary": summary,
+        "judge_summary": judge_summary,
+        "composite_reflection": composite_reflection,
+        "failure_reason_counts": failure_reason_counts,
+    }
+
+
+def evaluate_flow(flow: str, cases: List[Dict[str, Any]], config: EvaluationConfig) -> Dict[str, Any]:
+    results = []
+    total_cases = len(cases) * int(config.iterations)
+    processed_cases = 0
+    _progress_log(
+        "flow_start",
+        flow=flow,
+        iterations=int(config.iterations),
+        dataset_cases=len(cases),
+        total_cases=total_cases,
+    )
+    for iteration in range(config.iterations):
+        for case in cases:
+            result = _evaluate_single_case(
+                flow=flow,
+                case=case,
+                iteration=iteration + 1,
+                config=config,
+            )
+            results.append(result)
+            processed_cases += 1
+            if _should_emit_case_progress(
+                processed_cases=processed_cases,
+                total_cases=total_cases,
+                result=result,
+            ):
+                case_metrics = result.get("metrics", {})
+                _progress_log(
+                    "case_complete",
+                    flow=flow,
+                    iteration=iteration + 1,
+                    case_id=str(case.get("case_id", "")),
+                    processed=processed_cases,
+                    total_cases=total_cases,
+                    tool_failure=bool(case_metrics.get("tool_failure", False)),
+                    failure_reason=str(case_metrics.get("failure_reason", "")),
+                    latency_ms=float(case_metrics.get("latency_ms", 0.0) or 0.0),
+                )
+    summarized = _summarize_flow_results(results, config)
+    summary = summarized["summary"]
+    judge_summary = summarized["judge_summary"]
+    composite_reflection = summarized["composite_reflection"]
+    failure_reason_counts = summarized["failure_reason_counts"]
+    _complete_flow_progress(flow=flow, total_cases=total_cases, summary=summary)
 
     return {
         "flow": flow,
@@ -1373,14 +1450,32 @@ def _build_run_payload(
 
 
 def main() -> int:
+    _configure_live_output_streams()
     args = parse_args()
     _validate_runtime_args(args)
     pricing_snapshot = _pricing_snapshot_for_model(args)
     dataset = load_dataset(args.dataset)
     flows = _selected_flows(args.flow)
     run_id = sanitize_run_id(args.run_id) if args.run_id else utc_compact_now()
+    _progress_log(
+        "run_start",
+        run_id=run_id,
+        flow=args.flow,
+        scope=args.scope,
+        iterations=int(args.iterations),
+        dry_run=bool(args.dry_run),
+        dataset=args.dataset,
+    )
+    _progress_log("dataset_loaded", run_id=run_id, row_count=len(dataset))
     runner = _build_runner(args)
+    _progress_log("identity_preflight_start", run_id=run_id, dry_run=bool(args.dry_run))
     aws_identity = _resolve_aws_identity(runner=runner, dry_run=args.dry_run)
+    _progress_log(
+        "identity_preflight_complete",
+        run_id=run_id,
+        skipped=bool(args.dry_run),
+        account_present=bool(aws_identity.get("account", "")),
+    )
     judge = BedrockJudge(model_id=args.judge_model_id, region=args.judge_region) if args.enable_judge else None
     evaluation = _build_evaluation_config(
         args=args,
@@ -1403,7 +1498,14 @@ def main() -> int:
     default_output = f"reports/runs/{run_id}/eval/eval-{args.flow}-{args.scope}.json"
     output_path = args.output or default_output
     _write_eval_payload(payload=payload, output_path=output_path)
+    _progress_log("payload_written", run_id=run_id, output_path=output_path)
     _maybe_publish_cloudwatch(args=args, payload=payload, run_id=run_id)
+    _progress_log(
+        "run_complete",
+        run_id=run_id,
+        output_path=output_path,
+        published_cloudwatch=bool(args.publish_cloudwatch),
+    )
     _emit_run_output(output_path=output_path, dry_run=args.dry_run)
     return 0
 

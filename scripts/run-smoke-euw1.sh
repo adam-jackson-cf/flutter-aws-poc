@@ -20,6 +20,11 @@ Options:
   --dashboard-name <value>      Optional dashboard name override
   --skip-deploy                 Skip CDK deploy and run smoke only
   --help                        Show this help
+
+Scope note:
+  This PoC intentionally stays in route scope for DSPy optimization and
+  MCP-vs-native comparison, and does not implement full Flutter R2/R3
+  workflow-contract/HITL process-scope semantics.
 USAGE
 }
 
@@ -169,6 +174,7 @@ if [[ -z "$AGENT_RUNTIME_ARN" || "$AGENT_RUNTIME_ARN" == "None" ]]; then
 fi
 
 echo "==> Run smoke eval"
+echo "Using live eval logging (PYTHONUNBUFFERED=1)"
 EVAL_CMD=(
   uv run evals/run_eval.py
   --dataset "$DATASET"
@@ -190,7 +196,7 @@ fi
 
 (
   cd "$ROOT_DIR"
-  "${EVAL_CMD[@]}"
+  PYTHONUNBUFFERED=1 "${EVAL_CMD[@]}"
 )
 
 EVAL_PATH="$ROOT_DIR/reports/runs/$RUN_ID/eval/eval-both-route.json"

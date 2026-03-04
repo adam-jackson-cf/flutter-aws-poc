@@ -13,6 +13,8 @@ export OPENAI_BASE_URL=https://api.openai.com/v1
 export OPENAI_REASONING_EFFORT=medium
 export OPENAI_TEXT_VERBOSITY=medium
 export OPENAI_MAX_OUTPUT_TOKENS=2000
+# Optional: force line-buffered eval logs for long benchmark runs.
+export PYTHONUNBUFFERED=1
 # Optional local-only override (do not commit real values)
 # export OPENAI_API_KEY=<local_openai_api_key>
 # Keep false to retain PoC logs/artifacts on stack delete. Set true only for throwaway runs.

@@ -12,6 +12,8 @@
 - This PoC compares native tool invocation and MCP call-construction paths under a shared model family, same contract set, and common KPI expectations.
 - It is designed to produce deterministic release-truth metrics (`tool_failure_rate`, `business_success_rate`, latency, and token/cost deltas) while also surfacing MCP-specific construction diagnostics.
 - The primary usage is to validate route parity decisions before promoting to full production flow design.
+- Scope note: this PoC deliberately does not implement Flutter R2/R3 process-scope design patterns (for example Step Functions workflow contracts, compensation, and HITL gates) because those controls are outside this PoC objective.
+- PoC objective is limited to DSPy optimization and MCP-vs-native tool-calling comparison in route scope.
 
 ## Usage
 

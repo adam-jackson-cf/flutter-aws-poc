@@ -603,6 +603,32 @@ def test_eval_output_and_comparison_helpers(tmp_path: Path, monkeypatch: pytest.
     assert "SMOKE_OK" in out
 
 
+def test_live_output_stream_config_and_case_progress_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _NoReconfigure:
+        reconfigure = None
+
+    class _RaisesReconfigure:
+        @staticmethod
+        def reconfigure(**_kwargs: Any) -> None:
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(run_eval.sys, "stdout", _NoReconfigure())
+    monkeypatch.setattr(run_eval.sys, "stderr", _RaisesReconfigure())
+    run_eval._configure_live_output_streams()
+
+    assert run_eval._should_emit_case_progress(processed_cases=10, total_cases=20, result={})
+    assert run_eval._should_emit_case_progress(
+        processed_cases=11,
+        total_cases=20,
+        result={"metrics": {"tool_failure": True}},
+    )
+    assert not run_eval._should_emit_case_progress(
+        processed_cases=11,
+        total_cases=20,
+        result={"metrics": {"tool_failure": False}},
+    )
+
+
 def test_adversarial_vector_and_selection_divergence_helpers() -> None:
     rows = [
         {

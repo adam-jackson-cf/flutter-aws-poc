@@ -34,6 +34,7 @@ Project-specific defaults for AI agents working in this repository.
   - `route_semantics_version=2`
 
 ## Eval Defaults
+- Scope note: this PoC intentionally stays in route scope for DSPy optimization and MCP-vs-native comparison, and does not implement full Flutter R2/R3 workflow-contract/HITL process-scope semantics.
 - Default stress dataset: `evals/golden/sop_cases_adversarial.jsonl`.
 - Default comparison mode: `--flow both --scope route`.
 - Full baseline cadence: `--iterations 4`.
@@ -69,13 +70,13 @@ Use this as the authoritative command/action source before running operational o
 
 ### Evaluation execution
 - Dry run:
-  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 1 --run-id smoke --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION" --dry-run`
+  - `PYTHONUNBUFFERED=1 python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 1 --run-id smoke --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION" --dry-run`
 - Baseline dry run:
-  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 5 --run-id 20260227T220000Z --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION" --dry-run`
+  - `PYTHONUNBUFFERED=1 python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 5 --run-id 20260227T220000Z --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION" --dry-run`
 - Live benchmark:
-  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 10 --run-id 20260227T220000Z --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION" --publish-cloudwatch`
+  - `PYTHONUNBUFFERED=1 python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow both --scope route --iterations 10 --run-id 20260227T220000Z --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION" --publish-cloudwatch`
 - Adversarial point-1 stress:
-  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases_adversarial.jsonl --flow both --scope route --iterations 1 --run-id 20260302T220000Z --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION"`
+  - `PYTHONUNBUFFERED=1 python3 evals/run_eval.py --dataset evals/golden/sop_cases_adversarial.jsonl --flow both --scope route --iterations 1 --run-id 20260302T220000Z --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION"`
 - Optional evaluator flags:
   - add `--enable-judge` for judge diagnostics
   - add `--publish-cloudwatch` for CloudWatch dashboard publishing
@@ -96,16 +97,16 @@ Use this as the authoritative command/action source before running operational o
 - Recreate/run dashboard: `./scripts/create-cloudwatch-dashboard.sh --run-id <RUN_ID> --region "$AWS_REGION"`
 - Configure AgentCore online eval: `python3 scripts/configure-agentcore-online-eval.py --name flutter-sop-poc-online-eval --role-arn "<EVAL_EXECUTION_ROLE_ARN>" --log-group "/aws/bedrock-agentcore/runtimes/flutterSopPocRuntime" --service-name bedrock-agentcore --evaluator-id "<EVALUATOR_ID_1>" --evaluator-id "<EVALUATOR_ID_2>" --aws-region "$AWS_REGION"`
 - Invoke runtime benchmark path manually:
-  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow mcp --scope route --iterations 1 --run-id manual_run_001 --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION"`
+  - `PYTHONUNBUFFERED=1 python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow mcp --scope route --iterations 1 --run-id manual_run_001 --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION"`
 
 ### Operational troubleshooting
 - AWS auth failures (`ExpiredToken`, `aws_auth_preflight_failed`): refresh credentials for the active profile and re-run.
 - Empty CloudWatch dashboard graphs: confirm run context (`RunId`, `Scope`, `Dataset`) matches `create-cloudwatch-dashboard.sh` args.
 - Empty judge widgets: rerun eval with `--enable-judge`.
 - Runtime payload shape is controlled by the caller (`run_eval` for benchmark runs, API caller for direct runtime paths).
-- Missing optional request fields are validated as input defaults before Lambda handlers are invoked.
+- Missing optional request fields are validated as input defaults before runtime handlers are invoked.
 - Re-run deterministic smoke before deeper incident debugging:
-  - `python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow native --scope route --iterations 1 --run-id smoke --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION" --dry-run`
+  - `PYTHONUNBUFFERED=1 python3 evals/run_eval.py --dataset evals/golden/sop_cases.jsonl --flow native --scope route --iterations 1 --run-id smoke --agent-runtime-arn "$AGENT_RUNTIME_ARN" --aws-region "$AWS_REGION" --dry-run`
 - Recreate dashboard for a known run ID:
   - `./scripts/create-cloudwatch-dashboard.sh --run-id <RUN_ID> --region "$AWS_REGION"`
 - Re-check planned infra changes before any deploy:
@@ -114,6 +115,7 @@ Use this as the authoritative command/action source before running operational o
 ## Runtime/usage notes
 - live evals through AgentCore runtime require `AGENT_RUNTIME_ARN`.
 - direct runtime MCP checks require `MCP_GATEWAY_URL`.
+- use `PYTHONUNBUFFERED=1` for streamed case-progress logs during long runs.
 - non-dry-run evals run AWS identity preflight (`sts:GetCallerIdentity`).
 - dataset rows require `expected_tool.native` and `expected_tool.mcp`; runtime invocation flow sees `expected_tool.<flow>`.
 - eval artifacts validate schema per flow and fail fast on drift (`artifact_schema_invalid:*`).
