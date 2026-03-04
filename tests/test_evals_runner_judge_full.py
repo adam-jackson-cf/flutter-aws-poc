@@ -1,8 +1,6 @@
 import io
 import json
-from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Dict
 
 import pytest
@@ -20,12 +18,15 @@ def test_parse_s3_uri_valid_and_invalid() -> None:
 
 def test_runner_init_requires_required_args() -> None:
     with pytest.raises(ValueError):
-        aws_pipeline_runner.AwsPipelineRunner(
-            aws_pipeline_runner.AwsPipelineRunnerConfig(state_machine_arn="", aws_region="eu-west-1")
+        aws_pipeline_runner.AgentCoreRuntimeRunner(
+            aws_pipeline_runner.AgentCoreRuntimeRunnerConfig(agent_runtime_arn="", aws_region="eu-west-1")
         )
     with pytest.raises(ValueError):
-        aws_pipeline_runner.AwsPipelineRunner(
-            aws_pipeline_runner.AwsPipelineRunnerConfig(state_machine_arn="arn:aws:states:123", aws_region="")
+        aws_pipeline_runner.AgentCoreRuntimeRunner(
+            aws_pipeline_runner.AgentCoreRuntimeRunnerConfig(
+                agent_runtime_arn="arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+                aws_region="",
+            )
         )
 
 
@@ -52,29 +53,6 @@ class _FakeSts:
         return {"Account": "123", "Arn": "arn:aws:iam::123:role/test", "UserId": "uid"}
 
 
-class _FakeSfn:
-    def __init__(self, descriptions: list[Dict[str, Any]]) -> None:
-        self._descriptions = descriptions
-        self.start_called = False
-
-    def start_execution(self, **kwargs: Any) -> Dict[str, str]:
-        self.start_called = True
-        assert "stateMachineArn" in kwargs
-        return {"executionArn": "arn:exec:1"}
-
-    def describe_execution(self, executionArn: str) -> Dict[str, Any]:  # noqa: N803
-        assert executionArn == "arn:exec:1"
-        return self._descriptions.pop(0)
-
-
-class _FakeSession:
-    def __init__(self, sfn: _FakeSfn, s3: _FakeS3, sts: _FakeSts) -> None:
-        self._clients = {"stepfunctions": sfn, "s3": s3, "sts": sts}
-
-    def client(self, service_name: str) -> Any:
-        return self._clients[service_name]
-
-
 def _valid_artifact_payload(flow: str) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "contract_version": "2.0.0",
@@ -90,70 +68,31 @@ def _valid_artifact_payload(flow: str) -> Dict[str, Any]:
     return payload
 
 
-def _install_boto3_session(monkeypatch: pytest.MonkeyPatch, descriptions: list[Dict[str, Any]], s3_payload: Dict[str, Any] | None = None) -> None:
-    fake_session = _FakeSession(_FakeSfn(descriptions), _FakeS3(s3_payload), _FakeSts())
-
-    def _session(**kwargs: Any) -> _FakeSession:
-        assert kwargs["region_name"] == "eu-west-1"
-        return fake_session
-
-    monkeypatch.setattr(aws_pipeline_runner.boto3, "Session", _session)
-
-
-def test_runner_preflight_identity(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_boto3_session(monkeypatch, descriptions=[{"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})}])
-    runner = aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
-    )
-    identity = runner.preflight_identity()
-    assert identity["account"] == "123"
-    assert identity["arn"].startswith("arn:aws:iam")
-
-
-def test_runner_init_with_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_runtime_runner_run_case_success_with_direct_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: Dict[str, Any] = {}
+
+    class _RuntimeClient:
+        def invoke_agent_runtime(self, **kwargs: Any) -> Dict[str, Any]:
+            captured["request"] = kwargs
+            return {
+                "traceId": "trace-123",
+                "response": io.BytesIO(json.dumps(_valid_artifact_payload(flow="native")).encode("utf-8")),
+            }
 
     class _Session:
         def client(self, service_name: str) -> Any:
-            if service_name == "stepfunctions":
-                return _FakeSfn([{"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})}])
+            if service_name == "bedrock-agentcore":
+                return _RuntimeClient()
             if service_name == "s3":
                 return _FakeS3()
             return _FakeSts()
 
-    def _session(**kwargs: Any) -> _Session:
-        captured.update(kwargs)
-        return _Session()
-
-    monkeypatch.setattr(aws_pipeline_runner.boto3, "Session", _session)
-    aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig(
-            "arn:aws:states:abc",
-            "eu-west-1",
-            aws_profile="profile-x",
-        )
-    )
-    assert captured["profile_name"] == "profile-x"
-
-
-def test_runner_run_case_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_boto3_session(
-        monkeypatch,
-        descriptions=[
-            {"status": "RUNNING"},
-            {"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})},
-        ],
-        s3_payload=_valid_artifact_payload(flow="native"),
-    )
-    monkeypatch.setattr(aws_pipeline_runner.time, "sleep", lambda *_args: None)
-    times = iter([0.0, 0.2, 0.4])
-    monkeypatch.setattr(aws_pipeline_runner.time, "time", lambda: next(times))
-
-    runner = aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig(
-            "arn:aws:states:abc",
-            "eu-west-1",
-            execution_timeout_seconds=5,
+    monkeypatch.setattr(aws_pipeline_runner.boto3, "Session", lambda **_kwargs: _Session())
+    runner = aws_pipeline_runner.AgentCoreRuntimeRunner(
+        aws_pipeline_runner.AgentCoreRuntimeRunnerConfig(
+            agent_runtime_arn="arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+            aws_region="eu-west-1",
+            qualifier="live",
         )
     )
     result = runner.run_case(
@@ -162,93 +101,82 @@ def test_runner_run_case_success(monkeypatch: pytest.MonkeyPatch) -> None:
             request_text="check JRASERVER-1",
             case_id="case",
             expected_tool="jira_get_issue_by_key",
-            dry_run=True,
-        )
-    )
-    assert result.execution_arn == "arn:exec:1"
-    assert result.artifact_s3_uri == "s3://bucket-a/artifact.json"
-    assert result.payload["run_metrics"]["business_success"] is True
-
-
-def test_runner_run_case_includes_openai_provider_options(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: Dict[str, Any] = {}
-
-    class _Sfn:
-        def start_execution(self, **kwargs: Any) -> Dict[str, str]:
-            captured["input"] = json.loads(kwargs["input"])
-            return {"executionArn": "arn:exec:1"}
-
-        def describe_execution(self, executionArn: str) -> Dict[str, Any]:  # noqa: N803
-            assert executionArn == "arn:exec:1"
-            return {"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})}
-
-    class _Session:
-        def client(self, service_name: str) -> Any:
-            if service_name == "stepfunctions":
-                return _Sfn()
-            if service_name == "s3":
-                return _FakeS3(_valid_artifact_payload(flow="native"))
-            return _FakeSts()
-
-    monkeypatch.setattr(aws_pipeline_runner.boto3, "Session", lambda **_kwargs: _Session())
-    runner = aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
-    )
-    runner.run_case(
-        aws_pipeline_runner.PipelineRunRequest(
-            flow="native",
-            request_text="check JRASERVER-1",
-            case_id="case",
-            expected_tool="jira_get_issue_by_key",
             dry_run=False,
-            model_id="gpt-5.2-codex",
             runtime_model_id="eu.amazon.nova-lite-v1:0",
             model_provider="openai",
             openai_reasoning_effort="high",
             openai_text_verbosity="medium",
         )
     )
-    assert captured["input"]["runtime_model_id"] == "eu.amazon.nova-lite-v1:0"
-    assert captured["input"]["model_provider"] == "openai"
-    assert captured["input"]["openai_reasoning_effort"] == "high"
-    assert captured["input"]["openai_text_verbosity"] == "medium"
+    sent_payload = json.loads(captured["request"]["payload"].decode("utf-8"))
+    assert captured["request"]["agentRuntimeArn"].endswith(":runtime/test")
+    assert captured["request"]["contentType"] == "application/json"
+    assert captured["request"]["accept"] == "application/json"
+    assert captured["request"]["qualifier"] == "live"
+    assert sent_payload["runtime_model_id"] == "eu.amazon.nova-lite-v1:0"
+    assert sent_payload["model_provider"] == "openai"
+    assert result.execution_arn == "trace-123"
+    assert result.artifact_s3_uri == ""
+    assert result.payload["native_selection"]["selected_tool"] == "jira_api_get_issue_by_key"
 
 
-def test_runner_run_case_failure_modes(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_boto3_session(monkeypatch, descriptions=[{"status": "FAILED", "error": "E", "cause": "C"}])
-    runner = aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
-    )
-    with pytest.raises(RuntimeError):
-        runner.run_case(
-            aws_pipeline_runner.PipelineRunRequest(
-                flow="native",
-                request_text="x",
-                case_id="c",
-                expected_tool="tool",
-                dry_run=False,
-            )
+def test_runtime_runner_reads_artifact_uri_from_runtime_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _RuntimeClient:
+        def invoke_agent_runtime(self, **_kwargs: Any) -> Dict[str, Any]:
+            return {
+                "response": io.BytesIO(json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"}).encode("utf-8")),
+            }
+
+    class _Session:
+        def client(self, service_name: str) -> Any:
+            if service_name == "bedrock-agentcore":
+                return _RuntimeClient()
+            if service_name == "s3":
+                return _FakeS3(_valid_artifact_payload(flow="native"))
+            return _FakeSts()
+
+    monkeypatch.setattr(aws_pipeline_runner.boto3, "Session", lambda **_kwargs: _Session())
+    runner = aws_pipeline_runner.AgentCoreRuntimeRunner(
+        aws_pipeline_runner.AgentCoreRuntimeRunnerConfig(
+            agent_runtime_arn="arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+            aws_region="eu-west-1",
         )
+    )
+    result = runner.run_case(
+        aws_pipeline_runner.PipelineRunRequest(
+            flow="native",
+            request_text="x",
+            case_id="c",
+            expected_tool="tool",
+            dry_run=False,
+        )
+    )
+    assert result.execution_arn == "agent-runtime://native/c"
+    assert result.artifact_s3_uri == "s3://bucket-a/artifact.json"
+    assert result.payload["tool_result"]["key"] == "JRASERVER-1"
 
 
-def test_runner_run_case_fails_on_artifact_schema_drift(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_boto3_session(
-        monkeypatch,
-        descriptions=[
-            {"status": "SUCCEEDED", "output": json.dumps({"artifact_s3_uri": "s3://bucket-a/artifact.json"})},
-        ],
-        s3_payload={
-            "contract_version": "2.0.0",
-            "flow": "native",
-            "intake": {"intent": "status_update", "issue_key": "JRASERVER-1"},
-            "tool_result": {"key": "JRASERVER-1"},
-            "run_metrics": {"tool_failure": False, "business_success": True},
-        },
+def test_runtime_runner_rejects_invalid_runtime_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _RuntimeClient:
+        def invoke_agent_runtime(self, **_kwargs: Any) -> Dict[str, Any]:
+            return {"response": io.BytesIO(b"not-json")}
+
+    class _Session:
+        def client(self, service_name: str) -> Any:
+            if service_name == "bedrock-agentcore":
+                return _RuntimeClient()
+            if service_name == "s3":
+                return _FakeS3()
+            return _FakeSts()
+
+    monkeypatch.setattr(aws_pipeline_runner.boto3, "Session", lambda **_kwargs: _Session())
+    runner = aws_pipeline_runner.AgentCoreRuntimeRunner(
+        aws_pipeline_runner.AgentCoreRuntimeRunnerConfig(
+            agent_runtime_arn="arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+            aws_region="eu-west-1",
+        )
     )
-    runner = aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
-    )
-    with pytest.raises(RuntimeError, match="artifact_schema_invalid:native_selection_missing_or_not_object"):
+    with pytest.raises(RuntimeError, match="agent_runtime_response_invalid_json"):
         runner.run_case(
             aws_pipeline_runner.PipelineRunRequest(
                 flow="native",
@@ -262,10 +190,10 @@ def test_runner_run_case_fails_on_artifact_schema_drift(monkeypatch: pytest.Monk
 
 def test_artifact_validation_errors_for_payload_shape() -> None:
     with pytest.raises(RuntimeError, match="artifact_schema_invalid:payload_not_object"):
-        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(payload=[], flow="native")  # type: ignore[arg-type]
+        aws_pipeline_runner._validate_artifact_payload(payload=[], flow="native")  # type: ignore[arg-type]
 
     with pytest.raises(RuntimeError, match="artifact_schema_invalid:native_selection.selected_tool_not_string"):
-        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
+        aws_pipeline_runner._validate_artifact_payload(
             payload={
                 "contract_version": "2.0.0",
                 "flow": "native",
@@ -278,7 +206,7 @@ def test_artifact_validation_errors_for_payload_shape() -> None:
         )
 
     with pytest.raises(RuntimeError, match="artifact_schema_invalid:flow_mismatch:expected=native:actual=mcp"):
-        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
+        aws_pipeline_runner._validate_artifact_payload(
             payload={
                 "contract_version": "2.0.0",
                 "flow": "mcp",
@@ -291,7 +219,7 @@ def test_artifact_validation_errors_for_payload_shape() -> None:
         )
 
     with pytest.raises(RuntimeError, match="artifact_schema_invalid:contract_version_missing"):
-        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
+        aws_pipeline_runner._validate_artifact_payload(
             payload={
                 "flow": "native",
                 "intake": {"intent": "status_update"},
@@ -306,7 +234,7 @@ def test_artifact_validation_errors_for_payload_shape() -> None:
         RuntimeError,
         match="artifact_schema_invalid:contract_version_mismatch:expected=2.0.0:actual=1.0.0",
     ):
-        aws_pipeline_runner.AwsPipelineRunner._validate_artifact_payload(
+        aws_pipeline_runner._validate_artifact_payload(
             payload={
                 "contract_version": "1.0.0",
                 "flow": "native",
@@ -320,73 +248,50 @@ def test_artifact_validation_errors_for_payload_shape() -> None:
         )
 
 
-def test_runner_run_case_missing_output_and_artifact(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_boto3_session(monkeypatch, descriptions=[{"status": "SUCCEEDED", "output": ""}])
-    runner = aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
-    )
-    with pytest.raises(RuntimeError):
-        runner.run_case(
-            aws_pipeline_runner.PipelineRunRequest(
-                flow="native",
-                request_text="x",
-                case_id="c",
-                expected_tool="tool",
-                dry_run=False,
-            )
-        )
+def test_artifact_validation_normalizes_actual_tool_fields() -> None:
+    native_payload = {
+        "contract_version": "2.0.0",
+        "flow": "native",
+        "intake": {"intent": "status_update"},
+        "tool_result": {"key": "JRASERVER-1"},
+        "run_metrics": {"tool_failure": False},
+        "actual": {"selected_tool": "jira_api_get_issue_by_key"},
+    }
+    aws_pipeline_runner._validate_artifact_payload(payload=native_payload, flow="native")
+    assert native_payload["actual"]["selected_tool"] == "jira_api_get_issue_by_key"
+    assert native_payload["actual"]["tool"] == "jira_api_get_issue_by_key"
+    assert native_payload["native_selection"]["selected_tool"] == "jira_api_get_issue_by_key"
 
-    _install_boto3_session(monkeypatch, descriptions=[{"status": "SUCCEEDED", "output": "{}"}])
-    runner = aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig("arn:aws:states:abc", "eu-west-1")
-    )
-    with pytest.raises(RuntimeError):
-        runner.run_case(
-            aws_pipeline_runner.PipelineRunRequest(
-                flow="native",
-                request_text="x",
-                case_id="c",
-                expected_tool="tool",
-                dry_run=False,
-            )
-        )
+    mcp_payload = {
+        "contract_version": "2.0.0",
+        "flow": "mcp",
+        "intake": {"intent": "status_update"},
+        "tool_result": {"key": "JRASERVER-1"},
+        "run_metrics": {"tool_failure": False},
+        "actual": {"tool": "jira_get_issue_by_key"},
+    }
+    aws_pipeline_runner._validate_artifact_payload(payload=mcp_payload, flow="mcp")
+    assert mcp_payload["actual"]["selected_tool"] == "jira_get_issue_by_key"
+    assert mcp_payload["actual"]["tool"] == "jira_get_issue_by_key"
+    assert mcp_payload["mcp_selection"]["selected_tool"] == "jira_get_issue_by_key"
 
 
-def test_runner_run_case_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install_boto3_session(monkeypatch, descriptions=[{"status": "RUNNING"}] * 3)
-    monkeypatch.setattr(aws_pipeline_runner.time, "sleep", lambda *_args: None)
-    times = iter([0.0, 10.0, 20.0, 30.0])
-    monkeypatch.setattr(aws_pipeline_runner.time, "time", lambda: next(times))
-    runner = aws_pipeline_runner.AwsPipelineRunner(
-        aws_pipeline_runner.AwsPipelineRunnerConfig(
-            "arn:aws:states:abc",
-            "eu-west-1",
-            execution_timeout_seconds=5,
-        )
-    )
-    with pytest.raises(TimeoutError):
-        runner.run_case(
-            aws_pipeline_runner.PipelineRunRequest(
-                flow="native",
-                request_text="x",
-                case_id="c",
-                expected_tool="tool",
-                dry_run=False,
-            )
-        )
+def test_normalize_selection_payload_handles_unknown_flow_without_changes() -> None:
+    payload = {
+        "actual": {"selected_tool": "jira_api_get_issue_by_key"},
+        "native_selection": {"selected_tool": "jira_api_get_issue_by_key"},
+    }
+    aws_pipeline_runner._normalize_selection_payload(payload=payload, flow="unknown")
+    assert payload["native_selection"]["selected_tool"] == "jira_api_get_issue_by_key"
 
 
-def test_build_execution_name_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _FakeDt:
-        @staticmethod
-        def now(_tz: Any) -> datetime:
-            return datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
-
-    monkeypatch.setattr(aws_pipeline_runner, "datetime", _FakeDt)
-    monkeypatch.setattr(aws_pipeline_runner.uuid, "uuid4", lambda: SimpleNamespace(hex="abcdef1234567890"))
-    name = aws_pipeline_runner.AwsPipelineRunner._build_execution_name(flow="flow*&", case_id="case with spaces and symbols/and-a-very-long-tail")
-    assert len(name) <= 80
-    assert name.startswith("eval-flow-")
+def test_normalize_selection_payload_backfills_selected_tool_into_selection_dict() -> None:
+    payload = {
+        "actual": {"selected_tool": "jira_api_get_issue_by_key"},
+        "native_selection": {"selected_tool": 123},
+    }
+    aws_pipeline_runner._normalize_selection_payload(payload=payload, flow="native")
+    assert payload["native_selection"]["selected_tool"] == "jira_api_get_issue_by_key"
 
 
 def test_judge_helpers_and_score_case(monkeypatch: pytest.MonkeyPatch) -> None:

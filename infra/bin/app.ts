@@ -13,5 +13,5 @@ const region =
 new FlutterAgentCorePocStack(app, "FlutterAgentCorePocStack", {
   env: { account, region },
   description:
-    "Flutter AgentCore PoC stack: runtime, gateway, and SOP automation pipeline",
+    "Flutter AgentCore PoC stack: runtime-owned route execution, gateway, and artifacts",
 });

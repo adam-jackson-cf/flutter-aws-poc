@@ -9,3 +9,13 @@ max-complexity = 10
 
 [tool.ruff.lint.pylint]
 max-args = 5
+
+[tool.pytest.ini_options]
+norecursedirs = [
+  "infra/cdk.out",
+  "node_modules",
+  "infra/node_modules",
+  ".git",
+  ".venv",
+  "__pycache__",
+]

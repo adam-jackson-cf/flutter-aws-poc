@@ -26,7 +26,9 @@ def _sample_case() -> Dict[str, Any]:
 
 def _runtime_args(**overrides: Any) -> Namespace:
     args = {
-        "state_machine_arn": "arn",
+        "scope": "route",
+        "agent_runtime_arn": "arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+        "agent_runtime_qualifier": "",
         "aws_region": "eu-west-1",
         "model_id": "eu.amazon.nova-lite-v1:0",
         "runtime_model_id": "eu.amazon.nova-lite-v1:0",
@@ -72,12 +74,15 @@ def _sample_run_payload() -> Dict[str, Any]:
 
 def test_parse_args_and_simple_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MODEL_PROVIDER", raising=False)
+    monkeypatch.delenv("AGENT_RUNTIME_ARN", raising=False)
+    monkeypatch.delenv("AGENTCORE_RUNTIME_ARN", raising=False)
+    monkeypatch.delenv("AGENT_RUNTIME_QUALIFIER", raising=False)
     monkeypatch.setenv("MODEL_ID", "gpt-5.2-codex")
     monkeypatch.setenv("BEDROCK_MODEL_ID", "eu.amazon.nova-lite-v1:0")
     monkeypatch.setattr(
         sys,
         "argv",
-        ["run_eval.py", "--dataset", "d.jsonl", "--flow", "native", "--state-machine-arn", "arn", "--aws-region", "eu-west-1"],
+        ["run_eval.py", "--dataset", "d.jsonl", "--flow", "native", "--aws-region", "eu-west-1"],
     )
     args = run_eval.parse_args()
     assert args.flow == "native"
@@ -90,9 +95,27 @@ def test_parse_args_and_simple_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     assert args.price_output_per_1m_tokens_usd == ""
     assert args.model_id == "gpt-5.2-codex"
     assert args.runtime_model_id == "gpt-5.2-codex"
+    assert args.agent_runtime_arn == ""
+    assert args.agent_runtime_qualifier == "production"
     assert args.judge_model_id == "eu.amazon.nova-lite-v1:0"
     assert run_eval.utc_compact_now().endswith("Z")
     assert run_eval.sanitize_run_id(" bad id ") == "bad-id"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_eval.py",
+            "--dataset",
+            "d.jsonl",
+            "--flow",
+            "native",
+            "--agent-runtime-qualifier",
+            "canary",
+        ],
+    )
+    args = run_eval.parse_args()
+    assert args.agent_runtime_qualifier == "canary"
 
     monkeypatch.setattr(sys, "argv", ["run_eval.py", "--dataset", "d.jsonl"])
     with pytest.raises(SystemExit):
@@ -126,6 +149,7 @@ def test_eval_input_dataclasses_are_frozen() -> None:
         intent_actual="status_update",
         issue_key_actual="JRASERVER-1",
         selected_tool="jira_get_issue_by_key",
+        tool="jira_get_issue_by_key",
         failure_reason="",
         generated_response="ok",
         run=PipelineRunResult(execution_arn="arn", payload={}, artifact_s3_uri="s3://bucket/key"),
@@ -165,6 +189,7 @@ def test_eval_input_dataclasses_are_frozen() -> None:
         intent_actual="status_update",
         issue_key_actual="JRASERVER-1",
         selected_tool="jira_get_issue_by_key",
+        tool="jira_get_issue_by_key",
         failure_reason="",
         issue_payload_complete=True,
         tool_failure=False,
@@ -278,7 +303,12 @@ def test_tool_operation_and_payload_helpers(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert run_eval._selected_tool_for_flow("native", {"native_selection": {"selected_tool": "n"}}) == "n"
     assert run_eval._selected_tool_for_flow("mcp", {"mcp_selection": {"selected_tool": "m"}}) == "m"
+    assert run_eval._selected_tool_for_flow("native", {"actual": {"selected_tool": "from-actual"}}) == "from-actual"
+    assert run_eval._selected_tool_for_flow("mcp", {"actual": {"tool": "from-tool"}}) == "from-tool"
+    assert run_eval._selected_tool_for_flow("native", {}) == ""
+    assert run_eval._actual_tool_for_flow({"actual": {"tool": "legacy-tool"}}, "fallback-tool") == "legacy-tool"
     assert run_eval._selected_tool_for_flow("x", {}) == "jira_get_issue_by_key"
+    assert run_eval._selected_operation({"actual": "not-a-dict"}) == ""
 
     assert run_eval._total_latency_ms({}, {"total_latency_ms": 9.0}) == 9.0
     assert run_eval._total_latency_ms({"metrics": {"stages": [{"latency_ms": 1.2}, {"latency_ms": 2.3}, "bad"]}}, {"total_latency_ms": 0}) == 3.5
@@ -295,12 +325,14 @@ def test_tool_operation_and_payload_helpers(monkeypatch: pytest.MonkeyPatch) -> 
             intent_actual="i",
             issue_key_actual="k",
             selected_tool="tool",
+            tool="",
             failure_reason="r",
             generated_response="g",
             run=run,
         )
     )
     assert actual["artifact_s3_uri"] == "s3://bucket/a.json"
+    assert actual["tool"] == "tool"
     assert run_eval._expected_payload(_sample_case(), "tool")["tool"] == "tool"
     adversarial_case = {**_sample_case(), "adversarial_vector": "tool_name_bait"}
     assert run_eval._expected_payload(adversarial_case, "tool")["adversarial_vector"] == "tool_name_bait"
@@ -332,6 +364,7 @@ def test_tool_operation_and_payload_helpers(monkeypatch: pytest.MonkeyPatch) -> 
         )
     )
     assert metrics["latency_ms"] == 10.0
+    assert metrics["success"] is True
 
 
 def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -340,7 +373,10 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     context = run_eval.CaseRunContext(flow="native", scope="full", iteration=1)
     monkeypatch.setattr(run_eval, "lexical_cosine_similarity", lambda *_args: 0.8)
     row = run_eval._case_result_from_payload(case=case, run=run, context=context)
+    assert row["success"] is True
     assert row["metrics"]["business_success"] is True
+    assert row["metrics"]["success"] is True
+    assert row["actual"]["tool"] == "jira_api_get_issue_by_key"
     assert row["actual"]["execution_arn"] == "arn:1"
 
     class _Runner:
@@ -408,12 +444,32 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert outcome.tool_failure is False
     assert outcome.business_success is True
+    assert outcome.tool == "jira_api_get_issue_by_key"
+
+
+def test_case_result_normalizes_runtime_actual_tool_fields() -> None:
+    case = _sample_case()
+    payload = _sample_run_payload()
+    payload.pop("native_selection", None)
+    payload["actual"] = {"selected_tool": "jira_api_get_issue_by_key"}
+
+    row = run_eval._case_result_from_payload(
+        case=case,
+        run=PipelineRunResult(execution_arn="arn:actual", payload=payload, artifact_s3_uri=""),
+        context=run_eval.CaseRunContext(flow="native", scope="route", iteration=1),
+    )
+    assert row["actual"]["selected_tool"] == "jira_api_get_issue_by_key"
+    assert row["actual"]["tool"] == "jira_api_get_issue_by_key"
+    assert row["metrics"]["business_success"] is True
+    assert row["metrics"]["success"] is True
+    assert row["success"] is True
 
 
 def test_runtime_validation_enforces_required_runtime_args() -> None:
     run_eval._validate_runtime_args(_runtime_args())
     with pytest.raises(ValueError):
-        run_eval._validate_runtime_args(_runtime_args(state_machine_arn=""))
+        run_eval._validate_runtime_args(_runtime_args(agent_runtime_arn=""))
+    run_eval._validate_runtime_args(_runtime_args(scope="full"))
     with pytest.raises(ValueError):
         run_eval._validate_runtime_args(_runtime_args(aws_region=""))
     with pytest.raises(ValueError):
@@ -440,25 +496,41 @@ def test_runtime_validation_enforces_required_runtime_args() -> None:
 
 
 def test_runtime_validation_builds_runner_and_checks_identity(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured_runner_config: Dict[str, Any] = {}
+    captured_runtime_runner_config: Dict[str, Any] = {}
 
-    class _CapturedRunner:
+    class _CapturedRuntimeRunner:
         def __init__(self, config: Any) -> None:
-            captured_runner_config.update(vars(config))
+            captured_runtime_runner_config.update(vars(config))
 
-    monkeypatch.setattr(run_eval, "AwsPipelineRunner", _CapturedRunner)
-    built_runner = run_eval._build_runner(
+    monkeypatch.setattr(run_eval, "AgentCoreRuntimeRunner", _CapturedRuntimeRunner)
+    route_runner = run_eval._build_runner(
         Namespace(
-            state_machine_arn="arn",
+            scope="route",
+            agent_runtime_arn="arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+            agent_runtime_qualifier="live",
             aws_region="eu-west-1",
             aws_profile="",
-            poll_interval_seconds=0.5,
-            execution_timeout_seconds=30,
         )
     )
-    assert isinstance(built_runner, _CapturedRunner)
-    assert captured_runner_config["aws_profile"] is None
-    assert captured_runner_config["execution_timeout_seconds"] == 30
+    assert isinstance(route_runner, _CapturedRuntimeRunner)
+    assert captured_runtime_runner_config["aws_profile"] is None
+    assert captured_runtime_runner_config["qualifier"] == "live"
+    assert run_eval._runtime_qualifier(_runtime_args(agent_runtime_qualifier="", scope="route")) == "production"
+    assert run_eval._runtime_qualifier(_runtime_args(agent_runtime_qualifier="canary", scope="route")) == "canary"
+    assert run_eval._runtime_qualifier(_runtime_args(agent_runtime_qualifier="", scope="full")) == ""
+
+    full_runner = run_eval._build_runner(
+        Namespace(
+            scope="full",
+            agent_runtime_arn="arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+            agent_runtime_qualifier="stable",
+            aws_region="eu-west-1",
+            aws_profile="",
+        )
+    )
+    assert isinstance(full_runner, _CapturedRuntimeRunner)
+    assert captured_runtime_runner_config["aws_profile"] is None
+    assert captured_runtime_runner_config["qualifier"] == "stable"
 
     class _Runner:
         def preflight_identity(self) -> Dict[str, str]:
@@ -609,6 +681,14 @@ def test_adversarial_vector_and_selection_divergence_helpers() -> None:
     assert divergence_with_iterations["selection_divergence_count"] == 1.0
     assert divergence_with_iterations["selection_divergence_rate"] == 0.5
 
+    divergence_from_tool_alias = run_eval._selection_divergence_metrics(
+        native_result={"cases": [{"case_id": "C1", "actual": {"tool": "jira_api_get_issue_by_key"}}]},
+        mcp_result={"cases": [{"case_id": "C1", "actual": {"tool": "jira_get_issue_by_key"}}]},
+    )
+    assert divergence_from_tool_alias["selection_divergence_compared_cases"] == 1.0
+    assert divergence_from_tool_alias["selection_divergence_count"] == 0.0
+    assert divergence_from_tool_alias["selection_divergence_rate"] == 0.0
+
 
 def test_pricing_snapshot_resolution_base_and_reasoning_models(tmp_path: Path) -> None:
     catalog_path = tmp_path / "pricing.json"
@@ -735,7 +815,8 @@ def test_main_and_module_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
             scope="route",
             run_id="run-1",
             dry_run=False,
-            state_machine_arn="arn",
+            agent_runtime_arn="arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+            agent_runtime_qualifier="",
             aws_profile="",
             aws_region="eu-west-1",
             poll_interval_seconds=0.1,
@@ -762,6 +843,7 @@ def test_main_and_module_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     written = json.loads((tmp_path / "written.json").read_text(encoding="utf-8"))
     assert written["run_id"] == "run-1"
     assert "comparison" in written
+    assert written["agent_runtime_arn"] == "arn:aws:bedrock:eu-west-1:123456789012:runtime/test"
     assert written["model"]["model_id"] == "eu.amazon.nova-lite-v1:0"
     assert written["model"]["runtime_model_id"] == "eu.amazon.nova-lite-v1:0"
     assert written["model"]["provider"] == "auto"

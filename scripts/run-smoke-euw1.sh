@@ -13,6 +13,7 @@ Options:
   --scope <route|full>          Default: route
   --model-id <value>            Default: eu.amazon.nova-lite-v1:0
   --model-provider <value>      Default: bedrock
+  --agent-runtime-qualifier <v> Default: production
   --cloudwatch-namespace <val>  Default: FlutterAgentCorePoc/Evals
   --publish-cloudwatch          Publish summary metrics to CloudWatch
   --update-dashboard            Rebuild CloudWatch dashboard for this run id
@@ -36,6 +37,7 @@ ITERATIONS="1"
 SCOPE="route"
 MODEL_ID="eu.amazon.nova-lite-v1:0"
 MODEL_PROVIDER="bedrock"
+AGENT_RUNTIME_QUALIFIER="production"
 CLOUDWATCH_NAMESPACE="FlutterAgentCorePoc/Evals"
 PUBLISH_CLOUDWATCH="false"
 UPDATE_DASHBOARD="false"
@@ -66,6 +68,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --model-provider)
       MODEL_PROVIDER="${2:-}"
+      shift 2
+      ;;
+    --agent-runtime-qualifier)
+      AGENT_RUNTIME_QUALIFIER="${2:-}"
       shift 2
       ;;
     --cloudwatch-namespace)
@@ -149,16 +155,16 @@ else
   echo "==> Skipping deploy (--skip-deploy)"
 fi
 
-echo "==> Resolve state machine ARN from stack outputs"
-STATE_MACHINE_ARN="$(
+echo "==> Resolve runtime ARN from stack outputs"
+AGENT_RUNTIME_ARN="$(
   aws --region "$REGION" cloudformation describe-stacks \
     --stack-name "$STACK_NAME" \
-    --query 'Stacks[0].Outputs[?OutputKey==`StateMachineArn`].OutputValue' \
+    --query 'Stacks[0].Outputs[?OutputKey==`RuntimeArn`].OutputValue' \
     --output text
 )"
 
-if [[ -z "$STATE_MACHINE_ARN" || "$STATE_MACHINE_ARN" == "None" ]]; then
-  echo "Could not resolve StateMachineArn from stack outputs." >&2
+if [[ -z "$AGENT_RUNTIME_ARN" || "$AGENT_RUNTIME_ARN" == "None" ]]; then
+  echo "Could not resolve RuntimeArn from stack outputs." >&2
   exit 1
 fi
 
@@ -171,7 +177,8 @@ EVAL_CMD=(
   --scope "$SCOPE"
   --aws-region "$REGION"
   --bedrock-region "$REGION"
-  --state-machine-arn "$STATE_MACHINE_ARN"
+  --agent-runtime-arn "$AGENT_RUNTIME_ARN"
+  --agent-runtime-qualifier "$AGENT_RUNTIME_QUALIFIER"
   --model-id "$MODEL_ID"
   --model-provider "$MODEL_PROVIDER"
   --run-id "$RUN_ID"

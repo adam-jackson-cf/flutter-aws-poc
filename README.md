@@ -15,7 +15,7 @@
 
 ## Usage
 
-- Prepare local configuration, bootstrap dependencies and infra, then run benchmark workflows against the deployed Step Functions state machine.
+- Prepare local configuration, bootstrap dependencies and infra, then run benchmark workflows against the deployed AgentCore runtime endpoint.
 - Use the adversarial dataset to stress MCP call-construction and tool-selection edge cases while keeping the remaining pipeline contract stable.
 - For troubleshooting and step-by-step action guidance, refer to [`AGENTS.md`](./AGENTS.md), which is the single source of developer command actions.
 
@@ -25,7 +25,7 @@
 flowchart TD
     A["Support lead defines SOP scenarios and success criteria"]
     B["Dataset row includes expected_intent expected_issue_key expected_tool.native expected_tool.mcp"]
-    C["Eval run preflight: STS identity + deployed state machine contract checks"]
+    C["Eval run preflight: STS identity + deployed runtime contract checks"]
     D["Parse stage extracts candidate keys and risk hints then model grounds intent plus issue key"]
     E{"Select tool flow"}
 

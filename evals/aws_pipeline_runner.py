@@ -1,16 +1,13 @@
 import json
-import re
-import time
-import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 import boto3
 
 
-EXECUTION_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_-]")
+DEFAULT_RUNTIME_CONTENT_TYPE = "application/json"
+DEFAULT_RUNTIME_ACCEPT = "application/json"
 
 
 def _parse_s3_uri(uri: str) -> Tuple[str, str]:
@@ -47,20 +44,154 @@ class PipelineRunRequest:
     route_semantics_version: str = ""
 
 
+def _execution_input(request: PipelineRunRequest) -> Dict[str, Any]:
+    payload = {
+        "flow": request.flow,
+        "request_text": request.request_text,
+        "case_id": request.case_id,
+        "expected_tool": request.expected_tool,
+        "dry_run": request.dry_run,
+    }
+    payload.update(_optional_execution_fields(request))
+    return payload
+
+
+def _optional_execution_fields(request: PipelineRunRequest) -> Dict[str, Any]:
+    optional: Dict[str, Any] = {}
+    for key, value in (
+        ("model_id", request.model_id),
+        ("runtime_model_id", request.runtime_model_id),
+        ("bedrock_region", request.bedrock_region),
+        ("model_provider", request.model_provider),
+        ("openai_reasoning_effort", request.openai_reasoning_effort),
+        ("openai_text_verbosity", request.openai_text_verbosity),
+        ("llm_route_path", request.llm_route_path),
+        ("execution_mode", request.execution_mode),
+        ("mcp_binding_mode", request.mcp_binding_mode),
+        ("route_semantics_version", request.route_semantics_version),
+    ):
+        if value:
+            optional[key] = value
+    if request.openai_max_output_tokens > 0:
+        optional["openai_max_output_tokens"] = request.openai_max_output_tokens
+    return optional
+
+
 @dataclass(frozen=True)
-class AwsPipelineRunnerConfig:
-    state_machine_arn: str
+class AgentCoreRuntimeRunnerConfig:
+    agent_runtime_arn: str
     aws_region: str
     aws_profile: Optional[str] = None
-    poll_interval_seconds: float = 2.0
-    execution_timeout_seconds: int = 900
     expected_contract_version: str = ""
+    content_type: str = DEFAULT_RUNTIME_CONTENT_TYPE
+    accept: str = DEFAULT_RUNTIME_ACCEPT
+    qualifier: str = ""
 
 
-class AwsPipelineRunner:
-    def __init__(self, config: AwsPipelineRunnerConfig) -> None:
-        if not config.state_machine_arn:
-            raise ValueError("state_machine_arn is required")
+def _require_dict_field(payload: Dict[str, Any], key: str) -> Dict[str, Any]:
+    value = payload.get(key)
+    if not isinstance(value, dict):
+        raise RuntimeError(f"artifact_schema_invalid:{key}_missing_or_not_object")
+    return value
+
+
+def _selection_key_for_flow(flow: str) -> Optional[str]:
+    return {"native": "native_selection", "mcp": "mcp_selection"}.get(flow)
+
+
+def _string_value(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
+def _normalize_actual_payload(actual_payload: Dict[str, Any]) -> tuple[str, str]:
+    selected_tool = _string_value(actual_payload.get("selected_tool"))
+    tool = _string_value(actual_payload.get("tool"))
+    if selected_tool and not tool:
+        actual_payload["tool"] = selected_tool
+        tool = selected_tool
+    elif tool and not selected_tool:
+        actual_payload["selected_tool"] = tool
+        selected_tool = tool
+    return selected_tool, tool
+
+
+def _normalize_selection_payload(payload: Dict[str, Any], flow: str) -> None:
+    normalized_tool = ""
+    actual_payload = payload.get("actual")
+    if isinstance(actual_payload, dict):
+        actual_selected_tool, actual_tool = _normalize_actual_payload(actual_payload)
+        normalized_tool = actual_selected_tool or actual_tool
+
+    selection_key = _selection_key_for_flow(flow)
+    if selection_key is None:
+        return
+    selection_payload = payload.get(selection_key)
+    if not isinstance(selection_payload, dict):
+        if normalized_tool:
+            payload[selection_key] = {"selected_tool": normalized_tool}
+        return
+    if isinstance(selection_payload.get("selected_tool"), str):
+        return
+    if normalized_tool:
+        selection_payload["selected_tool"] = normalized_tool
+
+
+def _validate_selection_payload(payload: Dict[str, Any], selection_key: str) -> None:
+    selection_payload = _require_dict_field(payload, selection_key)
+    selected_tool = selection_payload.get("selected_tool", "")
+    if not isinstance(selected_tool, str):
+        raise RuntimeError(f"artifact_schema_invalid:{selection_key}.selected_tool_not_string")
+
+
+def _validate_contract_version(
+    payload: Dict[str, Any],
+    expected_contract_version: str,
+) -> None:
+    actual_contract_version = str(payload.get("contract_version", "")).strip()
+    if not actual_contract_version:
+        raise RuntimeError("artifact_schema_invalid:contract_version_missing")
+    if expected_contract_version and actual_contract_version != expected_contract_version:
+        raise RuntimeError(
+            "artifact_schema_invalid:contract_version_mismatch:"
+            f"expected={expected_contract_version}:actual={actual_contract_version}"
+        )
+
+
+def _validate_artifact_payload(
+    payload: Dict[str, Any],
+    flow: str,
+    expected_contract_version: str = "",
+) -> None:
+    if not isinstance(payload, dict):
+        raise RuntimeError("artifact_schema_invalid:payload_not_object")
+
+    _validate_contract_version(
+        payload=payload,
+        expected_contract_version=expected_contract_version,
+    )
+
+    _normalize_selection_payload(payload=payload, flow=flow)
+
+    for key in ("intake", "tool_result", "run_metrics"):
+        _require_dict_field(payload, key)
+
+    selection_key = _selection_key_for_flow(flow)
+    if selection_key is not None:
+        _validate_selection_payload(payload, selection_key)
+
+    payload_flow = str(payload.get("flow", "")).strip()
+    if payload_flow and payload_flow != flow:
+        raise RuntimeError(
+            f"artifact_schema_invalid:flow_mismatch:expected={flow}:actual={payload_flow}"
+        )
+
+
+class AgentCoreRuntimeRunner:
+    def __init__(self, config: AgentCoreRuntimeRunnerConfig) -> None:
+        if not config.agent_runtime_arn:
+            raise ValueError("agent_runtime_arn is required")
         if not config.aws_region:
             raise ValueError("aws_region is required")
 
@@ -69,11 +200,12 @@ class AwsPipelineRunner:
             session_kwargs["profile_name"] = config.aws_profile
         session = boto3.Session(**session_kwargs)
 
-        self._state_machine_arn = config.state_machine_arn
-        self._poll_interval_seconds = config.poll_interval_seconds
-        self._execution_timeout_seconds = config.execution_timeout_seconds
+        self._agent_runtime_arn = config.agent_runtime_arn
         self._expected_contract_version = str(config.expected_contract_version).strip()
-        self._sfn = session.client("stepfunctions")
+        self._content_type = str(config.content_type).strip() or DEFAULT_RUNTIME_CONTENT_TYPE
+        self._accept = str(config.accept).strip() or DEFAULT_RUNTIME_ACCEPT
+        self._qualifier = str(config.qualifier).strip()
+        self._runtime = session.client("bedrock-agentcore")
         self._s3 = session.client("s3")
         self._sts = session.client("sts")
 
@@ -86,98 +218,23 @@ class AwsPipelineRunner:
         }
 
     def run_case(self, request: PipelineRunRequest) -> PipelineRunResult:
-        started = time.time()
-        execution_name = self._build_execution_name(
-            flow=request.flow,
-            case_id=request.case_id,
-        )
-        started_response = self._sfn.start_execution(
-            stateMachineArn=self._state_machine_arn,
-            name=execution_name,
-            input=json.dumps(self._execution_input(request)),
-        )
-        execution_arn = started_response["executionArn"]
-        return self._wait_for_execution_result(
-            execution_arn=execution_arn,
-            flow=request.flow,
-            started=started,
-        )
-
-    @staticmethod
-    def _execution_input(request: PipelineRunRequest) -> Dict[str, Any]:
-        payload = {
-            "flow": request.flow,
-            "request_text": request.request_text,
-            "case_id": request.case_id,
-            "expected_tool": request.expected_tool,
-            "dry_run": request.dry_run,
+        invoke_args: Dict[str, Any] = {
+            "agentRuntimeArn": self._agent_runtime_arn,
+            "contentType": self._content_type,
+            "accept": self._accept,
+            "payload": json.dumps(_execution_input(request)).encode("utf-8"),
         }
-        payload.update(AwsPipelineRunner._optional_execution_fields(request))
-        return payload
+        if self._qualifier:
+            invoke_args["qualifier"] = self._qualifier
 
-    @staticmethod
-    def _optional_execution_fields(request: PipelineRunRequest) -> Dict[str, Any]:
-        optional: Dict[str, Any] = {}
-        for key, value in (
-            ("model_id", request.model_id),
-            ("runtime_model_id", request.runtime_model_id),
-            ("bedrock_region", request.bedrock_region),
-            ("model_provider", request.model_provider),
-            ("openai_reasoning_effort", request.openai_reasoning_effort),
-            ("openai_text_verbosity", request.openai_text_verbosity),
-            ("llm_route_path", request.llm_route_path),
-            ("execution_mode", request.execution_mode),
-            ("mcp_binding_mode", request.mcp_binding_mode),
-            ("route_semantics_version", request.route_semantics_version),
-        ):
-            if value:
-                optional[key] = value
-        if request.openai_max_output_tokens > 0:
-            optional["openai_max_output_tokens"] = request.openai_max_output_tokens
-        return optional
-
-    def _wait_for_execution_result(
-        self,
-        *,
-        execution_arn: str,
-        flow: str,
-        started: float,
-    ) -> PipelineRunResult:
-        while True:
-            description = self._sfn.describe_execution(executionArn=execution_arn)
-            status = description["status"]
-            if status == "SUCCEEDED":
-                return self._successful_execution_result(
-                    execution_arn=execution_arn,
-                    flow=flow,
-                    output=str(description.get("output", "")),
-                )
-
-            if status in {"FAILED", "TIMED_OUT", "ABORTED"}:
-                self._raise_execution_failure(status=status, description=description)
-
-            if (time.time() - started) > self._execution_timeout_seconds:
-                raise TimeoutError(f"Execution timed out after {self._execution_timeout_seconds}s: {execution_arn}")
-
-            time.sleep(self._poll_interval_seconds)
-
-    def _successful_execution_result(
-        self,
-        *,
-        execution_arn: str,
-        flow: str,
-        output: str,
-    ) -> PipelineRunResult:
-        if not output:
-            raise RuntimeError(f"State machine execution missing output: {execution_arn}")
-        payload = json.loads(output)
-        artifact_s3_uri = str(payload.get("artifact_s3_uri", "")).strip()
-        if not artifact_s3_uri:
-            raise RuntimeError(f"State machine output missing artifact_s3_uri: {execution_arn}")
-        artifact_payload = self._read_artifact(artifact_s3_uri)
-        self._validate_artifact_payload(
+        response = self._runtime.invoke_agent_runtime(**invoke_args)
+        execution_arn = self._execution_reference(response=response, request=request)
+        runtime_payload = self._decode_runtime_payload(response.get("response"))
+        artifact_s3_uri = str(runtime_payload.get("artifact_s3_uri", "")).strip()
+        artifact_payload = self._artifact_payload_for_result(runtime_payload, artifact_s3_uri)
+        _validate_artifact_payload(
             payload=artifact_payload,
-            flow=flow,
+            flow=request.flow,
             expected_contract_version=self._expected_contract_version,
         )
         return PipelineRunResult(
@@ -187,85 +244,46 @@ class AwsPipelineRunner:
         )
 
     @staticmethod
-    def _raise_execution_failure(
-        *,
-        status: str,
-        description: Dict[str, Any],
-    ) -> None:
-        error = description.get("error", "unknown_error")
-        cause = description.get("cause", "unknown_cause")
-        raise RuntimeError(f"Execution {status}: {error}: {cause}")
+    def _execution_reference(response: Dict[str, Any], request: PipelineRunRequest) -> str:
+        for key in ("traceId", "runtimeSessionId", "mcpSessionId"):
+            value = str(response.get(key, "")).strip()
+            if value:
+                return value
+        return f"agent-runtime://{request.flow}/{request.case_id}"
+
+    @staticmethod
+    def _decode_runtime_payload(payload_stream: Any) -> Dict[str, Any]:
+        raw_payload = AgentCoreRuntimeRunner._read_payload_stream(payload_stream)
+        if not raw_payload:
+            raise RuntimeError("agent_runtime_response_empty")
+        try:
+            payload = json.loads(raw_payload.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("agent_runtime_response_invalid_json") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError("agent_runtime_response_not_object")
+        return payload
+
+    @staticmethod
+    def _read_payload_stream(payload_stream: Any) -> bytes:
+        if payload_stream is None:
+            raise RuntimeError("agent_runtime_response_missing_payload")
+        raw_payload = payload_stream.read() if hasattr(payload_stream, "read") else payload_stream
+        if isinstance(raw_payload, bytes):
+            return raw_payload
+        if isinstance(raw_payload, bytearray):
+            return bytes(raw_payload)
+        if isinstance(raw_payload, str):
+            return raw_payload.encode("utf-8")
+        raise RuntimeError("agent_runtime_response_invalid_payload_type")
+
+    def _artifact_payload_for_result(self, runtime_payload: Dict[str, Any], artifact_s3_uri: str) -> Dict[str, Any]:
+        if artifact_s3_uri:
+            return self._read_artifact(artifact_s3_uri)
+        return runtime_payload
 
     def _read_artifact(self, artifact_s3_uri: str) -> Dict[str, Any]:
         bucket, key = _parse_s3_uri(artifact_s3_uri)
         response = self._s3.get_object(Bucket=bucket, Key=key)
         body = response["Body"].read().decode("utf-8")
         return json.loads(body)
-
-    @staticmethod
-    def _require_dict_field(payload: Dict[str, Any], key: str) -> Dict[str, Any]:
-        value = payload.get(key)
-        if not isinstance(value, dict):
-            raise RuntimeError(f"artifact_schema_invalid:{key}_missing_or_not_object")
-        return value
-
-    @staticmethod
-    def _selection_key_for_flow(flow: str) -> Optional[str]:
-        return {"native": "native_selection", "mcp": "mcp_selection"}.get(flow)
-
-    @staticmethod
-    def _validate_selection_payload(payload: Dict[str, Any], selection_key: str) -> None:
-        selection_payload = AwsPipelineRunner._require_dict_field(payload, selection_key)
-        selected_tool = selection_payload.get("selected_tool", "")
-        if not isinstance(selected_tool, str):
-            raise RuntimeError(f"artifact_schema_invalid:{selection_key}.selected_tool_not_string")
-
-    @staticmethod
-    def _validate_contract_version(
-        payload: Dict[str, Any],
-        expected_contract_version: str,
-    ) -> None:
-        actual_contract_version = str(payload.get("contract_version", "")).strip()
-        if not actual_contract_version:
-            raise RuntimeError("artifact_schema_invalid:contract_version_missing")
-        if expected_contract_version and actual_contract_version != expected_contract_version:
-            raise RuntimeError(
-                "artifact_schema_invalid:contract_version_mismatch:"
-                f"expected={expected_contract_version}:actual={actual_contract_version}"
-            )
-
-    @staticmethod
-    def _validate_artifact_payload(
-        payload: Dict[str, Any],
-        flow: str,
-        expected_contract_version: str = "",
-    ) -> None:
-        if not isinstance(payload, dict):
-            raise RuntimeError("artifact_schema_invalid:payload_not_object")
-
-        AwsPipelineRunner._validate_contract_version(
-            payload=payload,
-            expected_contract_version=expected_contract_version,
-        )
-
-        for key in ("intake", "tool_result", "run_metrics"):
-            AwsPipelineRunner._require_dict_field(payload, key)
-
-        selection_key = AwsPipelineRunner._selection_key_for_flow(flow)
-        if selection_key is not None:
-            AwsPipelineRunner._validate_selection_payload(payload, selection_key)
-
-        payload_flow = str(payload.get("flow", "")).strip()
-        if payload_flow and payload_flow != flow:
-            raise RuntimeError(
-                f"artifact_schema_invalid:flow_mismatch:expected={flow}:actual={payload_flow}"
-            )
-
-    @staticmethod
-    def _build_execution_name(flow: str, case_id: str) -> str:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-        normalized_case = EXECUTION_NAME_PATTERN.sub("-", case_id)[:30].strip("-")
-        normalized_flow = EXECUTION_NAME_PATTERN.sub("-", flow)[:12].strip("-")
-        suffix = uuid.uuid4().hex[:8]
-        name = f"eval-{normalized_flow}-{normalized_case}-{timestamp}-{suffix}"
-        return name[:80]

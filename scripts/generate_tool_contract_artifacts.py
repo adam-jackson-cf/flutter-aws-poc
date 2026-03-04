@@ -38,6 +38,10 @@ def _runtime_lines(contract: dict[str, object]) -> list[str]:
         "",
         f"TOOL_COMPLETENESS_FIELDS_BY_OPERATION = {py_literal(contract['tool_completeness_fields_by_operation'])}",
         "",
+        f"RUNTIME_INVOCATION_REQUEST_CONTRACT = {py_literal(contract['runtime_invocation_request_contract'])}",
+        "",
+        f"RUNTIME_INVOCATION_RESPONSE_CONTRACT = {py_literal(contract['runtime_invocation_response_contract'])}",
+        "",
     ]
 
 

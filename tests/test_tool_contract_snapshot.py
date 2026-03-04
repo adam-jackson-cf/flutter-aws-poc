@@ -79,6 +79,12 @@ def test_completeness_mapping_snapshot() -> None:
     assert runtime_contracts.TOOL_COMPLETENESS_FIELDS_BY_OPERATION == expected
 
 
+def test_runtime_invocation_contract_snapshot() -> None:
+    contract = _load_contract()
+    assert runtime_contracts.RUNTIME_INVOCATION_REQUEST_CONTRACT == contract["runtime_invocation_request_contract"]
+    assert runtime_contracts.RUNTIME_INVOCATION_RESPONSE_CONTRACT == contract["runtime_invocation_response_contract"]
+
+
 def test_cdk_tool_name_snapshot() -> None:
     contract = _load_contract()
     infra_stack = Path(__file__).resolve().parents[1] / "infra" / "lib" / "flutter-agentcore-poc-stack.ts"

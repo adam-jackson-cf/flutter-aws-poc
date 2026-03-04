@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Protocol
 
 # Ensure repository root is importable when running as `python3 evals/run_eval.py`.
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -15,8 +15,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from evals.aws_pipeline_runner import (
-    AwsPipelineRunner,
-    AwsPipelineRunnerConfig,
+    AgentCoreRuntimeRunner,
+    AgentCoreRuntimeRunnerConfig,
     PipelineRunRequest,
     PipelineRunResult,
 )
@@ -66,6 +66,15 @@ EXPECTED_TOOLS_BY_FLOW = {
     },
 }
 
+
+class PipelineRunner(Protocol):
+    def preflight_identity(self) -> Dict[str, str]:
+        ...
+
+    def run_case(self, request: PipelineRunRequest) -> PipelineRunResult:
+        ...
+
+
 @dataclass(frozen=True)
 class CaseRunContext:
     flow: str
@@ -82,7 +91,7 @@ class EvaluationConfig:
     runtime_model_id: str
     bedrock_region: str
     model_provider: str
-    runner: AwsPipelineRunner
+    runner: PipelineRunner
     judge: BedrockJudge | None
     openai_reasoning_effort: str = "medium"
     openai_text_verbosity: str = "medium"
@@ -107,6 +116,7 @@ class ActualPayloadInput:
     intent_actual: str
     issue_key_actual: str
     selected_tool: str
+    tool: str
     failure_reason: str
     generated_response: str
     run: PipelineRunResult
@@ -144,6 +154,7 @@ class CaseOutcome:
     intent_actual: str
     issue_key_actual: str
     selected_tool: str
+    tool: str
     failure_reason: str
     issue_payload_complete: bool
     tool_failure: bool
@@ -182,7 +193,7 @@ class CaseOutcomeInput:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run SOP evaluation through deployed AWS pipeline")
+    parser = argparse.ArgumentParser(description="Run SOP evaluation through deployed AgentCore runtime")
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--flow", choices=["native", "mcp", "both"], required=True)
     parser.add_argument("--output", default="")
@@ -190,7 +201,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scope", choices=["route", "full"], default="route")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--state-machine-arn", default=os.environ.get("STATE_MACHINE_ARN", ""))
+    parser.add_argument(
+        "--agent-runtime-arn",
+        default=os.environ.get("AGENT_RUNTIME_ARN", os.environ.get("AGENTCORE_RUNTIME_ARN", "")),
+    )
+    parser.add_argument("--agent-runtime-qualifier", default=os.environ.get("AGENT_RUNTIME_QUALIFIER", "production"))
     parser.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE", ""))
     parser.add_argument("--aws-region", default=os.environ.get("AWS_REGION", ""))
     parser.add_argument("--poll-interval-seconds", type=float, default=2.0)
@@ -290,12 +305,53 @@ def expected_tool_for_flow(case: Dict[str, Any], flow: str) -> str:
     return selected
 
 
+def _string_value(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
+def _actual_tool_fields(run_payload: Dict[str, Any]) -> tuple[str, str]:
+    actual_payload = run_payload.get("actual")
+    if not isinstance(actual_payload, dict):
+        return "", ""
+    return (
+        _string_value(actual_payload.get("selected_tool")),
+        _string_value(actual_payload.get("tool")),
+    )
+
+
+def _selection_payload_tool(flow: str, run_payload: Dict[str, Any]) -> str:
+    selection_key = {"native": "native_selection", "mcp": "mcp_selection"}.get(flow)
+    if not selection_key:
+        return ""
+    selection_payload = run_payload.get(selection_key)
+    if not isinstance(selection_payload, dict):
+        return ""
+    return _string_value(selection_payload.get("selected_tool"))
+
+
 def _selected_tool_for_flow(flow: str, run_payload: Dict[str, Any]) -> str:
-    if flow == "mcp":
-        return str(run_payload.get("mcp_selection", {}).get("selected_tool", ""))
-    if flow == "native":
-        return str(run_payload.get("native_selection", {}).get("selected_tool", ""))
+    selection_tool = _selection_payload_tool(flow, run_payload)
+    if selection_tool:
+        return selection_tool
+    actual_selected_tool, actual_tool = _actual_tool_fields(run_payload)
+    if actual_selected_tool:
+        return actual_selected_tool
+    if actual_tool:
+        return actual_tool
+    if flow in {"native", "mcp"}:
+        return ""
     return "jira_get_issue_by_key"
+
+
+def _actual_tool_for_flow(run_payload: Dict[str, Any], selected_tool: str) -> str:
+    actual_selected_tool, actual_tool = _actual_tool_fields(run_payload)
+    if actual_tool:
+        return actual_tool
+    if actual_selected_tool:
+        return actual_selected_tool
+    return selected_tool
 
 
 def _total_latency_ms(run_payload: Dict[str, Any], run_metrics: Dict[str, Any]) -> float:
@@ -328,10 +384,12 @@ def _expected_payload(case: Dict[str, Any], expected_tool: str) -> Dict[str, str
 
 
 def _actual_payload(payload_input: ActualPayloadInput) -> Dict[str, str]:
+    tool_name = payload_input.tool or payload_input.selected_tool
     return {
         "intent": payload_input.intent_actual,
         "issue_key": payload_input.issue_key_actual,
         "selected_tool": payload_input.selected_tool,
+        "tool": tool_name,
         "failure_reason": payload_input.failure_reason,
         "customer_response": payload_input.generated_response,
         "execution_arn": payload_input.run.execution_arn,
@@ -340,6 +398,7 @@ def _actual_payload(payload_input: ActualPayloadInput) -> Dict[str, str]:
 
 
 def _case_metrics_payload(payload_input: CaseMetricsPayloadInput) -> Dict[str, Any]:
+    business_success = bool(payload_input.business_success)
     return {
         "intent_match": payload_input.intent_match,
         "issue_key_match": payload_input.issue_key_match,
@@ -347,7 +406,8 @@ def _case_metrics_payload(payload_input: CaseMetricsPayloadInput) -> Dict[str, A
         "tool_failure": payload_input.tool_failure,
         "tool_match": payload_input.tool_match,
         "issue_payload_complete": payload_input.issue_payload_complete,
-        "business_success": payload_input.business_success,
+        "business_success": business_success,
+        "success": business_success,
         "failure_reason": payload_input.failure_reason,
         "latency_ms": payload_input.total_latency_ms,
         "response_similarity": payload_input.response_similarity,
@@ -548,6 +608,7 @@ def _derive_case_outcome(payload_input: CaseOutcomeInput) -> CaseOutcome:
     issue_key_actual = str(payload_input.tool_result.get("key", ""))
     intake_issue_key = str(payload_input.run_payload.get("intake", {}).get("issue_key", ""))
     selected_tool = _selected_tool_for_flow(payload_input.context.flow, payload_input.run_payload)
+    tool_name = _actual_tool_for_flow(payload_input.run_payload, selected_tool)
     intent_match = intent_actual == payload_input.case["expected_intent"]
     issue_key_match = issue_key_actual == payload_input.case["expected_issue_key"]
     issue_key_resolution_match = intake_issue_key == payload_input.case["expected_issue_key"]
@@ -572,6 +633,7 @@ def _derive_case_outcome(payload_input: CaseOutcomeInput) -> CaseOutcome:
         intent_actual=intent_actual,
         issue_key_actual=issue_key_actual,
         selected_tool=selected_tool,
+        tool=tool_name,
         failure_reason=failure_reason,
         issue_payload_complete=issue_payload_complete,
         tool_failure=tool_failure,
@@ -629,12 +691,14 @@ def _case_result_from_payload(case: Dict[str, Any], run: PipelineRunResult, cont
         "iteration": context.iteration,
         "case_id": case["case_id"],
         "request_text": case["request_text"],
+        "success": bool(outcome.business_success),
         "expected": _expected_payload(case=case, expected_tool=expected_tool),
         "actual": _actual_payload(
             ActualPayloadInput(
                 intent_actual=outcome.intent_actual,
                 issue_key_actual=outcome.issue_key_actual,
                 selected_tool=outcome.selected_tool,
+                tool=outcome.tool,
                 failure_reason=outcome.failure_reason,
                 generated_response=generated,
                 run=run,
@@ -964,7 +1028,10 @@ def _rows_by_case_key(rows: List[Dict[str, Any]]) -> Dict[tuple[int, str], Dict[
 
 
 def _selected_operation(row: Dict[str, Any]) -> str:
-    selected_tool = str(row.get("actual", {}).get("selected_tool", ""))
+    actual_payload = row.get("actual", {})
+    if not isinstance(actual_payload, dict):
+        return _canonical_tool_operation("")
+    selected_tool = _string_value(actual_payload.get("selected_tool")) or _string_value(actual_payload.get("tool"))
     return _canonical_tool_operation(selected_tool)
 
 
@@ -1025,7 +1092,10 @@ def evaluate_flow(flow: str, cases: List[Dict[str, Any]], config: EvaluationConf
 
 
 def _validate_runtime_args(args: argparse.Namespace) -> None:
-    _require_non_empty_arg(args.state_machine_arn, "STATE_MACHINE_ARN is required (set env var or pass --state-machine-arn)")
+    _require_non_empty_arg(
+        getattr(args, "agent_runtime_arn", ""),
+        "AGENT_RUNTIME_ARN is required (set env var or pass --agent-runtime-arn)",
+    )
     _require_non_empty_arg(args.aws_region, "AWS_REGION is required (set env var or pass --aws-region)")
     _require_non_empty_arg(args.model_id, "model_id is required (set MODEL_ID or pass --model-id)")
     _require_non_empty_arg(
@@ -1067,20 +1137,28 @@ def _is_bedrock_model_identifier(model_id: str) -> bool:
     return bool(re.fullmatch(r"[a-z]+(?:\.[a-z0-9-]+)+(?::[0-9]+)?", candidate))
 
 
-def _build_runner(args: argparse.Namespace) -> AwsPipelineRunner:
-    return AwsPipelineRunner(
-        AwsPipelineRunnerConfig(
-            state_machine_arn=args.state_machine_arn,
+def _build_runner(args: argparse.Namespace) -> PipelineRunner:
+    runtime_qualifier = _runtime_qualifier(args)
+    return AgentCoreRuntimeRunner(
+        AgentCoreRuntimeRunnerConfig(
+            agent_runtime_arn=getattr(args, "agent_runtime_arn", ""),
             aws_region=args.aws_region,
             aws_profile=args.aws_profile or None,
-            poll_interval_seconds=args.poll_interval_seconds,
-            execution_timeout_seconds=args.execution_timeout_seconds,
             expected_contract_version=TOOL_CONTRACT_VERSION,
+            qualifier=runtime_qualifier,
         )
     )
 
 
-def _resolve_aws_identity(runner: AwsPipelineRunner, dry_run: bool) -> Dict[str, str]:
+def _runtime_qualifier(args: argparse.Namespace) -> str:
+    qualifier = str(getattr(args, "agent_runtime_qualifier", "")).strip()
+    scope = str(getattr(args, "scope", "route")).strip().lower()
+    if scope == "route" and not qualifier:
+        return "production"
+    return qualifier
+
+
+def _resolve_aws_identity(runner: PipelineRunner, dry_run: bool) -> Dict[str, str]:
     if dry_run:
         return {}
     try:
@@ -1194,7 +1272,7 @@ def _emit_run_output(output_path: str, dry_run: bool) -> None:
 def _build_evaluation_config(
     *,
     args: argparse.Namespace,
-    runner: AwsPipelineRunner,
+    runner: PipelineRunner,
     judge: BedrockJudge | None,
     pricing_snapshot: Dict[str, Any],
 ) -> EvaluationConfig:
@@ -1266,7 +1344,7 @@ def _build_run_payload(
         "dry_run": args.dry_run,
         "scope": args.scope,
         "iterations": args.iterations,
-        "state_machine_arn": args.state_machine_arn,
+        "agent_runtime_arn": str(getattr(args, "agent_runtime_arn", "")),
         "aws_region": args.aws_region,
         "model": _payload_model_section(args, context.evaluation),
         "tool_contract_version": TOOL_CONTRACT_VERSION,

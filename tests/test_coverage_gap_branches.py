@@ -507,7 +507,7 @@ def test_jira_tool_target_argument_and_write_paths(monkeypatch: pytest.MonkeyPat
 
 
 def test_runner_metrics_and_run_eval_helper_metrics(tmp_path: Path) -> None:
-    execution_input = aws_pipeline_runner.AwsPipelineRunner._execution_input(
+    execution_input = aws_pipeline_runner._execution_input(
         aws_pipeline_runner.PipelineRunRequest(
             flow="native",
             request_text="x",

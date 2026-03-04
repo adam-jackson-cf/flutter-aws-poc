@@ -27,6 +27,8 @@ CONSTANT_OWNERS: dict[str, set[str]] = {
     "NATIVE_TOOL_SCOPE_BY_INTENT": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
     "NATIVE_TOOL_DESCRIPTIONS": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
     "TOOL_COMPLETENESS_FIELDS_BY_OPERATION": {"runtime/sop_agent/domain/contracts.py", "aws/lambda/contract_values.py"},
+    "RUNTIME_INVOCATION_REQUEST_CONTRACT": {"runtime/sop_agent/domain/contracts.py"},
+    "RUNTIME_INVOCATION_RESPONSE_CONTRACT": {"runtime/sop_agent/domain/contracts.py"},
 }
 
 FUNCTION_OWNERS: dict[str, set[str]] = {

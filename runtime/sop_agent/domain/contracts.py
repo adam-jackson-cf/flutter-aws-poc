@@ -129,3 +129,98 @@ TOOL_COMPLETENESS_FIELDS_BY_OPERATION = {
         "write_artifact_uri"
     ]
 }
+
+RUNTIME_INVOCATION_REQUEST_CONTRACT = {
+    "flow_values": [
+        "native",
+        "mcp"
+    ],
+    "model_provider_values": [
+        "auto",
+        "bedrock",
+        "openai"
+    ],
+    "openai_reasoning_effort_values": [
+        "low",
+        "medium",
+        "high"
+    ],
+    "openai_text_verbosity_values": [
+        "low",
+        "medium",
+        "high"
+    ],
+    "optional_fields": [
+        "flow",
+        "case_id",
+        "dry_run",
+        "model_id",
+        "model_provider",
+        "bedrock_region",
+        "mcp_gateway_url",
+        "artifact_s3_uri",
+        "llm_route_path",
+        "execution_mode",
+        "mcp_binding_mode",
+        "route_semantics_version",
+        "openai_reasoning_effort",
+        "openai_text_verbosity",
+        "openai_max_output_tokens"
+    ],
+    "required_fields": [
+        "request_text"
+    ]
+}
+
+RUNTIME_INVOCATION_RESPONSE_CONTRACT = {
+    "artifact_uri_strategy_values": [
+        "evaluate_stage_s3",
+        "custom_resolver",
+        "precomputed",
+        "synthetic_runtime_uri"
+    ],
+    "mcp_call_construction_required_fields": [
+        "attempts",
+        "retries",
+        "failures",
+        "attempt_trace",
+        "attempt_trace_map"
+    ],
+    "required_fields": [
+        "flow",
+        "intake",
+        "grounding",
+        "tool_result",
+        "tool_failure",
+        "generated_response",
+        "run_metrics",
+        "contract_version",
+        "artifact_s3_uri",
+        "runtime_invocation"
+    ],
+    "route_metadata_fields": [
+        "llm_route_path",
+        "execution_mode",
+        "mcp_binding_mode",
+        "route_semantics_version"
+    ],
+    "runtime_invocation_required_fields": [
+        "runtime_entrypoint",
+        "runtime_source",
+        "invocation_id",
+        "invoked_at",
+        "flow",
+        "route_stage",
+        "artifact_uri_strategy",
+        "tool_failure",
+        "failure_reason",
+        "llm_route_path",
+        "execution_mode",
+        "mcp_binding_mode",
+        "route_semantics_version"
+    ],
+    "runtime_invocation_route_stage_values": [
+        "runtime.sop_agent.stages.fetch_native_stage.handler",
+        "runtime.sop_agent.stages.fetch_mcp_stage.handler"
+    ]
+}

@@ -20,4 +20,4 @@ export EPHEMERAL_STACK=false
 
 # Deployed resources for live eval runs.
 export MCP_GATEWAY_URL=https://<your-gateway-id>.gateway.bedrock-agentcore.eu-west-1.amazonaws.com/mcp
-export STATE_MACHINE_ARN=arn:aws:states:eu-west-1:<account-id>:stateMachine:<state-machine-name>
+export AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:eu-west-1:<account-id>:runtime/<runtime-id>
