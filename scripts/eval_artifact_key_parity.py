@@ -19,6 +19,12 @@ from eval_report_utils import (
     write_markdown,
 )
 
+ACCEPTED_RUNTIME_EXTRA_KEYS_BY_SECTION: dict[str, set[str]] = {
+    "case_actual": {"tool"},
+    "case_entry": {"success"},
+    "case_metrics": {"success"},
+}
+
 
 @dataclass(frozen=True)
 class ParityInputSpec:
@@ -157,7 +163,11 @@ def _compare_section(name: str, key_sets: tuple[set[str], set[str]], max_diff_ke
     shared = old_keys.intersection(runtime_keys)
     union = old_keys.union(runtime_keys)
     missing_in_runtime = sorted(old_keys.difference(runtime_keys))
-    extra_in_runtime = sorted(runtime_keys.difference(old_keys))
+    extra_in_runtime_raw = sorted(runtime_keys.difference(old_keys))
+    accepted_extras = sorted(
+        key for key in extra_in_runtime_raw if key in ACCEPTED_RUNTIME_EXTRA_KEYS_BY_SECTION.get(name, set())
+    )
+    extra_in_runtime = [key for key in extra_in_runtime_raw if key not in set(accepted_extras)]
     missing_sample, missing_truncated = _truncate(missing_in_runtime, max_diff_keys)
     extra_sample, extra_truncated = _truncate(extra_in_runtime, max_diff_keys)
     return {
@@ -172,6 +182,8 @@ def _compare_section(name: str, key_sets: tuple[set[str], set[str]], max_diff_ke
         "extra_in_runtime_count": len(extra_in_runtime),
         "extra_in_runtime": extra_sample,
         "extra_in_runtime_truncated_count": extra_truncated,
+        "accepted_extra_in_runtime_count": len(accepted_extras),
+        "accepted_extra_in_runtime": accepted_extras,
     }
 
 
@@ -208,6 +220,9 @@ def build_report(
             "sections_compared": len(sections),
             "missing_in_runtime_total": overall_missing,
             "extra_in_runtime_total": overall_extra,
+            "accepted_extra_in_runtime_total": int(
+                sum(int(section.get("accepted_extra_in_runtime_count", 0)) for section in sections)
+            ),
             "has_drift": bool(overall_missing or overall_extra),
         },
         "sections": sections,
@@ -274,6 +289,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- Sections compared: {overall.get('sections_compared', 0)}",
         f"- Missing-in-runtime keys: {overall.get('missing_in_runtime_total', 0)}",
         f"- Extra-in-runtime keys: {overall.get('extra_in_runtime_total', 0)}",
+        f"- Accepted runtime-added keys: {overall.get('accepted_extra_in_runtime_total', 0)}",
         "",
         "| Section | Old Keys | Runtime Keys | Shared Keys | Parity | Missing | Extra |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",

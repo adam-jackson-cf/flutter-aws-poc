@@ -128,3 +128,76 @@ def test_artifact_key_parity_default_output_path_uses_runtime_eval_dir(tmp_path:
     report = json.loads(output_json.read_text(encoding="utf-8"))
     assert report["overall"]["has_drift"] is False
     assert output_md.exists()
+
+
+def test_artifact_key_parity_ignores_accepted_runtime_added_keys(tmp_path: Path) -> None:
+    old_eval = tmp_path / "old.json"
+    runtime_eval = tmp_path / "runtime.json"
+    output_json = tmp_path / "parity.json"
+    output_md = tmp_path / "parity.md"
+
+    _write_json(
+        old_eval,
+        {
+            "run_id": "run",
+            "results": [
+                {
+                    "flow": "native",
+                    "summary": {},
+                    "cases": [
+                        {
+                            "iteration": 1,
+                            "case_id": "C-1",
+                            "expected": {"tool": "jira_get_issue_by_key"},
+                            "actual": {"selected_tool": "jira_get_issue_by_key"},
+                            "metrics": {"business_success": True},
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    _write_json(
+        runtime_eval,
+        {
+            "run_id": "run",
+            "results": [
+                {
+                    "flow": "native",
+                    "summary": {},
+                    "cases": [
+                        {
+                            "iteration": 1,
+                            "case_id": "C-1",
+                            "success": True,
+                            "expected": {"tool": "jira_get_issue_by_key"},
+                            "actual": {
+                                "selected_tool": "jira_get_issue_by_key",
+                                "tool": "jira_get_issue_by_key",
+                            },
+                            "metrics": {"business_success": True, "success": True},
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    completed = _run(
+        [
+            "--old-eval-path",
+            str(old_eval),
+            "--runtime-eval-path",
+            str(runtime_eval),
+            "--output-json",
+            str(output_json),
+            "--output-md",
+            str(output_md),
+            "--fail-on-drift",
+        ]
+    )
+
+    assert completed.returncode == 0
+    report = json.loads(output_json.read_text(encoding="utf-8"))
+    assert report["overall"]["has_drift"] is False
+    assert report["overall"]["accepted_extra_in_runtime_total"] == 3
