@@ -7,7 +7,7 @@ import ast
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DOMAIN_ROOT = REPO_ROOT / "runtime" / "sop_agent" / "domain"
 LAMBDA_ROOT = REPO_ROOT / "aws" / "lambda"
 

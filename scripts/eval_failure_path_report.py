@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Run id to resolve reports/runs/<RUN_ID>/eval/eval-<flow>-<scope>.json (repeatable).",
     )
-    parser.add_argument("--flow", default="both", choices=["native", "mcp", "both"])
+    parser.add_argument("--flow", default="both", choices=["native", "mcp", "both", "dspy_opt"])
     parser.add_argument("--scope", default="route", choices=["route", "full"])
     parser.add_argument("--output-json", default="")
     parser.add_argument("--output-md", default="")

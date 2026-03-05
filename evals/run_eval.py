@@ -19,6 +19,7 @@ from evals.aws_pipeline_runner import (
     AgentCoreRuntimeRunnerConfig,
     PipelineRunRequest,
     PipelineRunResult,
+    validate_eval_artifact_schema_version,
 )
 from evals.cloudwatch_publish import CloudWatchPublishConfig, publish_eval_summary_metrics
 from evals.judge import BedrockJudge
@@ -26,6 +27,7 @@ from evals.metrics import (
     aggregate_case_metrics,
     aggregate_judge_metrics,
     build_overall_reflection,
+    compute_dspy_opt_dual_scores,
     lexical_cosine_similarity,
 )
 from runtime.sop_agent.domain.contracts import CONTRACT_VERSION as TOOL_CONTRACT_VERSION
@@ -43,6 +45,9 @@ REQUIRED_CASE_KEYS = {
     "expected_response_anchor",
     "expected_tool",
 }
+ALLOWED_OBJECTIVE_SLICES = {"optimization", "stress"}
+DSPY_OPT_RUNTIME_FLOW = "mcp"
+EVAL_ARTIFACT_SCHEMA_VERSION = "2.0.0"
 
 EXPECTED_TOOLS_BY_FLOW = {
     "native": {
@@ -97,6 +102,7 @@ class PipelineRunner(Protocol):
 @dataclass(frozen=True)
 class CaseRunContext:
     flow: str
+    runtime_flow: str
     scope: str
     iteration: int
 
@@ -214,7 +220,7 @@ class CaseOutcomeInput:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run SOP evaluation through deployed AgentCore runtime")
     parser.add_argument("--dataset", required=True)
-    parser.add_argument("--flow", choices=["native", "mcp", "both"], required=True)
+    parser.add_argument("--flow", choices=["native", "mcp", "both", "dspy_opt"], required=True)
     parser.add_argument("--output", default="")
     parser.add_argument("--iterations", type=int, default=5)
     parser.add_argument("--scope", choices=["route", "full"], default="route")
@@ -284,25 +290,105 @@ def load_dataset(path: str) -> List[Dict[str, Any]]:
         if not line:
             continue
         parsed = json.loads(line)
-        if not isinstance(parsed, dict):
-            raise ValueError(f"dataset row {index} must be an object")
-
-        missing = REQUIRED_CASE_KEYS.difference(parsed.keys())
-        if missing:
-            raise ValueError(f"dataset row {index} missing required keys: {sorted(missing)}")
-
-        expected_tool = parsed.get("expected_tool")
-        if not isinstance(expected_tool, dict):
-            raise ValueError(f"dataset row {index} expected_tool must be an object with native/mcp")
-
-        for flow in ("native", "mcp"):
-            selected = str(expected_tool.get(flow, "")).strip()
-            if not selected:
-                raise ValueError(f"dataset row {index} expected_tool.{flow} is required")
-            if selected not in EXPECTED_TOOLS_BY_FLOW[flow]:
-                raise ValueError(f"dataset row {index} expected_tool.{flow} is not supported: {selected}")
+        _validate_dataset_row(index=index, parsed=parsed)
         rows.append(parsed)
     return rows
+
+
+def _validate_dataset_row(*, index: int, parsed: Any) -> None:
+    if not isinstance(parsed, dict):
+        raise ValueError(f"dataset row {index} must be an object")
+    _validate_required_case_keys(index=index, row=parsed)
+    _validate_expected_tools(index=index, row=parsed)
+    _validate_objective_slice(index=index, row=parsed)
+
+
+def _validate_required_case_keys(*, index: int, row: Dict[str, Any]) -> None:
+    missing = REQUIRED_CASE_KEYS.difference(row.keys())
+    if missing:
+        raise ValueError(f"dataset row {index} missing required keys: {sorted(missing)}")
+
+
+def _validate_expected_tools(*, index: int, row: Dict[str, Any]) -> None:
+    expected_tool = row.get("expected_tool")
+    if not isinstance(expected_tool, dict):
+        raise ValueError(f"dataset row {index} expected_tool must be an object with native/mcp")
+    for flow in ("native", "mcp"):
+        _validate_expected_tool_for_flow(
+            index=index,
+            expected_tool=expected_tool,
+            flow=flow,
+        )
+
+
+def _validate_expected_tool_for_flow(
+    *,
+    index: int,
+    expected_tool: Dict[str, Any],
+    flow: str,
+) -> None:
+    selected = str(expected_tool.get(flow, "")).strip()
+    if not selected:
+        raise ValueError(f"dataset row {index} expected_tool.{flow} is required")
+    if selected not in EXPECTED_TOOLS_BY_FLOW[flow]:
+        raise ValueError(f"dataset row {index} expected_tool.{flow} is not supported: {selected}")
+
+
+def _validate_objective_slice(*, index: int, row: Dict[str, Any]) -> None:
+    objective_slice = str(row.get("objective_slice", "")).strip().lower()
+    if objective_slice and objective_slice not in ALLOWED_OBJECTIVE_SLICES:
+        raise ValueError(
+            f"dataset row {index} objective_slice must be one of {sorted(ALLOWED_OBJECTIVE_SLICES)}"
+        )
+
+
+def _default_objective_slice_manifest_path(dataset_path: str) -> Path:
+    dataset = Path(dataset_path)
+    return dataset.with_suffix("").with_name(f"{dataset.stem}_slices.json")
+
+
+def _load_objective_slice_manifest(manifest_path: Path) -> Dict[str, str]:
+    if not manifest_path.exists():
+        raise ValueError(f"dspy_opt_objective_slice_manifest_missing:{manifest_path}")
+    raw = manifest_path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"dspy_opt_objective_slice_manifest_invalid_json:{manifest_path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"dspy_opt_objective_slice_manifest_not_object:{manifest_path}")
+    mapping = payload.get("cases")
+    if not isinstance(mapping, dict):
+        raise ValueError(f"dspy_opt_objective_slice_manifest_missing_cases:{manifest_path}")
+    normalized: Dict[str, str] = {}
+    for case_id, slice_name in mapping.items():
+        normalized_case_id = str(case_id).strip()
+        normalized_slice = str(slice_name).strip().lower()
+        if not normalized_case_id:
+            raise ValueError(f"dspy_opt_objective_slice_manifest_case_id_empty:{manifest_path}")
+        if normalized_slice not in ALLOWED_OBJECTIVE_SLICES:
+            raise ValueError(
+                f"dspy_opt_objective_slice_manifest_invalid_slice:{normalized_case_id}:{normalized_slice}"
+            )
+        normalized[normalized_case_id] = normalized_slice
+    return normalized
+
+
+def _apply_objective_slices_for_dspy_opt(dataset: List[Dict[str, Any]], dataset_path: str) -> List[Dict[str, Any]]:
+    manifest_path = _default_objective_slice_manifest_path(dataset_path)
+    case_slice = _load_objective_slice_manifest(manifest_path)
+    tagged_rows: List[Dict[str, Any]] = []
+    for row in dataset:
+        case_id = str(row.get("case_id", "")).strip()
+        if not case_id:
+            raise ValueError("dspy_opt_case_id_missing")
+        selected_slice = str(row.get("objective_slice", "")).strip().lower()
+        if not selected_slice:
+            selected_slice = case_slice.get(case_id, "")
+        if selected_slice not in ALLOWED_OBJECTIVE_SLICES:
+            raise ValueError(f"dspy_opt_objective_slice_missing_or_invalid:{case_id}")
+        tagged_rows.append({**row, "objective_slice": selected_slice})
+    return tagged_rows
 
 
 def _strip_gateway_tool_prefix(tool_name: str) -> str:
@@ -318,10 +404,17 @@ def _issue_payload_complete_for_tool(tool_result: Dict[str, Any], tool_name: str
 
 
 def expected_tool_for_flow(case: Dict[str, Any], flow: str) -> str:
-    selected = str(case["expected_tool"][flow]).strip()
-    if flow == "mcp":
+    runtime_flow = _runtime_flow_for_eval_flow(flow)
+    selected = str(case["expected_tool"][runtime_flow]).strip()
+    if runtime_flow == "mcp":
         selected = _strip_gateway_tool_prefix(selected)
     return selected
+
+
+def _runtime_flow_for_eval_flow(flow: str) -> str:
+    if flow == "dspy_opt":
+        return DSPY_OPT_RUNTIME_FLOW
+    return flow
 
 
 def _string_value(value: Any) -> str:
@@ -341,7 +434,7 @@ def _actual_tool_fields(run_payload: Dict[str, Any]) -> tuple[str, str]:
 
 
 def _selection_payload_tool(flow: str, run_payload: Dict[str, Any]) -> str:
-    selection_key = {"native": "native_selection", "mcp": "mcp_selection"}.get(flow)
+    selection_key = {"native": "native_selection", "mcp": "mcp_selection", "dspy_opt": "mcp_selection"}.get(flow)
     if not selection_key:
         return ""
     selection_payload = run_payload.get(selection_key)
@@ -359,7 +452,7 @@ def _selected_tool_for_flow(flow: str, run_payload: Dict[str, Any]) -> str:
         return actual_selected_tool
     if actual_tool:
         return actual_tool
-    if flow in {"native", "mcp"}:
+    if flow in {"native", "mcp", "dspy_opt"}:
         return ""
     return "jira_get_issue_by_key"
 
@@ -399,6 +492,9 @@ def _expected_payload(case: Dict[str, Any], expected_tool: str) -> Dict[str, str
     adversarial_vector = str(case.get("adversarial_vector", "")).strip()
     if adversarial_vector:
         payload["adversarial_vector"] = adversarial_vector
+    objective_slice = str(case.get("objective_slice", "")).strip().lower()
+    if objective_slice:
+        payload["objective_slice"] = objective_slice
     return payload
 
 
@@ -759,10 +855,11 @@ def _evaluate_single_case(
     iteration: int,
     config: EvaluationConfig,
 ) -> Dict[str, Any]:
+    runtime_flow = _runtime_flow_for_eval_flow(flow)
     case_id = f"{case['case_id']}_it{iteration}"
     run = config.runner.run_case(
         PipelineRunRequest(
-            flow=flow,
+            flow=runtime_flow,
             request_text=case["request_text"],
             case_id=case_id,
             expected_tool=expected_tool_for_flow(case, flow),
@@ -780,7 +877,7 @@ def _evaluate_single_case(
             route_semantics_version=config.route_semantics_version,
         )
     )
-    context = CaseRunContext(flow=flow, scope=config.scope, iteration=iteration)
+    context = CaseRunContext(flow=flow, runtime_flow=runtime_flow, scope=config.scope, iteration=iteration)
     result = _case_result_from_payload(case=case, run=run, context=context)
     if config.judge is not None:
         result["judge"] = config.judge.score_case(result, scope=config.scope)
@@ -1073,7 +1170,7 @@ def _complete_flow_progress(flow: str, total_cases: int, summary: Dict[str, Any]
     )
 
 
-def _summarize_flow_results(results: List[Dict[str, Any]], config: EvaluationConfig) -> Dict[str, Any]:
+def _summarize_flow_results(flow: str, results: List[Dict[str, Any]], config: EvaluationConfig) -> Dict[str, Any]:
     summary = aggregate_case_metrics(results)
     summary = {
         **summary,
@@ -1093,12 +1190,51 @@ def _summarize_flow_results(results: List[Dict[str, Any]], config: EvaluationCon
     judge_summary = aggregate_judge_metrics(results)
     composite_reflection = build_overall_reflection(summary=summary, judge_summary=judge_summary)
     failure_reason_counts = _count_failure_reasons(results)
-    return {
+    summarized: Dict[str, Any] = {
         "summary": summary,
         "judge_summary": judge_summary,
         "composite_reflection": composite_reflection,
         "failure_reason_counts": failure_reason_counts,
     }
+    if flow == "dspy_opt":
+        dual_scores = compute_dspy_opt_dual_scores(results)
+        objective_slice_summary = _enriched_objective_slice_summary(
+            dual_scores.get("objective_slice_summary", {}),
+            config=config,
+        )
+        summary["agent_quality_score"] = float(dual_scores["agent_quality_score"])
+        summary["mcp_failure_cost_score"] = float(dual_scores["mcp_failure_cost_score"])
+        summarized["objective_slice_summary"] = objective_slice_summary
+        summarized["objective_slice_counts"] = dual_scores["objective_slice_counts"]
+        summarized["dual_scores"] = {
+            "agent_quality_score": float(dual_scores["agent_quality_score"]),
+            "mcp_failure_cost_score": float(dual_scores["mcp_failure_cost_score"]),
+        }
+    return summarized
+
+
+def _enriched_objective_slice_summary(
+    objective_slice_summary: Dict[str, Dict[str, float]],
+    *,
+    config: EvaluationConfig,
+) -> Dict[str, Dict[str, float]]:
+    enriched: Dict[str, Dict[str, float]] = {}
+    for slice_name, summary in objective_slice_summary.items():
+        enriched_summary = dict(summary)
+        enriched_summary["total_estimated_cost_usd"] = _estimate_cost_usd(
+            llm_input_tokens=float(summary.get("total_llm_input_tokens", 0.0)),
+            llm_output_tokens=float(summary.get("total_llm_output_tokens", 0.0)),
+            input_per_1m_tokens_usd=config.pricing_input_per_1m_tokens_usd,
+            output_per_1m_tokens_usd=config.pricing_output_per_1m_tokens_usd,
+        )
+        enriched_summary["mean_estimated_cost_usd"] = _estimate_cost_usd(
+            llm_input_tokens=float(summary.get("mean_llm_input_tokens", 0.0)),
+            llm_output_tokens=float(summary.get("mean_llm_output_tokens", 0.0)),
+            input_per_1m_tokens_usd=config.pricing_input_per_1m_tokens_usd,
+            output_per_1m_tokens_usd=config.pricing_output_per_1m_tokens_usd,
+        )
+        enriched[slice_name] = enriched_summary
+    return enriched
 
 
 def evaluate_flow(flow: str, cases: List[Dict[str, Any]], config: EvaluationConfig) -> Dict[str, Any]:
@@ -1139,14 +1275,14 @@ def evaluate_flow(flow: str, cases: List[Dict[str, Any]], config: EvaluationConf
                     failure_reason=str(case_metrics.get("failure_reason", "")),
                     latency_ms=float(case_metrics.get("latency_ms", 0.0) or 0.0),
                 )
-    summarized = _summarize_flow_results(results, config)
+    summarized = _summarize_flow_results(flow, results, config)
     summary = summarized["summary"]
     judge_summary = summarized["judge_summary"]
     composite_reflection = summarized["composite_reflection"]
     failure_reason_counts = summarized["failure_reason_counts"]
     _complete_flow_progress(flow=flow, total_cases=total_cases, summary=summary)
 
-    return {
+    flow_result: Dict[str, Any] = {
         "flow": flow,
         "scope": config.scope,
         "iterations": config.iterations,
@@ -1166,6 +1302,11 @@ def evaluate_flow(flow: str, cases: List[Dict[str, Any]], config: EvaluationConf
         ),
         "cases": results,
     }
+    if flow == "dspy_opt":
+        flow_result["objective_slice_summary"] = summarized.get("objective_slice_summary", {})
+        flow_result["objective_slice_counts"] = summarized.get("objective_slice_counts", {})
+        flow_result["dual_scores"] = summarized.get("dual_scores", {})
+    return flow_result
 
 
 def _validate_runtime_args(args: argparse.Namespace) -> None:
@@ -1297,6 +1438,29 @@ def _build_comparison_payload(results: List[Dict[str, Any]]) -> Dict[str, float]
 def _write_eval_payload(payload: Dict[str, Any], output_path: str) -> None:
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     Path(output_path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _maybe_write_dspy_capability_evidence(payload=payload, output_path=output_path)
+
+
+def _maybe_write_dspy_capability_evidence(payload: Dict[str, Any], output_path: str) -> None:
+    results = payload.get("results")
+    if not isinstance(results, list) or not results:
+        return
+    first_result = results[0]
+    if not isinstance(first_result, dict) or str(first_result.get("flow", "")) != "dspy_opt":
+        return
+    evidence = {
+        "run_id": str(payload.get("run_id", "")),
+        "eval_schema_version": str(payload.get("eval_schema_version", "")),
+        "route_semantics": payload.get("route_semantics", {}),
+        "model_parity": payload.get("model_parity", {}),
+        "dspy_optimization_metadata": payload.get("dspy_optimization_metadata", {}),
+        "dual_scores": first_result.get("dual_scores", {}),
+        "objective_slice_counts": first_result.get("objective_slice_counts", {}),
+        "objective_slice_summary": first_result.get("objective_slice_summary", {}),
+        "generated_at": str(payload.get("generated_at", "")),
+    }
+    evidence_path = Path(output_path).parent / "dspy-opt-capability-evidence.json"
+    evidence_path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
 
 
 def _maybe_add_comparison(payload: Dict[str, Any], selected_flow: str) -> None:
@@ -1407,6 +1571,27 @@ def _payload_pricing_snapshot_section(args: argparse.Namespace, pricing_snapshot
     }
 
 
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _dspy_optimization_metadata(args: argparse.Namespace, run_id: str) -> Dict[str, Any]:
+    if args.flow != "dspy_opt":
+        return {}
+    dataset_path = Path(args.dataset)
+    dataset_raw = dataset_path.read_text(encoding="utf-8")
+    manifest_path = _default_objective_slice_manifest_path(args.dataset)
+    manifest_raw = manifest_path.read_text(encoding="utf-8")
+    return {
+        "optimizer_run_id": run_id,
+        "dataset_path": str(dataset_path),
+        "dataset_sha256": _sha256_text(dataset_raw),
+        "dataset_slice_manifest_path": str(manifest_path),
+        "dataset_slice_manifest_sha256": _sha256_text(manifest_raw),
+        "artifact_schema_version": EVAL_ARTIFACT_SCHEMA_VERSION,
+    }
+
+
 def _build_run_payload(
     args: argparse.Namespace,
     run_id: str,
@@ -1416,6 +1601,7 @@ def _build_run_payload(
     route_semantics = _route_semantics_args(args)
     return {
         "run_id": run_id,
+        "eval_schema_version": EVAL_ARTIFACT_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "dataset": args.dataset,
         "dry_run": args.dry_run,
@@ -1445,6 +1631,7 @@ def _build_run_payload(
             "model_id": args.judge_model_id if args.enable_judge else "",
             "region": args.judge_region if args.enable_judge else "",
         },
+        "dspy_optimization_metadata": _dspy_optimization_metadata(args, run_id),
         "results": results,
     }
 
@@ -1455,6 +1642,8 @@ def main() -> int:
     _validate_runtime_args(args)
     pricing_snapshot = _pricing_snapshot_for_model(args)
     dataset = load_dataset(args.dataset)
+    if args.flow == "dspy_opt":
+        dataset = _apply_objective_slices_for_dspy_opt(dataset, args.dataset)
     flows = _selected_flows(args.flow)
     run_id = sanitize_run_id(args.run_id) if args.run_id else utc_compact_now()
     _progress_log(
@@ -1495,6 +1684,10 @@ def main() -> int:
         ),
     )
     _maybe_add_comparison(payload=payload, selected_flow=args.flow)
+    validate_eval_artifact_schema_version(
+        payload=payload,
+        expected_eval_schema_version=EVAL_ARTIFACT_SCHEMA_VERSION,
+    )
     default_output = f"reports/runs/{run_id}/eval/eval-{args.flow}-{args.scope}.json"
     output_path = args.output or default_output
     _write_eval_payload(payload=payload, output_path=output_path)

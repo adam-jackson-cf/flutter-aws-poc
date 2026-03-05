@@ -223,3 +223,121 @@ def test_publish_eval_summary_metrics_rejects_invalid_metric_value(monkeypatch: 
                 aws_region="eu-west-1",
             ),
         )
+
+
+def test_publish_eval_summary_metrics_emits_dspy_dual_score_and_slice_dimensions(monkeypatch: Any) -> None:
+    created: Dict[str, Any] = {}
+
+    def _fake_session(**_kwargs: Any) -> _DummySession:
+        created["session"] = _DummySession()
+        return created["session"]
+
+    monkeypatch.setattr("evals.cloudwatch_publish.boto3.Session", _fake_session)
+
+    publish_eval_summary_metrics(
+        summaries=[
+            {
+                "flow": "dspy_opt",
+                "summary": _summary_payload(),
+                "dual_scores": {
+                    "agent_quality_score": 0.88,
+                    "mcp_failure_cost_score": 0.76,
+                },
+                "objective_slice_summary": {
+                    "optimization": _summary_payload(),
+                    "stress": _summary_payload(),
+                },
+            }
+        ],
+        config=CloudWatchPublishConfig(
+            namespace="FlutterAgentCorePoc/Evals",
+            run_id="run-1",
+            dataset="evals/golden/sop_cases_adversarial.jsonl",
+            scope="route",
+            aws_region="eu-west-1",
+        ),
+    )
+
+    metric_data = [
+        metric
+        for call in created["session"].cloudwatch.calls
+        for metric in call["MetricData"]
+    ]
+    metric_names = {metric["MetricName"] for metric in metric_data}
+    assert "AgentQualityScore" in metric_names
+    assert "McpFailureCostScore" in metric_names
+    assert "SliceBusinessSuccessRate" in metric_names
+
+    dual_metric = next(metric for metric in metric_data if metric["MetricName"] == "AgentQualityScore")
+    dimensions = {entry["Name"]: entry["Value"] for entry in dual_metric["Dimensions"]}
+    assert dimensions["ObjectiveSlice"] == "all"
+
+
+def test_publish_eval_summary_metrics_handles_non_dict_slice_summary(monkeypatch: Any) -> None:
+    created: Dict[str, Any] = {}
+
+    def _fake_session(**_kwargs: Any) -> _DummySession:
+        created["session"] = _DummySession()
+        return created["session"]
+
+    monkeypatch.setattr("evals.cloudwatch_publish.boto3.Session", _fake_session)
+
+    publish_eval_summary_metrics(
+        summaries=[
+            {
+                "flow": "dspy_opt",
+                "summary": _summary_payload(),
+                "dual_scores": {"agent_quality_score": 0.5},
+                "objective_slice_summary": {"optimization": "bad"},
+            }
+        ],
+        config=CloudWatchPublishConfig(
+            namespace="FlutterAgentCorePoc/Evals",
+            run_id="run-2",
+            dataset="evals/golden/sop_cases_adversarial.jsonl",
+            scope="route",
+            aws_region="eu-west-1",
+        ),
+    )
+
+    metric_names = {
+        metric["MetricName"]
+        for call in created["session"].cloudwatch.calls
+        for metric in call["MetricData"]
+    }
+    assert "AgentQualityScore" in metric_names
+
+
+def test_publish_eval_summary_metrics_handles_non_mapping_objective_slice_summary(monkeypatch: Any) -> None:
+    created: Dict[str, Any] = {}
+
+    def _fake_session(**_kwargs: Any) -> _DummySession:
+        created["session"] = _DummySession()
+        return created["session"]
+
+    monkeypatch.setattr("evals.cloudwatch_publish.boto3.Session", _fake_session)
+
+    publish_eval_summary_metrics(
+        summaries=[
+            {
+                "flow": "dspy_opt",
+                "summary": _summary_payload(),
+                "dual_scores": {"agent_quality_score": 0.5},
+                "objective_slice_summary": "not-a-dict",
+            }
+        ],
+        config=CloudWatchPublishConfig(
+            namespace="FlutterAgentCorePoc/Evals",
+            run_id="run-3",
+            dataset="evals/golden/sop_cases_adversarial.jsonl",
+            scope="route",
+            aws_region="eu-west-1",
+        ),
+    )
+
+    metric_names = {
+        metric["MetricName"]
+        for call in created["session"].cloudwatch.calls
+        for metric in call["MetricData"]
+    }
+    assert "AgentQualityScore" in metric_names

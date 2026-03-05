@@ -9,8 +9,9 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-DEFAULT_ALLOWLIST = Path("scripts/complexity-headroom-allowlist.txt")
-DEFAULT_CHECKER = Path("scripts/check-complexity-headroom.py")
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_ALLOWLIST = SCRIPT_DIR / "complexity-headroom-allowlist.txt"
+DEFAULT_CHECKER = SCRIPT_DIR / "check-complexity-headroom.py"
 HEADER_LINES = [
     "# Baseline near-threshold functions approved for gradual burn-down.",
     "# Format: <file_path>::<function_name>",

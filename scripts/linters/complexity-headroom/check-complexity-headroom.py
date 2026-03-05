@@ -10,6 +10,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+
 DEFAULT_TARGETS = [
     "aws/lambda",
     "evals",
@@ -41,7 +43,7 @@ DEFAULT_EXCLUDES = [
     ".enaible/*",
 ]
 
-DEFAULT_ALLOWLIST = Path("scripts/complexity-headroom-allowlist.txt")
+DEFAULT_ALLOWLIST = SCRIPT_DIR / "complexity-headroom-allowlist.txt"
 
 
 @dataclass(frozen=True)
@@ -184,7 +186,7 @@ def main() -> int:
     if unknown_offenders or stale_allowlist:
         print(
             "Update code to restore headroom or regenerate the allowlist with "
-            "`python3 scripts/update-complexity-headroom-allowlist.py --write` "
+            "`python3 scripts/linters/complexity-headroom/update-complexity-headroom-allowlist.py --write` "
             f"(then review the diff in {allowlist_path.as_posix()})."
         )
         return 1

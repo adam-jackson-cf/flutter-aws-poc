@@ -2,8 +2,10 @@ import pytest
 
 from evals.metrics import (
     aggregate_case_metrics,
+    aggregate_case_metrics_by_slice,
     aggregate_judge_metrics,
     build_overall_reflection,
+    compute_dspy_opt_dual_scores,
     deterministic_release_score,
     lexical_cosine_similarity,
 )
@@ -102,3 +104,42 @@ def test_judge_aggregation_and_reflection() -> None:
     assert judge_summary["mean_overall_score"] == pytest.approx(0.85)
     assert reflection["release_gate_pass"] is True
     assert reflection["status"] in {"pass", "review_divergence"}
+
+
+def test_slice_aggregation_and_dual_scores_include_unspecified_bucket() -> None:
+    rows = [
+        {
+            "expected": {"objective_slice": "optimization"},
+            "metrics": {
+                "intent_match": True,
+                "issue_key_match": True,
+                "tool_match": True,
+                "tool_failure": False,
+                "issue_key_resolution_match": True,
+                "business_success": True,
+                "latency_ms": 100.0,
+                "response_similarity": 1.0,
+                "llm_total_tokens": 100,
+            },
+        },
+        {
+            "expected": {},
+            "metrics": {
+                "intent_match": False,
+                "issue_key_match": False,
+                "tool_match": False,
+                "tool_failure": True,
+                "issue_key_resolution_match": False,
+                "business_success": False,
+                "latency_ms": 100.0,
+                "response_similarity": 0.0,
+                "llm_total_tokens": 200,
+            },
+        },
+    ]
+    by_slice = aggregate_case_metrics_by_slice(rows)
+    assert "unspecified" in by_slice
+
+    dual = compute_dspy_opt_dual_scores(rows)
+    assert "agent_quality_score" in dual
+    assert "mcp_failure_cost_score" in dual

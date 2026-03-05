@@ -81,6 +81,37 @@ flowchart TD
     Y5 -.bounded by.-> L
 ```
 
+## Business flow (`dspy_opt`)
+
+```mermaid
+flowchart TD
+    A["Product + Ops define optimization objective and stress objective"]
+    B["Adversarial dataset rows are tagged by objective_slice (optimization or stress)"]
+    C["Eval runner starts dspy_opt flow in route scope"]
+    D["Runner maps dspy_opt to runtime-safe flow mcp for invocation parity"]
+    E["Runtime path executes through gateway service with schema-validated MCP binding"]
+    F["Per-case outcomes are recorded: business success, tool failure, latency, tokens, estimated cost"]
+    G["Slice aggregation computes optimization/stress summaries"]
+    H["Dual score calculation"]
+    H1["Agent quality score (optimization-weighted business effectiveness)"]
+    H2["MCP failure cost score (stress-weighted failure/cost pressure)"]
+    I["Capability evidence artifact is written (dspy-opt-capability-evidence.json)"]
+    J["Eval artifact is written with schema version and route metadata"]
+    K["CloudWatch publish emits overall + ObjectiveSlice metrics"]
+    L{"Release/iteration decision"}
+    M["Promote optimization settings for next benchmark tranche"]
+    N["Run remediation loop on high-cost or high-failure stress slices"]
+
+    A --> B --> C --> D --> E --> F --> G --> H
+    H --> H1
+    H --> H2
+    H1 --> I
+    H2 --> I
+    I --> J --> K --> L
+    L -->|Scores within thresholds| M
+    L -->|Scores outside thresholds| N
+```
+
 ## References
 
 - Reference artifacts and architecture assessments: `docs/references/bid-companion-2026-03-01/`

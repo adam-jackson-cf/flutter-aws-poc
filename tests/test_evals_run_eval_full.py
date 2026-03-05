@@ -127,7 +127,7 @@ def test_parse_args_and_simple_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_eval_input_dataclasses_are_frozen() -> None:
-    context = run_eval.CaseRunContext(flow="native", scope="route", iteration=1)
+    context = run_eval.CaseRunContext(flow="native", runtime_flow="native", scope="route", iteration=1)
     with pytest.raises(FrozenInstanceError):
         context.flow = "mcp"  # type: ignore[misc]
 
@@ -219,7 +219,7 @@ def test_eval_input_dataclasses_are_frozen() -> None:
 
     outcome_input = run_eval.CaseOutcomeInput(
         case=_sample_case(),
-        context=run_eval.CaseRunContext(flow="native", scope="route", iteration=1),
+        context=run_eval.CaseRunContext(flow="native", runtime_flow="native", scope="route", iteration=1),
         run_payload=_sample_run_payload(),
         run_metrics={"tool_failure": False},
         tool_result={"key": "JRASERVER-1", "summary": "ok", "status": "Done"},
@@ -278,6 +278,76 @@ def test_load_dataset_validation(tmp_path: Path) -> None:
     bad_tool_file.write_text(json.dumps(bad_tool), encoding="utf-8")
     with pytest.raises(ValueError):
         run_eval.load_dataset(str(bad_tool_file))
+
+    bad_slice = dict(row)
+    bad_slice["objective_slice"] = "wrong"
+    bad_slice_file = tmp_path / "bad_slice.jsonl"
+    bad_slice_file.write_text(json.dumps(bad_slice), encoding="utf-8")
+    with pytest.raises(ValueError):
+        run_eval.load_dataset(str(bad_slice_file))
+
+
+def test_apply_objective_slices_for_dspy_opt(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "sop_cases_adversarial.jsonl"
+    dataset_path.write_text(json.dumps(_sample_case()) + "\n", encoding="utf-8")
+    manifest_path = tmp_path / "sop_cases_adversarial_slices.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "cases": {"case1": "optimization"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = run_eval.load_dataset(str(dataset_path))
+    tagged = run_eval._apply_objective_slices_for_dspy_opt(dataset, str(dataset_path))
+    assert tagged[0]["objective_slice"] == "optimization"
+
+
+def test_objective_slice_manifest_validation_errors(tmp_path: Path) -> None:
+    missing_manifest = tmp_path / "missing.json"
+    with pytest.raises(ValueError):
+        run_eval._load_objective_slice_manifest(missing_manifest)
+
+    bad_json = tmp_path / "bad.json"
+    bad_json.write_text("{", encoding="utf-8")
+    with pytest.raises(ValueError):
+        run_eval._load_objective_slice_manifest(bad_json)
+
+    not_object = tmp_path / "not_object.json"
+    not_object.write_text('["x"]', encoding="utf-8")
+    with pytest.raises(ValueError):
+        run_eval._load_objective_slice_manifest(not_object)
+
+    missing_cases = tmp_path / "missing_cases.json"
+    missing_cases.write_text(json.dumps({"x": 1}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        run_eval._load_objective_slice_manifest(missing_cases)
+
+    empty_case_id = tmp_path / "empty_case_id.json"
+    empty_case_id.write_text(json.dumps({"cases": {"": "optimization"}}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        run_eval._load_objective_slice_manifest(empty_case_id)
+
+    bad_slice = tmp_path / "bad_slice.json"
+    bad_slice.write_text(json.dumps({"cases": {"case1": "invalid"}}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        run_eval._load_objective_slice_manifest(bad_slice)
+
+
+def test_apply_objective_slices_for_dspy_opt_error_paths(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "sop_cases_adversarial.jsonl"
+    dataset_path.write_text(json.dumps(_sample_case()) + "\n", encoding="utf-8")
+    manifest_path = tmp_path / "sop_cases_adversarial_slices.json"
+    manifest_path.write_text(json.dumps({"cases": {}}), encoding="utf-8")
+
+    dataset = run_eval.load_dataset(str(dataset_path))
+    with pytest.raises(ValueError):
+        run_eval._apply_objective_slices_for_dspy_opt(dataset, str(dataset_path))
+
+    with pytest.raises(ValueError):
+        run_eval._apply_objective_slices_for_dspy_opt([{"case_id": ""}], str(dataset_path))
 
 
 def test_tool_operation_and_payload_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -370,7 +440,7 @@ def test_tool_operation_and_payload_helpers(monkeypatch: pytest.MonkeyPatch) -> 
 def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     case = _sample_case()
     run = PipelineRunResult(execution_arn="arn:1", payload=_sample_run_payload(), artifact_s3_uri="s3://bucket/a")
-    context = run_eval.CaseRunContext(flow="native", scope="full", iteration=1)
+    context = run_eval.CaseRunContext(flow="native", runtime_flow="native", scope="full", iteration=1)
     monkeypatch.setattr(run_eval, "lexical_cosine_similarity", lambda *_args: 0.8)
     row = run_eval._case_result_from_payload(case=case, run=run, context=context)
     assert row["success"] is True
@@ -430,7 +500,7 @@ def test_case_result_and_evaluate_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     outcome = run_eval._derive_case_outcome(
         run_eval.CaseOutcomeInput(
             case=case,
-            context=run_eval.CaseRunContext(flow="native", scope="route", iteration=1),
+            context=run_eval.CaseRunContext(flow="native", runtime_flow="native", scope="route", iteration=1),
             run_payload={
                 "intake": {"intent": case["expected_intent"]},
                 "native_selection": {"selected_tool": "jira_api_get_issue_by_key"},
@@ -456,7 +526,7 @@ def test_case_result_normalizes_runtime_actual_tool_fields() -> None:
     row = run_eval._case_result_from_payload(
         case=case,
         run=PipelineRunResult(execution_arn="arn:actual", payload=payload, artifact_s3_uri=""),
-        context=run_eval.CaseRunContext(flow="native", scope="route", iteration=1),
+        context=run_eval.CaseRunContext(flow="native", runtime_flow="native", scope="route", iteration=1),
     )
     assert row["actual"]["selected_tool"] == "jira_api_get_issue_by_key"
     assert row["actual"]["tool"] == "jira_api_get_issue_by_key"
@@ -558,6 +628,7 @@ def test_runtime_validation_builds_runner_and_checks_identity(monkeypatch: pytes
 def test_eval_output_and_comparison_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     assert run_eval._selected_flows("native") == ["native"]
     assert run_eval._selected_flows("both") == ["native", "mcp"]
+    assert run_eval._selected_flows("dspy_opt") == ["dspy_opt"]
 
     comp = run_eval._build_comparison_payload(
         [
@@ -601,6 +672,35 @@ def test_eval_output_and_comparison_helpers(tmp_path: Path, monkeypatch: pytest.
     out = capsys.readouterr().out
     assert "WROTE_EVAL=out.json" in out
     assert "SMOKE_OK" in out
+
+
+def test_dspy_opt_evaluate_flow_routes_runtime_to_mcp_and_adds_dual_scores() -> None:
+    case = {
+        **_sample_case(),
+        "objective_slice": "optimization",
+    }
+
+    class _Runner:
+        def run_case(self, request: Any) -> PipelineRunResult:
+            assert request.flow == "mcp"
+            return PipelineRunResult(execution_arn="arn:1", payload=_sample_run_payload(), artifact_s3_uri="s3://bucket/a")
+
+    config = run_eval.EvaluationConfig(
+        dry_run=True,
+        scope="route",
+        iterations=1,
+        model_id="eu.amazon.nova-lite-v1:0",
+        runtime_model_id="eu.amazon.nova-lite-v1:0",
+        bedrock_region="eu-west-1",
+        model_provider="auto",
+        runner=_Runner(),
+        judge=None,
+    )
+    flow_result = run_eval.evaluate_flow("dspy_opt", [case], config)
+    assert flow_result["flow"] == "dspy_opt"
+    assert "dual_scores" in flow_result
+    assert "agent_quality_score" in flow_result["summary"]
+    assert "mcp_failure_cost_score" in flow_result["summary"]
 
 
 def test_live_output_stream_config_and_case_progress_branches(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -899,3 +999,96 @@ def test_main_and_module_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     )
     assert completed.returncode == 2
     assert "--dataset" in completed.stderr
+
+
+def test_dspy_capability_evidence_and_metadata_paths(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "sop_cases_adversarial.jsonl"
+    dataset_path.write_text(json.dumps(_sample_case()) + "\n", encoding="utf-8")
+    manifest_path = tmp_path / "sop_cases_adversarial_slices.json"
+    manifest_path.write_text(json.dumps({"cases": {"case1": "optimization"}}), encoding="utf-8")
+
+    args = Namespace(
+        flow="dspy_opt",
+        dataset=str(dataset_path),
+    )
+    metadata = run_eval._dspy_optimization_metadata(args, "run-1")
+    assert metadata["optimizer_run_id"] == "run-1"
+    assert len(metadata["dataset_sha256"]) == 64
+    assert len(metadata["dataset_slice_manifest_sha256"]) == 64
+    assert len(run_eval._sha256_text("abc")) == 64
+
+    output_path = tmp_path / "reports" / "runs" / "dspy" / "eval" / "eval-dspy_opt-route.json"
+    payload = {
+        "run_id": "run-1",
+        "eval_schema_version": run_eval.EVAL_ARTIFACT_SCHEMA_VERSION,
+        "generated_at": "now",
+        "route_semantics": {},
+        "model_parity": {},
+        "dspy_optimization_metadata": metadata,
+        "results": [
+            {
+                "flow": "dspy_opt",
+                "dual_scores": {"agent_quality_score": 0.9},
+                "objective_slice_counts": {"optimization": 1, "stress": 0},
+                "objective_slice_summary": {"optimization": {"business_success_rate": 1.0}},
+            }
+        ],
+    }
+    run_eval._write_eval_payload(payload, str(output_path))
+    evidence_path = output_path.parent / "dspy-opt-capability-evidence.json"
+    assert evidence_path.exists()
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert evidence["run_id"] == "run-1"
+
+
+def test_main_dspy_opt_applies_slice_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_path = tmp_path / "sop_cases_adversarial.jsonl"
+    dataset_path.write_text(json.dumps(_sample_case()) + "\n", encoding="utf-8")
+    manifest_path = tmp_path / "sop_cases_adversarial_slices.json"
+    manifest_path.write_text(json.dumps({"cases": {"case1": "optimization"}}), encoding="utf-8")
+
+    class _Runner:
+        def run_case(self, _request: Any) -> PipelineRunResult:
+            return PipelineRunResult(execution_arn="arn:exec", payload=_sample_run_payload(), artifact_s3_uri="s3://bucket/key")
+
+        def preflight_identity(self) -> Dict[str, str]:
+            return {}
+
+    monkeypatch.setattr(
+        run_eval,
+        "parse_args",
+        lambda: Namespace(
+            dataset=str(dataset_path),
+            flow="dspy_opt",
+            output=str(tmp_path / "written-dspy.json"),
+            iterations=1,
+            scope="route",
+            run_id="run-dspy",
+            dry_run=True,
+            agent_runtime_arn="arn:aws:bedrock:eu-west-1:123456789012:runtime/test",
+            agent_runtime_qualifier="",
+            aws_profile="",
+            aws_region="eu-west-1",
+            poll_interval_seconds=0.1,
+            execution_timeout_seconds=1,
+            model_id="eu.amazon.nova-lite-v1:0",
+            runtime_model_id="eu.amazon.nova-lite-v1:0",
+            bedrock_region="eu-west-1",
+            model_provider="auto",
+            openai_reasoning_effort="medium",
+            openai_text_verbosity="medium",
+            openai_max_output_tokens=2000,
+            model_pricing_catalog="evals/model_pricing_usd_per_1m_tokens.json",
+            price_input_per_1m_tokens_usd="",
+            price_output_per_1m_tokens_usd="",
+            publish_cloudwatch=False,
+            cloudwatch_namespace="ns",
+            enable_judge=False,
+            judge_model_id="model",
+            judge_region="eu-west-1",
+        ),
+    )
+    monkeypatch.setattr(run_eval, "_build_runner", lambda _args: _Runner())
+    assert run_eval.main() == 0
+    written = json.loads((tmp_path / "written-dspy.json").read_text(encoding="utf-8"))
+    assert written["results"][0]["flow"] == "dspy_opt"

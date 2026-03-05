@@ -62,6 +62,8 @@ class EvalSummaryRow(TypedDict, total=False):
     summary: SummaryPayload
     judge_summary: JudgeSummaryPayload
     composite_reflection: CompositeReflectionPayload
+    objective_slice_summary: dict[str, SummaryPayload]
+    dual_scores: dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -107,6 +109,13 @@ def _build_dimensions(context: MetricContext) -> tuple[Dict[str, str], ...]:
         {"Name": "ExecutionMode", "Value": context.execution_mode},
         {"Name": "McpBindingMode", "Value": context.mcp_binding_mode},
         {"Name": "RouteSemanticsVersion", "Value": context.route_semantics_version},
+    )
+
+
+def _build_slice_dimensions(context: MetricContext, objective_slice: str) -> tuple[Dict[str, str], ...]:
+    return (
+        *_build_dimensions(context),
+        {"Name": "ObjectiveSlice", "Value": objective_slice},
     )
 
 
@@ -274,6 +283,64 @@ def _build_composite_reflection_metrics(composite_reflection: object, dimensions
     return metrics
 
 
+def _build_dual_score_metrics(
+    *,
+    dual_scores: object,
+    objective_slice_summary: object,
+    base_context: MetricContext,
+) -> List[Dict[str, Any]]:
+    if not isinstance(dual_scores, dict):
+        return []
+    metrics: List[Dict[str, Any]] = []
+    all_dimensions = _build_slice_dimensions(base_context, "all")
+    for metric_name, source_key in (
+        ("AgentQualityScore", "agent_quality_score"),
+        ("McpFailureCostScore", "mcp_failure_cost_score"),
+    ):
+        if source_key in dual_scores:
+            metrics.append(
+                _metric_datum(
+                    metric_name=metric_name,
+                    value=_normalized_float(dual_scores, source_key=source_key, metric_name=metric_name),
+                    dimensions=all_dimensions,
+                )
+            )
+
+    if not isinstance(objective_slice_summary, dict):
+        return metrics
+
+    for slice_name, summary in sorted(objective_slice_summary.items()):
+        if not isinstance(summary, dict):
+            continue
+        slice_dimensions = _build_slice_dimensions(base_context, slice_name)
+        metrics.extend(
+            [
+                _metric_datum(
+                    metric_name="SliceBusinessSuccessRate",
+                    value=_normalized_float(summary, source_key="business_success_rate", metric_name="SliceBusinessSuccessRate"),
+                    dimensions=slice_dimensions,
+                ),
+                _metric_datum(
+                    metric_name="SliceToolFailureRate",
+                    value=_normalized_float(summary, source_key="tool_failure_rate", metric_name="SliceToolFailureRate"),
+                    dimensions=slice_dimensions,
+                ),
+                _metric_datum(
+                    metric_name="SliceMeanLlmTotalTokens",
+                    value=_normalized_float(summary, source_key="mean_llm_total_tokens", metric_name="SliceMeanLlmTotalTokens"),
+                    dimensions=slice_dimensions,
+                    unit="Count",
+                ),
+                _metric_datum(
+                    metric_name="SliceMeanEstimatedCostUsd",
+                    value=_normalized_float(summary, source_key="mean_estimated_cost_usd", metric_name="SliceMeanEstimatedCostUsd"),
+                    dimensions=slice_dimensions,
+                ),
+            ]
+        )
+    return metrics
+
+
 def publish_eval_summary_metrics(
     *,
     summaries: List[EvalSummaryRow],
@@ -317,6 +384,22 @@ def publish_eval_summary_metrics(
             _build_composite_reflection_metrics(
                 composite_reflection=row.get("composite_reflection"),
                 dimensions=dimensions,
+            )
+        )
+        metric_data.extend(
+            _build_dual_score_metrics(
+                dual_scores=row.get("dual_scores"),
+                objective_slice_summary=row.get("objective_slice_summary"),
+                base_context=MetricContext(
+                    run_id=config.run_id,
+                    flow=flow,
+                    scope=config.scope,
+                    dataset=config.dataset,
+                    llm_route_path=config.llm_route_path,
+                    execution_mode=config.execution_mode,
+                    mcp_binding_mode=config.mcp_binding_mode,
+                    route_semantics_version=config.route_semantics_version,
+                ),
             )
         )
 

@@ -87,6 +87,7 @@ Use this as the authoritative command/action source before running operational o
 
 ### Quality gates
 - `bash scripts/run-ci-quality-gates.sh`
+- `python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --skip R3,R4`
 - `RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
 - `MUTATION_SCORE_TARGET=80 RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
 - `COMPLEXITY_MAX=10 bash scripts/run-ci-quality-gates.sh`

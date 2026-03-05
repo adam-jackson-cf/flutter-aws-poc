@@ -149,14 +149,39 @@ def _validate_contract_version(
     payload: Dict[str, Any],
     expected_contract_version: str,
 ) -> None:
-    actual_contract_version = str(payload.get("contract_version", "")).strip()
-    if not actual_contract_version:
-        raise RuntimeError("artifact_schema_invalid:contract_version_missing")
-    if expected_contract_version and actual_contract_version != expected_contract_version:
+    _validate_schema_version_field(
+        payload=payload,
+        field_name="contract_version",
+        expected_value=expected_contract_version,
+    )
+
+
+def _validate_schema_version_field(
+    *,
+    payload: Dict[str, Any],
+    field_name: str,
+    expected_value: str,
+) -> None:
+    actual_value = str(payload.get(field_name, "")).strip()
+    if not actual_value:
+        raise RuntimeError(f"artifact_schema_invalid:{field_name}_missing")
+    if expected_value and actual_value != expected_value:
         raise RuntimeError(
-            "artifact_schema_invalid:contract_version_mismatch:"
-            f"expected={expected_contract_version}:actual={actual_contract_version}"
+            f"artifact_schema_invalid:{field_name}_mismatch:"
+            f"expected={expected_value}:actual={actual_value}"
         )
+
+
+def validate_eval_artifact_schema_version(
+    *,
+    payload: Dict[str, Any],
+    expected_eval_schema_version: str,
+) -> None:
+    _validate_schema_version_field(
+        payload=payload,
+        field_name="eval_schema_version",
+        expected_value=expected_eval_schema_version,
+    )
 
 
 def _validate_artifact_payload(

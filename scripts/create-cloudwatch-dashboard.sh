@@ -125,7 +125,7 @@ cat >"$BODY_FILE" <<EOF
       "width": 24,
       "height": 3,
       "properties": {
-        "markdown": "# Flutter AgentCore Eval Dashboard\\nRunId: \`$RUN_ID\` | Scope: \`$SCOPE\` | Dataset: \`$DATASET\`\\nExecutionMode: \`$EXECUTION_MODE\` | MCP Binding: \`$MCP_BINDING_MODE\` | LLM Route: \`$LLM_ROUTE_PATH\` | Route Semantics: \`$ROUTE_SEMANTICS_VERSION\`\\nDeterministic metrics are release truth. Judge/composite metrics are diagnostics."
+        "markdown": "# Flutter AgentCore Eval Dashboard\\nRunId: \`$RUN_ID\` | Scope: \`$SCOPE\` | Dataset: \`$DATASET\`\\nExecutionMode: \`$EXECUTION_MODE\` | MCP Binding: \`$MCP_BINDING_MODE\` | LLM Route: \`$LLM_ROUTE_PATH\` | Route Semantics: \`$ROUTE_SEMANTICS_VERSION\`\\nDeterministic metrics are release truth. Judge/composite metrics are diagnostics. DSPy route adds objective-slice dual scoring."
       }
     },
     {
@@ -247,6 +247,52 @@ cat >"$BODY_FILE" <<EOF
           [ "$NAMESPACE", "TotalEstimatedCostUsd", "RunId", "$RUN_ID", "Flow", "native", "Scope", "$SCOPE", "Dataset", "$DATASET", $COMMON_ROUTE_DIMS, { "id": "n_total_cost", "label": "Native Total Cost (USD)" } ],
           [ "$NAMESPACE", "TotalEstimatedCostUsd", "RunId", "$RUN_ID", "Flow", "mcp", "Scope", "$SCOPE", "Dataset", "$DATASET", $COMMON_ROUTE_DIMS, { "id": "m_total_cost", "label": "MCP Total Cost (USD)" } ],
           [ { "expression": "m_total_cost-n_total_cost", "label": "Total Cost Delta MCP-Native (USD)", "id": "total_cost_delta" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 21,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DSPy Dual Scores",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "$REGION",
+        "stat": "Average",
+        "period": 300,
+        "yAxis": {
+          "left": { "min": 0, "max": 1 }
+        },
+        "metrics": [
+          [ "$NAMESPACE", "AgentQualityScore", "RunId", "$RUN_ID", "Flow", "dspy_opt", "Scope", "$SCOPE", "Dataset", "$DATASET", $COMMON_ROUTE_DIMS, "ObjectiveSlice", "all", { "label": "Agent Quality Score" } ],
+          [ "$NAMESPACE", "McpFailureCostScore", "RunId", "$RUN_ID", "Flow", "dspy_opt", "Scope", "$SCOPE", "Dataset", "$DATASET", $COMMON_ROUTE_DIMS, "ObjectiveSlice", "all", { "label": "MCP Failure Cost Score" } ]
+        ]
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 21,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "DSPy Objective Slices",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "$REGION",
+        "stat": "Average",
+        "period": 300,
+        "yAxis": {
+          "left": { "min": 0, "max": 1 }
+        },
+        "metrics": [
+          [ "$NAMESPACE", "SliceBusinessSuccessRate", "RunId", "$RUN_ID", "Flow", "dspy_opt", "Scope", "$SCOPE", "Dataset", "$DATASET", $COMMON_ROUTE_DIMS, "ObjectiveSlice", "optimization", { "label": "Optimization Business Success" } ],
+          [ "$NAMESPACE", "SliceToolFailureRate", "RunId", "$RUN_ID", "Flow", "dspy_opt", "Scope", "$SCOPE", "Dataset", "$DATASET", $COMMON_ROUTE_DIMS, "ObjectiveSlice", "stress", { "label": "Stress Tool Failure Rate" } ],
+          [ "$NAMESPACE", "SliceMeanEstimatedCostUsd", "RunId", "$RUN_ID", "Flow", "dspy_opt", "Scope", "$SCOPE", "Dataset", "$DATASET", $COMMON_ROUTE_DIMS, "ObjectiveSlice", "stress", { "label": "Stress Mean Cost (USD)" } ],
+          [ "$NAMESPACE", "SliceMeanLlmTotalTokens", "RunId", "$RUN_ID", "Flow", "dspy_opt", "Scope", "$SCOPE", "Dataset", "$DATASET", $COMMON_ROUTE_DIMS, "ObjectiveSlice", "stress", { "label": "Stress Mean Tokens" } ]
         ]
       }
     }

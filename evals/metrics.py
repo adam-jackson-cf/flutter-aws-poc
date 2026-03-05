@@ -245,6 +245,57 @@ def aggregate_case_metrics(case_results: List[Dict]) -> Dict[str, float]:
     return _summary_from_accumulator(accumulator, total)
 
 
+def aggregate_case_metrics_by_slice(case_results: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+    buckets: Dict[str, List[Dict[str, Any]]] = {}
+    for case in case_results:
+        expected = case.get("expected")
+        slice_name = ""
+        if isinstance(expected, dict):
+            slice_name = str(expected.get("objective_slice", "")).strip().lower()
+        if not slice_name:
+            slice_name = "unspecified"
+        buckets.setdefault(slice_name, []).append(case)
+
+    return {
+        slice_name: aggregate_case_metrics(rows)
+        for slice_name, rows in sorted(buckets.items())
+    }
+
+
+def compute_dspy_opt_dual_scores(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    slice_summaries = aggregate_case_metrics_by_slice(case_results)
+    optimization = slice_summaries.get("optimization", _empty_case_metrics_summary())
+    stress = slice_summaries.get("stress", _empty_case_metrics_summary())
+
+    optimization_total = int(optimization.get("total_cases", 0))
+    stress_total = int(stress.get("total_cases", 0))
+
+    # Agent quality emphasizes deterministic execution correctness in optimization slice.
+    agent_quality_score = (
+        0.5 * float(optimization.get("business_success_rate", 0.0))
+        + 0.3 * float(optimization.get("tool_match_rate", 0.0))
+        + 0.2 * float(optimization.get("issue_key_resolution_match_rate", 0.0))
+    ) if optimization_total > 0 else 0.0
+
+    # Failure cost score rewards fewer stress-slice failures and lower token overhead.
+    mean_tokens = float(stress.get("mean_llm_total_tokens", 0.0))
+    token_efficiency = 1.0 / (1.0 + (max(mean_tokens, 0.0) / 500.0))
+    mcp_failure_cost_score = (
+        0.7 * (1.0 - float(stress.get("tool_failure_rate", 0.0)))
+        + 0.3 * token_efficiency
+    ) if stress_total > 0 else 0.0
+
+    return {
+        "agent_quality_score": agent_quality_score,
+        "mcp_failure_cost_score": mcp_failure_cost_score,
+        "objective_slice_summary": slice_summaries,
+        "objective_slice_counts": {
+            "optimization": optimization_total,
+            "stress": stress_total,
+        },
+    }
+
+
 def aggregate_judge_metrics(case_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     judge_rows = [case.get("judge") for case in case_results if isinstance(case.get("judge"), dict)]
     total = len(case_results)

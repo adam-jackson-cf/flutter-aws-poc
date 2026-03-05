@@ -14,6 +14,7 @@ PARAM_MAX="${PARAM_MAX:-5}"
 HEADROOM_COMPLEXITY_WARN="${HEADROOM_COMPLEXITY_WARN:-9}"
 HEADROOM_LENGTH_WARN="${HEADROOM_LENGTH_WARN:-70}"
 HEADROOM_PARAM_WARN="${HEADROOM_PARAM_WARN:-4}"
+FLUTTER_DESIGN_LINTER_SKIP="${FLUTTER_DESIGN_LINTER_SKIP:-R3,R4}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -57,22 +58,31 @@ run_lizard_complexity_check() {
 }
 
 run_headroom_complexity_check() {
-  python3 scripts/check-complexity-headroom.py \
+  python3 scripts/linters/complexity-headroom/check-complexity-headroom.py \
     --warn-ccn "$HEADROOM_COMPLEXITY_WARN" \
     --warn-length "$HEADROOM_LENGTH_WARN" \
     --warn-params "$HEADROOM_PARAM_WARN"
 }
 
 run_semantic_contract_ownership_check() {
-  python3 scripts/check-semantic-contract-ownership.py
+  python3 scripts/linters/semantic-contract-ownership/check-semantic-contract-ownership.py
 }
 
 run_architecture_boundary_check() {
-  python3 scripts/check-architecture-boundaries.py
+  python3 scripts/linters/architecture-boundaries/check-architecture-boundaries.py
 }
 
 run_llm_gateway_boundary_check() {
-  python3 scripts/check-llm-gateway-boundary.py
+  python3 scripts/linters/llm-gateway-boundary/check-llm-gateway-boundary.py
+}
+
+run_flutter_design_compliance_check() {
+  local skip_tiers="${FLUTTER_DESIGN_LINTER_SKIP}"
+  if [[ -n "$skip_tiers" ]]; then
+    python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --skip "$skip_tiers"
+    return 0
+  fi
+  python3 scripts/linters/flutter-design/check-flutter-design-compliance.py
 }
 
 run_cdk_synth() {
@@ -196,6 +206,8 @@ run_step "Semantic contract ownership guard" run_semantic_contract_ownership_che
 run_step "Architecture boundary guard" run_architecture_boundary_check
 
 run_step "LLM gateway non-bypass guard" run_llm_gateway_boundary_check
+
+run_step "Flutter solution design compliance linter" run_flutter_design_compliance_check
 
 if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; then
   run_step "CDK synth (infra)" run_cdk_synth

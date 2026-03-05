@@ -247,6 +247,21 @@ def test_artifact_validation_errors_for_payload_shape() -> None:
             expected_contract_version="2.0.0",
         )
 
+    with pytest.raises(RuntimeError, match="artifact_schema_invalid:eval_schema_version_missing"):
+        aws_pipeline_runner.validate_eval_artifact_schema_version(
+            payload={},
+            expected_eval_schema_version="2.0.0",
+        )
+
+    with pytest.raises(
+        RuntimeError,
+        match="artifact_schema_invalid:eval_schema_version_mismatch:expected=2.0.0:actual=1.0.0",
+    ):
+        aws_pipeline_runner.validate_eval_artifact_schema_version(
+            payload={"eval_schema_version": "1.0.0"},
+            expected_eval_schema_version="2.0.0",
+        )
+
 
 def test_artifact_validation_normalizes_actual_tool_fields() -> None:
     native_payload = {
