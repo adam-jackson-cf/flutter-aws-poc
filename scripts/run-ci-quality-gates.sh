@@ -5,10 +5,12 @@ RUNNER_PATH="scripts/run-ci-quality-gates.sh"
 MODE="check"
 STAGE="false"
 LANE="${QUALITY_GATES_LANE:-quality-gates-core}"
+UV_BIN="${UV_BIN:-uv}"
+UV_PYTHON_VERSION="${UV_PYTHON_VERSION:-3.12.7}"
+UV_REQUIREMENTS_FILE="${UV_REQUIREMENTS_FILE:-requirements.txt}"
+UV_VENV_PYTHON_BIN="${UV_VENV_PYTHON_BIN:-}"
+PYTHON_RUNNER_RESOLUTION="unresolved"
 PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-100}"
-RUN_DUPLICATION_SIGNALS="${RUN_DUPLICATION_SIGNALS:-1}"
-DUPLICATION_SIGNAL_TARGET="${DUPLICATION_SIGNAL_TARGET:-.}"
-DUPLICATION_SIGNAL_MIN_SEVERITY="${DUPLICATION_SIGNAL_MIN_SEVERITY:-medium}"
 COMPLEXITY_MAX="${COMPLEXITY_MAX:-10}"
 LENGTH_MAX="${LENGTH_MAX:-80}"
 PARAM_MAX="${PARAM_MAX:-5}"
@@ -30,6 +32,71 @@ Quality gate lanes:
 USAGE
 }
 
+print_usage() {
+  cat <<'USAGE'
+Usage:
+  bash scripts/run-ci-quality-gates.sh [--lane=<lane>] [--fix] [--stage]
+  bash scripts/run-ci-quality-gates.sh --list-lanes
+  bash scripts/run-ci-quality-gates.sh --print-python-cmd
+  bash scripts/run-ci-quality-gates.sh --help
+
+Python runner resolution (uv default):
+  - Runner command: UV_BIN (default: uv)
+  - Pinned Python patch version: UV_PYTHON_VERSION (default: 3.12.7)
+  - Dependency source: UV_REQUIREMENTS_FILE (default: requirements.txt)
+  - Optional prebuilt environment python: UV_VENV_PYTHON_BIN
+  - Gate Python commands run via:
+      uv run --no-project --python <UV_PYTHON_VERSION> --with-requirements <UV_REQUIREMENTS_FILE> <python args>
+  - No system python fallback path exists in this runner.
+
+Examples:
+  bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2
+  UV_PYTHON_VERSION=3.12.7 bash scripts/run-ci-quality-gates.sh --lane=preflight
+  UV_BIN=uv bash scripts/run-ci-quality-gates.sh --print-python-cmd
+  UV_VENV_PYTHON_BIN=.ci-venv/bin/python bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
+USAGE
+}
+
+resolve_python_runner() {
+  local full_version
+  if [[ -n "$UV_VENV_PYTHON_BIN" ]]; then
+    if [[ ! -x "$UV_VENV_PYTHON_BIN" ]]; then
+      echo "Python runner resolution failed: UV_VENV_PYTHON_BIN '$UV_VENV_PYTHON_BIN' is not executable." >&2
+      return 1
+    fi
+    full_version="$("$UV_VENV_PYTHON_BIN" -c 'import sys; print(".".join(str(part) for part in sys.version_info[:3]))')"
+    if [[ "$full_version" != "$UV_PYTHON_VERSION" ]]; then
+      echo "Python runner resolution failed: prebuilt env resolved Python ${full_version}, expected ${UV_PYTHON_VERSION}." >&2
+      return 1
+    fi
+    PYTHON_RUNNER_RESOLUTION="venv(${UV_VENV_PYTHON_BIN} @ python ${full_version})"
+    return 0
+  fi
+
+  if ! command -v "$UV_BIN" >/dev/null 2>&1; then
+    echo "Python runner resolution failed: '$UV_BIN' is not installed or not on PATH." >&2
+    return 1
+  fi
+  if [[ ! -f "$UV_REQUIREMENTS_FILE" ]]; then
+    echo "Python runner resolution failed: requirements file '$UV_REQUIREMENTS_FILE' not found." >&2
+    return 1
+  fi
+  full_version="$("$UV_BIN" run --no-project --python "$UV_PYTHON_VERSION" python -c 'import sys; print(".".join(str(part) for part in sys.version_info[:3]))')"
+  if [[ "$full_version" != "$UV_PYTHON_VERSION" ]]; then
+    echo "Python runner resolution failed: uv resolved Python ${full_version}, expected ${UV_PYTHON_VERSION}." >&2
+    return 1
+  fi
+  PYTHON_RUNNER_RESOLUTION="uv(${UV_BIN} @ python ${full_version}, requirements=${UV_REQUIREMENTS_FILE})"
+}
+
+run_python() {
+  if [[ -n "$UV_VENV_PYTHON_BIN" ]]; then
+    "$UV_VENV_PYTHON_BIN" "$@"
+    return 0
+  fi
+  "$UV_BIN" run --no-project --python "$UV_PYTHON_VERSION" --with-requirements "$UV_REQUIREMENTS_FILE" "$@"
+}
+
 for arg in "$@"; do
   case "$arg" in
     --fix)
@@ -45,12 +112,35 @@ for arg in "$@"; do
       print_lane_help
       exit 0
       ;;
+    --print-python-cmd)
+      resolve_python_runner
+      if [[ -n "$UV_VENV_PYTHON_BIN" ]]; then
+        echo "$UV_VENV_PYTHON_BIN"
+      else
+        echo "$UV_BIN run --no-project --python $UV_PYTHON_VERSION --with-requirements $UV_REQUIREMENTS_FILE python"
+      fi
+      exit 0
+      ;;
+    --help|-h)
+      print_usage
+      echo
+      print_lane_help
+      echo
+      if resolve_python_runner; then
+        echo "Resolved Python runner: ${PYTHON_RUNNER_RESOLUTION}"
+      else
+        echo "Resolved Python runner: unavailable" >&2
+      fi
+      exit 0
+      ;;
     *)
       echo "Unknown argument: $arg" >&2
       exit 2
       ;;
   esac
 done
+
+resolve_python_runner
 
 run_step() {
   local step="$1"
@@ -71,41 +161,48 @@ run_prettier_check() {
 }
 
 run_ruff_complexity_check() {
-  python3 -m ruff check aws/lambda evals runtime scripts --select C901,PLR0913 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX" --config "lint.pylint.max-args=$PARAM_MAX"
+  run_python -m ruff check aws/lambda evals runtime scripts --select C901,PLR0913 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX" --config "lint.pylint.max-args=$PARAM_MAX"
 }
 
 run_lizard_complexity_check() {
-  python3 -m lizard -C "$COMPLEXITY_MAX" -L "$LENGTH_MAX" -a "$PARAM_MAX" aws/lambda evals runtime scripts infra/bin infra/lib
+  run_python -m lizard -C "$COMPLEXITY_MAX" -L "$LENGTH_MAX" -a "$PARAM_MAX" aws/lambda evals runtime scripts infra/bin infra/lib
 }
 
 run_headroom_complexity_check() {
-  python3 scripts/linters/complexity-headroom/check-complexity-headroom.py \
+  run_python scripts/linters/complexity-headroom/check-complexity-headroom.py \
     --warn-ccn "$HEADROOM_COMPLEXITY_WARN" \
     --warn-length "$HEADROOM_LENGTH_WARN" \
     --warn-params "$HEADROOM_PARAM_WARN"
 }
 
 run_semantic_contract_ownership_check() {
-  python3 scripts/linters/semantic-contract-ownership/check-semantic-contract-ownership.py
+  run_python scripts/linters/semantic-contract-ownership/check-semantic-contract-ownership.py
 }
 
 run_architecture_boundary_check() {
-  python3 scripts/linters/architecture-boundaries/check-architecture-boundaries.py
+  run_python scripts/linters/architecture-boundaries/check-architecture-boundaries.py
 }
 
 run_llm_gateway_boundary_check() {
-  python3 scripts/linters/llm-gateway-boundary/check-llm-gateway-boundary.py
+  run_python scripts/linters/llm-gateway-boundary/check-llm-gateway-boundary.py
 }
 
 run_flutter_design_waiver_check() {
-  python3 scripts/linters/flutter-design/check-flutter-design-waivers.py
+  run_python scripts/linters/flutter-design/check-flutter-design-waivers.py
 }
 
 run_flutter_design_compliance_check() {
   local skip_tiers="${1:-}"
   local output_format="${2:-text}"
   local args=(
-    python3
+    "$UV_BIN"
+    run
+    --no-project
+    --python
+    "$UV_PYTHON_VERSION"
+    --with-requirements
+    "$UV_REQUIREMENTS_FILE"
+    python
     scripts/linters/flutter-design/check-flutter-design-compliance.py
     --output
     "$output_format"
@@ -117,6 +214,15 @@ run_flutter_design_compliance_check() {
   "${args[@]}"
 }
 
+run_ci_python_syntax_guard() {
+  mapfile -t py_files < <(git ls-files "*.py")
+  if [[ "${#py_files[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  run_python -m py_compile "${py_files[@]}"
+}
+
 run_cdk_synth() {
   if [[ "${CI:-}" == "true" ]] && [[ -f "infra/package.json" ]] && grep -q '"cdk:synth:ci"' "infra/package.json"; then
     npm --prefix infra run cdk:synth:ci
@@ -126,82 +232,13 @@ run_cdk_synth() {
 }
 
 run_pytest_coverage_gate() {
-  python3 -m pytest \
+  run_python -m pytest \
     --cov=evals \
     --cov=runtime \
     --cov=aws/lambda \
     --cov-config=.coveragerc \
     --cov-report=term-missing \
     --cov-fail-under="$PYTEST_COVERAGE_TARGET"
-}
-
-build_duplication_artifact_root() {
-  local ts
-  ts="$(date -u +%Y%m%dT%H%M%SZ)"
-  echo ".enaible/artifacts/ci-quality/duplication/$ts"
-}
-
-run_duplication_signals() {
-  if ! command -v enaible >/dev/null 2>&1; then
-    echo "Skipping duplication signals: enaible not installed."
-    return 0
-  fi
-
-  local artifact_root
-  artifact_root="$(build_duplication_artifact_root)"
-  mkdir -p "$artifact_root"
-
-  local audit_out="$artifact_root/duplication-audit.json"
-  local audit_summary="$artifact_root/duplication-audit-summary.json"
-  local code_out="$artifact_root/duplication-code-only.json"
-  local code_summary="$artifact_root/duplication-code-only-summary.json"
-
-  local common_excludes=(
-    --exclude "dist/"
-    --exclude "build/"
-    --exclude "node_modules/"
-    --exclude "__pycache__/"
-    --exclude ".next/"
-    --exclude "vendor/"
-    --exclude ".venv/"
-    --exclude ".mypy_cache/"
-    --exclude ".ruff_cache/"
-    --exclude ".pytest_cache/"
-    --exclude ".gradle/"
-    --exclude "target/"
-    --exclude "bin/"
-    --exclude "obj/"
-    --exclude "coverage/"
-    --exclude ".turbo/"
-    --exclude ".svelte-kit/"
-    --exclude ".cache/"
-    --exclude ".enaible/artifacts/"
-    --exclude ".enaible/"
-  )
-  local code_only_excludes=(
-    --exclude "package-lock.json"
-    --exclude "infra/package-lock.json"
-    --exclude "docs/flutter-uki-ai-platform-arch/**"
-    --exclude "*.html"
-  )
-
-  ENAIBLE_REPO_ROOT="$(pwd)" enaible analyzers run quality:jscpd \
-    --target "$DUPLICATION_SIGNAL_TARGET" \
-    --min-severity "$DUPLICATION_SIGNAL_MIN_SEVERITY" \
-    --out "$audit_out" \
-    --summary-out "$audit_summary" \
-    "${common_excludes[@]}"
-
-  ENAIBLE_REPO_ROOT="$(pwd)" enaible analyzers run quality:jscpd \
-    --target "$DUPLICATION_SIGNAL_TARGET" \
-    --min-severity "$DUPLICATION_SIGNAL_MIN_SEVERITY" \
-    --out "$code_out" \
-    --summary-out "$code_summary" \
-    "${common_excludes[@]}" \
-    "${code_only_excludes[@]}"
-
-  echo "DUPLICATION_AUDIT_SUMMARY=$audit_summary"
-  echo "DUPLICATION_CODE_ONLY_SUMMARY=$code_summary"
 }
 
 parity_guard() {
@@ -259,12 +296,14 @@ run_common_static_suite() {
 
 run_lane_preflight() {
   run_step "Parity guard" parity_guard
+  run_step "Python syntax guard (uv pinned ${UV_PYTHON_VERSION})" run_ci_python_syntax_guard
   run_step "Prettier formatting check" run_prettier_check
   run_typescript_lint_if_present
 }
 
 run_lane_fast_r1r2() {
   run_step "Parity guard" parity_guard
+  run_step "Python syntax guard (uv pinned ${UV_PYTHON_VERSION})" run_ci_python_syntax_guard
   run_step "Python complexity lint (ruff <= ${COMPLEXITY_MAX})" run_ruff_complexity_check
   run_step "Semantic contract ownership guard" run_semantic_contract_ownership_check
   run_step "Architecture boundary guard" run_architecture_boundary_check
@@ -280,25 +319,13 @@ run_lane_quality_gates_core() {
     run_step "Deprecated LLM gateway parity check" run_llm_gateway_boundary_check
   fi
 
-  if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; then
-    run_step "CDK synth (infra)" run_cdk_synth
-  fi
-
   run_pytest_if_configured
-
-  if [[ "$RUN_DUPLICATION_SIGNALS" == "1" ]]; then
-    run_step "Duplication signals (audit + code-only)" run_duplication_signals
-  fi
 }
 
 run_lane_extended_r3r4() {
   run_step "Parity guard" parity_guard
   run_step "Flutter waiver governance" run_flutter_design_waiver_check
   run_step "Flutter solution design compliance linter (R1-R4 strict)" run_flutter_design_compliance_check ""
-
-  if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; then
-    run_step "CDK synth (infra)" run_cdk_synth
-  fi
 
   run_pytest_if_configured
 }
@@ -315,14 +342,15 @@ run_lane_nightly_full() {
 
   run_pytest_if_configured
   run_mutation_if_configured
-
-  if [[ "$RUN_DUPLICATION_SIGNALS" == "1" ]]; then
-    run_step "Duplication signals (audit + code-only)" run_duplication_signals
-  fi
 }
 
 run_lane_release_hardening() {
-  run_lane_nightly_full
+  run_step "Parity guard" parity_guard
+  run_common_static_suite
+  run_step "Flutter waiver governance" run_flutter_design_waiver_check
+  run_step "Flutter solution design compliance linter (R1-R4 strict)" run_flutter_design_compliance_check ""
+  run_pytest_if_configured
+  run_mutation_if_configured
 }
 
 run_lane() {

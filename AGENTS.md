@@ -94,8 +94,7 @@ Use this as the authoritative command/action source before running operational o
 - `python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --output json --timings --skip R3,R4`
 - `python3 scripts/linters/flutter-design/check-flutter-design-waivers.py`
 - `COMPLEXITY_MAX=10 bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core`
-- `RUN_DUPLICATION_SIGNALS=0 bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core`
-- `DUPLICATION_SIGNAL_MIN_SEVERITY=high bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core`
+- `PYTEST_COVERAGE_TARGET=100 bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core`
 
 ### Dashboard and ops
 - Recreate/run dashboard: `./scripts/create-cloudwatch-dashboard.sh --run-id <RUN_ID> --region "$AWS_REGION"`

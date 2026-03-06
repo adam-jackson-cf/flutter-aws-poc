@@ -10,6 +10,10 @@ on:
   schedule:
     - cron: "0 2 * * *"
 
+env:
+  UV_PYTHON_VERSION: "3.12.7"
+  UV_REQUIREMENTS_FILE: "requirements.txt"
+
 jobs:
   changes:
     runs-on: ubuntu-latest
@@ -47,7 +51,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12.7"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.10.0"
+
+      - name: Cache uv artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-
 
       - name: Install root Node dependencies
         run: npm ci
@@ -55,11 +72,15 @@ jobs:
       - name: Install infra Node dependencies
         run: npm --prefix infra ci
 
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
+      - name: Build uv gate environment
+        run: |
+          uv python install "$UV_PYTHON_VERSION"
+          uv venv --python "$UV_PYTHON_VERSION" .ci-venv
+          uv pip install --python .ci-venv/bin/python -r "$UV_REQUIREMENTS_FILE"
+          .ci-venv/bin/python --version
 
       - name: Run preflight lane
-        run: bash scripts/run-ci-quality-gates.sh --lane=preflight
+        run: UV_VENV_PYTHON_BIN=.ci-venv/bin/python bash scripts/run-ci-quality-gates.sh --lane=preflight
 
   fast-r1r2:
     runs-on: ubuntu-latest
@@ -79,7 +100,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12.7"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.10.0"
+
+      - name: Cache uv artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-
 
       - name: Install root Node dependencies
         run: npm ci
@@ -87,11 +121,15 @@ jobs:
       - name: Install infra Node dependencies
         run: npm --prefix infra ci
 
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
+      - name: Build uv gate environment
+        run: |
+          uv python install "$UV_PYTHON_VERSION"
+          uv venv --python "$UV_PYTHON_VERSION" .ci-venv
+          uv pip install --python .ci-venv/bin/python -r "$UV_REQUIREMENTS_FILE"
+          .ci-venv/bin/python --version
 
       - name: Run fast-r1r2 lane
-        run: bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2
+        run: UV_VENV_PYTHON_BIN=.ci-venv/bin/python bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2
 
   quality-gates-core:
     runs-on: ubuntu-latest
@@ -111,7 +149,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12.7"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.10.0"
+
+      - name: Cache uv artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-
 
       - name: Install root Node dependencies
         run: npm ci
@@ -119,11 +170,15 @@ jobs:
       - name: Install infra Node dependencies
         run: npm --prefix infra ci
 
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
+      - name: Build uv gate environment
+        run: |
+          uv python install "$UV_PYTHON_VERSION"
+          uv venv --python "$UV_PYTHON_VERSION" .ci-venv
+          uv pip install --python .ci-venv/bin/python -r "$UV_REQUIREMENTS_FILE"
+          .ci-venv/bin/python --version
 
       - name: Run quality-gates-core lane
-        run: bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
+        run: UV_VENV_PYTHON_BIN=.ci-venv/bin/python bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
 
   extended-r3r4:
     runs-on: ubuntu-latest
@@ -155,7 +210,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12.7"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.10.0"
+
+      - name: Cache uv artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-
 
       - name: Install root Node dependencies
         run: npm ci
@@ -163,11 +231,15 @@ jobs:
       - name: Install infra Node dependencies
         run: npm --prefix infra ci
 
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
+      - name: Build uv gate environment
+        run: |
+          uv python install "$UV_PYTHON_VERSION"
+          uv venv --python "$UV_PYTHON_VERSION" .ci-venv
+          uv pip install --python .ci-venv/bin/python -r "$UV_REQUIREMENTS_FILE"
+          .ci-venv/bin/python --version
 
       - name: Run extended-r3r4 lane
-        run: bash scripts/run-ci-quality-gates.sh --lane=extended-r3r4
+        run: UV_VENV_PYTHON_BIN=.ci-venv/bin/python bash scripts/run-ci-quality-gates.sh --lane=extended-r3r4
 
   nightly-full:
     runs-on: ubuntu-latest
@@ -192,7 +264,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12.7"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.10.0"
+
+      - name: Cache uv artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-
 
       - name: Install root Node dependencies
         run: npm ci
@@ -200,11 +285,15 @@ jobs:
       - name: Install infra Node dependencies
         run: npm --prefix infra ci
 
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
+      - name: Build uv gate environment
+        run: |
+          uv python install "$UV_PYTHON_VERSION"
+          uv venv --python "$UV_PYTHON_VERSION" .ci-venv
+          uv pip install --python .ci-venv/bin/python -r "$UV_REQUIREMENTS_FILE"
+          .ci-venv/bin/python --version
 
       - name: Run nightly-full lane
-        run: bash scripts/run-ci-quality-gates.sh --lane=nightly-full
+        run: UV_VENV_PYTHON_BIN=.ci-venv/bin/python bash scripts/run-ci-quality-gates.sh --lane=nightly-full
 
   release-hardening:
     runs-on: ubuntu-latest
@@ -230,7 +319,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12.7"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.10.0"
+
+      - name: Cache uv artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-${{ env.UV_PYTHON_VERSION }}-
 
       - name: Install root Node dependencies
         run: npm ci
@@ -238,8 +340,12 @@ jobs:
       - name: Install infra Node dependencies
         run: npm --prefix infra ci
 
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
+      - name: Build uv gate environment
+        run: |
+          uv python install "$UV_PYTHON_VERSION"
+          uv venv --python "$UV_PYTHON_VERSION" .ci-venv
+          uv pip install --python .ci-venv/bin/python -r "$UV_REQUIREMENTS_FILE"
+          .ci-venv/bin/python --version
 
       - name: Run release-hardening lane
-        run: bash scripts/run-ci-quality-gates.sh --lane=release-hardening
+        run: UV_VENV_PYTHON_BIN=.ci-venv/bin/python bash scripts/run-ci-quality-gates.sh --lane=release-hardening

@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: ci-quality-gates
         name: ci-quality-gates
-        entry: bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2 --fix --stage
+        entry: env UV_PYTHON_VERSION=3.12.7 UV_REQUIREMENTS_FILE=requirements.txt bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2 --fix --stage
         language: system
         pass_filenames: false
         always_run: true
