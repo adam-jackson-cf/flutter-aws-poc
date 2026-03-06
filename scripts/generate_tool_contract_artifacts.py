@@ -18,13 +18,14 @@ def _load_contract(repo_root: Path) -> dict[str, object]:
 
 def _runtime_lines(contract: dict[str, object]) -> list[str]:
     contract_version = str(contract["version"])
+    issue_key_pattern = r"\b[A-Z][A-Z0-9]+-\d+\b"
     return [
         "# Auto-generated from contracts/jira_tools.contract.json.",
         "# Do not edit by hand; run scripts/generate_tool_contract_artifacts.py.",
         "",
         f"CONTRACT_VERSION = {json.dumps(contract_version)}",
         "",
-        f"ISSUE_KEY_PATTERN = {json.dumps(r'\b[A-Z][A-Z0-9]+-\d+\b')}",
+        f"ISSUE_KEY_PATTERN = {json.dumps(issue_key_pattern)}",
         "",
         f"INTENT_KEYWORDS = {py_literal(contract['intent_keywords'])}",
         "",
