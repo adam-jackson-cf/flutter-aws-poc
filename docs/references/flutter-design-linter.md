@@ -5,9 +5,11 @@ This linter enforces architecture controls derived from the Flutter solution des
 ## Portability model
 
 - Rule engine: `scripts/linters/flutter-design/check-flutter-design-compliance.py`
-- Project adapter profile: `scripts/linters/flutter-design/flutter-design-linter-profile.json`
+- Portable policy: `scripts/linters/flutter-design/policy/flutter-design-policy.json`
+- Project adapter: `scripts/linters/flutter-design/flutter-design-linter-profile.json`
 
-The engine is reusable. To apply it in another repo, keep the script and provide a new profile file (file sets, allowlists, and scope markers).
+The policy defines reusable rule intent (`rule_id`, `tier`, `check_name`).
+The adapter maps those rules to this repo's file sets, allowlists, and markers.
 
 ## Tier model
 
@@ -24,22 +26,42 @@ Run all tiers:
 python3 scripts/linters/flutter-design/check-flutter-design-compliance.py
 ```
 
-Run the current PoC quality-gate scope (`R1` and `R2` only):
+Run PoC scope (`R1` and `R2`):
 
 ```bash
 python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --skip R3,R4
 ```
 
-Quality gate wrapper default:
+Emit machine-readable results:
 
 ```bash
-bash scripts/run-ci-quality-gates.sh
+python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --output json --timings
 ```
 
-The gate script passes `--skip R3,R4` by default through `FLUTTER_DESIGN_LINTER_SKIP`. Override it to run additional tiers.
-
-List rule catalog:
+List rule catalog from policy:
 
 ```bash
 python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --list-rules
 ```
+
+## Waiver governance
+
+Waivers are validated by:
+
+```bash
+python3 scripts/linters/flutter-design/check-flutter-design-waivers.py
+```
+
+Expired waivers fail strict lanes.
+
+## CI lanes
+
+Use the central runner with explicit lanes:
+
+```bash
+bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2
+bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
+bash scripts/run-ci-quality-gates.sh --lane=extended-r3r4
+```
+
+The control ownership matrix is documented in `docs/references/flutter-design-control-ownership.md`.

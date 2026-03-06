@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flutter AgentCore Jira + RAG Evaluation Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --font-body: "Sora", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", monospace;
+
+    --bg: #f8fbfa;
+    --surface: #ffffff;
+    --surface-soft: #eef7f5;
+    --border: rgba(11, 52, 46, 0.16);
+    --text: #123d37;
+    --text-dim: #47615d;
+
+    --teal: #0f766e;
+    --emerald: #059669;
+    --amber: #d97706;
+    --red: #dc2626;
+    --sky: #0369a1;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #041e1a;
+      --surface: #0a2f2a;
+      --surface-soft: #0f3f38;
+      --border: rgba(189, 252, 244, 0.18);
+      --text: #d1faf5;
+      --text-dim: #87b8b0;
+
+      --teal: #2dd4bf;
+      --emerald: #34d399;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --sky: #38bdf8;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: var(--font-body);
+    color: var(--text);
+    background:
+      radial-gradient(circle at 10% 8%, rgba(15, 118, 110, 0.14), transparent 35%),
+      radial-gradient(circle at 88% 12%, rgba(3, 105, 161, 0.14), transparent 30%),
+      var(--bg);
+    min-height: 100vh;
+    padding: 28px;
+  }
+
+  .page {
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  .hero {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px 24px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+    margin-bottom: 16px;
+  }
+
+  h1 {
+    font-size: 31px;
+    line-height: 1.2;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+
+  .mermaid-wrap {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+    overflow: auto;
+  }
+
+  .mermaid-wrap .mermaid {
+    display: flex;
+    justify-content: center;
+    transform-origin: top center;
+    transition: transform 0.18s ease;
+  }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--surface-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    z-index: 10;
+  }
+
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    cursor: pointer;
+  }
+
+  .zoom-controls button:hover {
+    background: rgba(15, 118, 110, 0.12);
+    color: var(--text);
+  }
+
+  .mermaid-wrap.is-zoomed { cursor: grab; }
+  .mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+  .mermaid .nodeLabel {
+    font-family: var(--font-body) !important;
+    font-size: 15px !important;
+    color: var(--text) !important;
+  }
+
+  .mermaid .edgeLabel {
+    font-family: var(--font-mono) !important;
+    font-size: 12px !important;
+    color: var(--text-dim) !important;
+    background-color: var(--bg) !important;
+  }
+
+  .mermaid .edgeLabel rect { fill: var(--bg) !important; }
+
+  .mermaid .node rect,
+  .mermaid .node polygon,
+  .mermaid .node circle {
+    stroke-width: 1.5px !important;
+  }
+
+  .legend-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .legend-card {
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+
+  .legend-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .legend-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .chip {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border-radius: 999px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-soft);
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 980px) {
+    body { padding: 14px; }
+    h1 { font-size: 23px; }
+    .legend-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>Flutter Platform Flow: Jira Ticket + RAG Search + Eval Feedback Loop</h1>
+      <p class="subtitle">Business flow mapped to AgentCore platform components and continuous evaluation paths</p>
+    </section>
+
+    <section class="mermaid-wrap">
+      <div class="zoom-controls">
+        <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+        <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">-</button>
+        <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+      </div>
+
+      <pre class="mermaid">
+flowchart TD
+  subgraph A[Authoring and Release]
+    A1[Capability Definition Draft]
+    A2[Evaluation Gate Service]
+    A3[Registry Publish]
+    A4[AgentCore Runtime Resolution]
+    A1 --> A2 --> A3 --> A4
+  end
+
+  subgraph B[Runtime Business Flow]
+    B1[User Request]
+    B2[Identity Context STS tags]
+    B3[AgentCore ReAct loop]
+    B6[RAG Search OpenSearch KB]
+    B4[MCP Gateway RFC8693]
+    B5[Jira MCP create_ticket]
+    B7[LLM Gateway LiteLLM route]
+    B8[Guardrails input and output]
+    B9[Response with citations]
+    B10[Audit Record I5]
+
+    B1 --> B2 --> B3
+    B3 -->|needs context| B6 --> B3
+    B3 -->|needs write action| B4 --> B5 --> B3
+    B3 --> B7 --> B8 --> B9
+    B3 --> B10
+  end
+
+  subgraph P[Process Controls for R2 and R3]
+    P1[Step Functions Workflow Contract]
+    P2[HITL approval gate]
+    P1 --> P2 --> B4
+  end
+
+  subgraph C[Evaluation and Improvement Loop]
+    C1[Pre publish eval Promptfoo and Bedrock Eval]
+    C2[Runtime sampled eval Langfuse LLM judge]
+    C3[AgentCore online eval service over CloudWatch logs]
+    C4[Regression triage and root cause]
+    C5[Update prompts tool bindings tests]
+    C6[New Capability version]
+
+    A2 --> C1
+    B3 -. sampled executions .-> C2
+    B3 -. sampled executions .-> C3
+    C2 --> C4
+    C3 --> C4
+    C4 --> C5 --> C6 --> A1
+  end
+
+  B3 -. if R2 or R3 write .-> P1
+
+  classDef author fill:#0f766e22,stroke:#0f766e,stroke-width:2px;
+  classDef runtime fill:#0369a122,stroke:#0369a1,stroke-width:2px;
+  classDef process fill:#d9770622,stroke:#d97706,stroke-width:2px;
+  classDef eval fill:#05966922,stroke:#059669,stroke-width:2px;
+
+  class A1,A2,A3,A4 author;
+  class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10 runtime;
+  class P1,P2 process;
+  class C1,C2,C3,C4,C5,C6 eval;
+      </pre>
+    </section>
+
+    <section class="legend-grid">
+      <article class="legend-card">
+        <div class="legend-title">Component placement</div>
+        <div class="legend-body">Authoring and publish controls sit in Registry and Evaluation Gate. Runtime handling sits in AgentCore plus LLM Gateway, Guardrails, MCP Gateway, and RAG services.</div>
+        <div class="chip-row">
+          <span class="chip">Capability Registry</span>
+          <span class="chip">AgentCore</span>
+          <span class="chip">LLM Gateway</span>
+        </div>
+      </article>
+
+      <article class="legend-card">
+        <div class="legend-title">Evaluation tracks</div>
+        <div class="legend-body">Track 1 is deterministic pre-publish scoring. Track 2 is runtime sampled quality scoring and online evaluators over production logs.</div>
+        <div class="chip-row">
+          <span class="chip">Promptfoo</span>
+          <span class="chip">Bedrock Eval</span>
+          <span class="chip">Langfuse judge</span>
+        </div>
+      </article>
+
+      <article class="legend-card">
+        <div class="legend-title">Feedback loop</div>
+        <div class="legend-body">Observed runtime regressions feed backlog updates, then a new version is evaluated and republished. Improvement is versioned, not patched in place.</div>
+        <div class="chip-row">
+          <span class="chip">Regression triage</span>
+          <span class="chip">Versioned changes</span>
+          <span class="chip">Publish gate</span>
+        </div>
+      </article>
+    </section>
+  </div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  import elkLayouts from "https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk/dist/mermaid-layout-elk.esm.min.mjs";
+
+  const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+  mermaid.registerLayoutLoaders(elkLayouts);
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    look: "classic",
+    layout: "elk",
+    themeVariables: {
+      primaryColor: isDark ? "#0f3f38" : "#dff7f3",
+      primaryBorderColor: isDark ? "#2dd4bf" : "#0f766e",
+      primaryTextColor: isDark ? "#d1faf5" : "#123d37",
+      secondaryColor: isDark ? "#0f3a4d" : "#e0f2fe",
+      secondaryBorderColor: isDark ? "#38bdf8" : "#0369a1",
+      secondaryTextColor: isDark ? "#d1faf5" : "#123d37",
+      tertiaryColor: isDark ? "#4a3712" : "#fff6e5",
+      tertiaryBorderColor: isDark ? "#fbbf24" : "#d97706",
+      tertiaryTextColor: isDark ? "#d1faf5" : "#123d37",
+      lineColor: isDark ? "#7dc6bb" : "#5b726d",
+      fontSize: "15px",
+      fontFamily: "'Sora', system-ui, sans-serif",
+      noteBkgColor: isDark ? "#0d332e" : "#f0fdf9",
+      noteTextColor: isDark ? "#d1faf5" : "#123d37",
+      noteBorderColor: isDark ? "#34d399" : "#059669"
+    }
+  });
+</script>
+<script>
+  function updateZoomState(wrap) {
+    const target = wrap.querySelector(".mermaid");
+    const zoom = parseFloat(target.dataset.zoom || "1");
+    wrap.classList.toggle("is-zoomed", zoom > 1);
+  }
+
+  function zoomDiagram(btn, factor) {
+    const wrap = btn.closest(".mermaid-wrap");
+    const target = wrap.querySelector(".mermaid");
+    const current = parseFloat(target.dataset.zoom || "1");
+    const next = Math.min(Math.max(current * factor, 0.35), 4.5);
+    target.dataset.zoom = next;
+    target.style.transform = "scale(" + next + ")";
+    updateZoomState(wrap);
+  }
+
+  function resetZoom(btn) {
+    const wrap = btn.closest(".mermaid-wrap");
+    const target = wrap.querySelector(".mermaid");
+    target.dataset.zoom = "1";
+    target.style.transform = "scale(1)";
+    updateZoomState(wrap);
+  }
+
+  document.querySelectorAll(".mermaid-wrap").forEach(function (wrap) {
+    wrap.addEventListener("wheel", function (e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const target = wrap.querySelector(".mermaid");
+      const current = parseFloat(target.dataset.zoom || "1");
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const next = Math.min(Math.max(current * factor, 0.35), 4.5);
+      target.dataset.zoom = next;
+      target.style.transform = "scale(" + next + ")";
+      updateZoomState(wrap);
+    }, { passive: false });
+
+    let startX = 0;
+    let startY = 0;
+    let scrollL = 0;
+    let scrollT = 0;
+
+    wrap.addEventListener("mousedown", function (e) {
+      if (e.target.closest(".zoom-controls")) return;
+      const target = wrap.querySelector(".mermaid");
+      if (parseFloat(target.dataset.zoom || "1") <= 1) return;
+      wrap.classList.add("is-panning");
+      startX = e.clientX;
+      startY = e.clientY;
+      scrollL = wrap.scrollLeft;
+      scrollT = wrap.scrollTop;
+    });
+
+    window.addEventListener("mousemove", function (e) {
+      if (!wrap.classList.contains("is-panning")) return;
+      wrap.scrollLeft = scrollL - (e.clientX - startX);
+      wrap.scrollTop = scrollT - (e.clientY - startY);
+    });
+
+    window.addEventListener("mouseup", function () {
+      wrap.classList.remove("is-panning");
+    });
+  });
+</script>
+</body>
+</html>

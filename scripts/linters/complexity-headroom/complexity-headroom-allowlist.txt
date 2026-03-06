@@ -64,8 +64,13 @@ runtime/sop_agent/tools/request_grounding.py::_grounding_success_result
 runtime/sop_agent/tools/tool_selection.py::_argument_type_error
 runtime/sop_agent/tools/tool_selection.py::stage_tool_failure
 scripts/linters/architecture-boundaries/check-architecture-boundaries.py::_extract_import_violations
+scripts/linters/common/llm_gateway_boundary.py::path_violations
+scripts/linters/common/llm_gateway_boundary.py::source_violations
+scripts/linters/flutter-design/check-flutter-design-compliance.py::_emit_results
 scripts/linters/flutter-design/check-flutter-design-compliance.py::_files_for_entry
-scripts/linters/flutter-design/check-flutter-design-compliance.py::_llm_boundary_source_violations
-scripts/linters/flutter-design/check-flutter-design-compliance.py::main
+scripts/linters/flutter-design/check-flutter-design-compliance.py::_print_text_header
+scripts/linters/flutter-design/check-flutter-design-compliance.py::_rule_from_policy_item
+scripts/linters/flutter-design/check-flutter-design-compliance.py::_serialize_json
+scripts/linters/flutter-design/check-flutter-design-waivers.py::load_waivers
 scripts/linters/semantic-contract-ownership/check-semantic-contract-ownership.py::main
 scripts/run-mutation-gate.py::run_mutant

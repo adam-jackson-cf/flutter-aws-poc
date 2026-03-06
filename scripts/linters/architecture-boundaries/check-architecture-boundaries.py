@@ -82,11 +82,11 @@ def _domain_relative_import_violations(path: Path) -> list[str]:
 def main() -> int:
     violations: list[str] = []
 
-    for path in sorted(DOMAIN_ROOT.glob("*.py")):
+    for path in sorted(DOMAIN_ROOT.rglob("*.py")):
         violations.extend(_extract_import_violations(path, FORBIDDEN_DOMAIN_IMPORT_PREFIXES))
         violations.extend(_domain_relative_import_violations(path))
 
-    for path in sorted(LAMBDA_ROOT.glob("*.py")):
+    for path in sorted(LAMBDA_ROOT.rglob("*.py")):
         violations.extend(_extract_import_violations(path, FORBIDDEN_LAMBDA_IMPORT_PREFIXES))
 
     if violations:

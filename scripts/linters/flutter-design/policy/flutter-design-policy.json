@@ -1,0 +1,60 @@
+{
+  "name": "flutter-design-core-policy",
+  "version": "1.0.0",
+  "rules": [
+    {
+      "rule_id": "R1-LLM-GATEWAY-NON-BYPASS",
+      "tier": "R1",
+      "title": "LLM provider calls are non-bypass and gateway-routed",
+      "check_name": "r1_llm_gateway_non_bypass"
+    },
+    {
+      "rule_id": "R1-MCP-GATEWAY-USAGE",
+      "tier": "R1",
+      "title": "MCP stage code uses gateway primitives",
+      "check_name": "r1_mcp_stage_requires_gateway"
+    },
+    {
+      "rule_id": "R1-MCP-NO-DIRECT-SERVICE-CALL",
+      "tier": "R1",
+      "title": "MCP stage code cannot import direct downstream clients",
+      "check_name": "r1_mcp_stage_forbidden_clients"
+    },
+    {
+      "rule_id": "R1-REGION-PINNING",
+      "tier": "R1",
+      "title": "Default region pinning remains eu-west-1",
+      "check_name": "r1_region_defaults"
+    },
+    {
+      "rule_id": "R2-ROUTE-METADATA",
+      "tier": "R2",
+      "title": "Route metadata defaults preserve gateway parity semantics",
+      "check_name": "r2_route_metadata_defaults"
+    },
+    {
+      "rule_id": "R2-INFRA-IDENTITY-BOUNDARY",
+      "tier": "R2",
+      "title": "Infra boundary preserves IAM runtime/gateway identity model",
+      "check_name": "r2_infra_identity_boundary"
+    },
+    {
+      "rule_id": "R2-GATEWAY-HOST-VALIDATION",
+      "tier": "R2",
+      "title": "Gateway runtime config enforces expected endpoint host validation",
+      "check_name": "r2_gateway_host_validation"
+    },
+    {
+      "rule_id": "R3-PROCESS-SCOPE-DRIFT",
+      "tier": "R3",
+      "title": "PoC route-scope code does not introduce process-scope primitives",
+      "check_name": "r3_process_scope_drift"
+    },
+    {
+      "rule_id": "R4-REGULATED-SCOPE-DRIFT",
+      "tier": "R4",
+      "title": "PoC code does not introduce regulated-scope primitives",
+      "check_name": "r4_regulated_scope_drift"
+    }
+  ]
+}

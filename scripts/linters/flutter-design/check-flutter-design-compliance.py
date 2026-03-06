@@ -4,37 +4,63 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_PROFILE_PATH = (
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.linters.common.llm_gateway_boundary import path_violations
+
+DEFAULT_POLICY_PATH = (
+    REPO_ROOT / "scripts" / "linters" / "flutter-design" / "policy" / "flutter-design-policy.json"
+)
+DEFAULT_ADAPTER_PATH = (
     REPO_ROOT / "scripts" / "linters" / "flutter-design" / "flutter-design-linter-profile.json"
 )
 ALL_TIERS = ("R1", "R2", "R3", "R4")
 
 
 @dataclass(frozen=True)
-class Rule:
+class RuleDefinition:
     rule_id: str
     tier: str
     title: str
-    check: Callable[["RuleContext"], list[str]]
+    check_name: str
+
+
+@dataclass(frozen=True)
+class RuleResult:
+    rule_id: str
+    tier: str
+    title: str
+    status: str
+    violations: list[str]
+    duration_ms: int
+
+
+@dataclass(frozen=True)
+class RenderContext:
+    policy: dict[str, object]
+    adapter: dict[str, object]
+    active_tiers: list[str]
+    skip_tiers: set[str]
 
 
 class RuleContext:
-    def __init__(self, profile: dict[str, object]) -> None:
-        self.profile = profile
+    def __init__(self, adapter: dict[str, object]) -> None:
+        self.adapter = adapter
         self._text_cache: dict[Path, str] = {}
 
     def files_for_set(self, set_name: str, suffixes: tuple[str, ...] | None = None) -> list[Path]:
-        file_sets = _dict_value(self.profile.get("file_sets", {}))
+        file_sets = _dict_value(self.adapter.get("file_sets", {}))
         entries = _str_list(file_sets.get(set_name, []))
-        excluded = set(_str_list(self.profile.get("exclude_dirs", [])))
+        excluded = set(_str_list(self.adapter.get("exclude_dirs", [])))
 
         output: list[Path] = []
         for entry in entries:
@@ -48,11 +74,11 @@ class RuleContext:
         return output
 
     def markers(self, marker_set_name: str) -> list[str]:
-        markers = _dict_value(self.profile.get("markers", {}))
+        markers = _dict_value(self.adapter.get("markers", {}))
         return _str_list(markers.get(marker_set_name, []))
 
     def allowlist(self, allowlist_name: str) -> set[str]:
-        allowlists = _dict_value(self.profile.get("allowlists", {}))
+        allowlists = _dict_value(self.adapter.get("allowlists", {}))
         return set(_str_list(allowlists.get(allowlist_name, [])))
 
     def read_text(self, path: Path) -> str:
@@ -80,6 +106,9 @@ class RuleContext:
             for path in sorted(target.rglob("*"))
             if _path_matches(path, excluded, suffixes)
         ]
+
+
+CheckFunc = Callable[[RuleContext], list[str]]
 
 
 def _dict_value(value: object) -> dict[str, object]:
@@ -124,12 +153,12 @@ def _parse_tiers(raw_values: list[str]) -> set[str]:
     return parsed
 
 
-def _load_profile(path: Path) -> dict[str, object]:
+def _load_json_object(path: Path, label: str) -> dict[str, object]:
     if not path.exists():
-        raise FileNotFoundError(f"profile file not found: {path}")
+        raise FileNotFoundError(f"{label} file not found: {path}")
     content = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(content, dict):
-        raise ValueError(f"profile file must contain a JSON object: {path}")
+        raise ValueError(f"{label} file must contain a JSON object: {path}")
     return content
 
 
@@ -141,73 +170,6 @@ def _missing_markers(source: str, markers: list[str]) -> list[str]:
     return [marker for marker in markers if marker and marker not in source]
 
 
-def _is_bedrock_client_import(node: ast.AST) -> bool:
-    if isinstance(node, ast.Import):
-        return any(alias.name == "bedrock_client" for alias in node.names)
-    if isinstance(node, ast.ImportFrom):
-        return node.module == "bedrock_client"
-    return False
-
-
-def _is_bedrock_runtime_client_call(node: ast.AST) -> bool:
-    if not isinstance(node, ast.Call):
-        return False
-    if not isinstance(node.func, ast.Attribute):
-        return False
-    if node.func.attr != "client":
-        return False
-    if not isinstance(node.func.value, ast.Name):
-        return False
-    if node.func.value.id != "boto3":
-        return False
-    if not node.args:
-        return False
-    first_arg = node.args[0]
-    if not isinstance(first_arg, ast.Constant):
-        return False
-    return str(first_arg.value) == "bedrock-runtime"
-
-
-def _llm_boundary_source_violations(
-    *,
-    rel_path: str,
-    source: str,
-    allowlisted: bool,
-    direct_markers: list[str],
-) -> list[str]:
-    if allowlisted:
-        return []
-    return [
-        f"{rel_path}: direct provider transport marker '{marker}' found outside gateway allowlist"
-        for marker in _contains_any_marker(source, direct_markers)
-    ]
-
-
-def _llm_boundary_ast_violations(
-    *,
-    rel_path: str,
-    tree: ast.AST,
-    allowlisted: bool,
-) -> list[str]:
-    if allowlisted:
-        return []
-
-    violations: list[str] = []
-    for node in ast.walk(tree):
-        if _is_bedrock_client_import(node):
-            line = getattr(node, "lineno", 1)
-            violations.append(
-                f"{rel_path}:{line} import from 'bedrock_client' outside gateway allowlist"
-            )
-            continue
-        if _is_bedrock_runtime_client_call(node):
-            line = getattr(node, "lineno", 1)
-            violations.append(
-                f"{rel_path}:{line} direct boto3 bedrock-runtime client call outside gateway allowlist"
-            )
-    return violations
-
-
 def _check_r1_llm_gateway_non_bypass(context: RuleContext) -> list[str]:
     allowlist = context.allowlist("llm_gateway_boundary")
     direct_markers = context.markers("direct_provider_transport_markers")
@@ -215,24 +177,20 @@ def _check_r1_llm_gateway_non_bypass(context: RuleContext) -> list[str]:
 
     for path in context.files_for_set("python_service_code", suffixes=(".py",)):
         rel_path = path.relative_to(REPO_ROOT).as_posix()
-        source = context.read_text(path)
-        allowlisted = rel_path in allowlist
-        violations.extend(
-            _llm_boundary_source_violations(
-                rel_path=rel_path,
-                source=source,
-                allowlisted=allowlisted,
-                direct_markers=direct_markers,
+        try:
+            violations.extend(
+                path_violations(
+                    path=path,
+                    repo_root=REPO_ROOT,
+                    allowlist=allowlist,
+                    direct_markers=direct_markers,
+                )
             )
-        )
-        tree = ast.parse(source, filename=rel_path)
-        violations.extend(
-            _llm_boundary_ast_violations(
-                rel_path=rel_path,
-                tree=tree,
-                allowlisted=allowlisted,
+        except SyntaxError as exc:
+            line = exc.lineno or 1
+            violations.append(
+                f"{rel_path}:{line} syntax error while parsing for gateway boundary check: {exc.msg}"
             )
-        )
     return sorted(set(violations))
 
 
@@ -351,66 +309,37 @@ def _check_r4_regulated_scope_drift(context: RuleContext) -> list[str]:
     )
 
 
-RULES: tuple[Rule, ...] = (
-    Rule(
-        rule_id="R1-LLM-GATEWAY-NON-BYPASS",
-        tier="R1",
-        title="LLM provider calls are non-bypass and gateway-routed",
-        check=_check_r1_llm_gateway_non_bypass,
-    ),
-    Rule(
-        rule_id="R1-MCP-GATEWAY-USAGE",
-        tier="R1",
-        title="MCP stage code uses gateway primitives",
-        check=_check_r1_mcp_stage_requires_gateway,
-    ),
-    Rule(
-        rule_id="R1-MCP-NO-DIRECT-SERVICE-CALL",
-        tier="R1",
-        title="MCP stage code cannot import direct downstream clients",
-        check=_check_r1_mcp_stage_forbidden_clients,
-    ),
-    Rule(
-        rule_id="R1-REGION-PINNING",
-        tier="R1",
-        title="Default region pinning remains eu-west-1",
-        check=_check_r1_region_defaults,
-    ),
-    Rule(
-        rule_id="R2-ROUTE-METADATA",
-        tier="R2",
-        title="Route metadata defaults preserve gateway parity semantics",
-        check=_check_r2_route_metadata_defaults,
-    ),
-    Rule(
-        rule_id="R2-INFRA-IDENTITY-BOUNDARY",
-        tier="R2",
-        title="Infra boundary preserves IAM runtime/gateway identity model",
-        check=_check_r2_infra_identity_boundary,
-    ),
-    Rule(
-        rule_id="R2-GATEWAY-HOST-VALIDATION",
-        tier="R2",
-        title="Gateway runtime config enforces expected endpoint host validation",
-        check=_check_r2_gateway_host_validation,
-    ),
-    Rule(
-        rule_id="R3-PROCESS-SCOPE-DRIFT",
-        tier="R3",
-        title="PoC route-scope code does not introduce process-scope primitives",
-        check=_check_r3_process_scope_drift,
-    ),
-    Rule(
-        rule_id="R4-REGULATED-SCOPE-DRIFT",
-        tier="R4",
-        title="PoC code does not introduce regulated-scope primitives",
-        check=_check_r4_regulated_scope_drift,
-    ),
-)
+CHECKS_BY_NAME: dict[str, CheckFunc] = {
+    "r1_llm_gateway_non_bypass": _check_r1_llm_gateway_non_bypass,
+    "r1_mcp_stage_requires_gateway": _check_r1_mcp_stage_requires_gateway,
+    "r1_mcp_stage_forbidden_clients": _check_r1_mcp_stage_forbidden_clients,
+    "r1_region_defaults": _check_r1_region_defaults,
+    "r2_route_metadata_defaults": _check_r2_route_metadata_defaults,
+    "r2_infra_identity_boundary": _check_r2_infra_identity_boundary,
+    "r2_gateway_host_validation": _check_r2_gateway_host_validation,
+    "r3_process_scope_drift": _check_r3_process_scope_drift,
+    "r4_regulated_scope_drift": _check_r4_regulated_scope_drift,
+}
 
 
-def _default_skip_tiers(profile: dict[str, object]) -> set[str]:
-    return _parse_tiers(_str_list(profile.get("default_skip_tiers", [])))
+def _load_rule_definitions(policy: dict[str, object]) -> list[RuleDefinition]:
+    raw_rules = policy.get("rules", [])
+    if not isinstance(raw_rules, list):
+        raise ValueError("policy file must contain a 'rules' list")
+
+    rules: list[RuleDefinition] = []
+    for item in raw_rules:
+        parsed = _rule_from_policy_item(item)
+        if parsed is not None:
+            rules.append(parsed)
+
+    if not rules:
+        raise ValueError("policy rules list is empty after filtering")
+    return rules
+
+
+def _default_skip_tiers(adapter: dict[str, object]) -> set[str]:
+    return _parse_tiers(_str_list(adapter.get("default_skip_tiers", [])))
 
 
 def parse_args() -> argparse.Namespace:
@@ -418,9 +347,14 @@ def parse_args() -> argparse.Namespace:
         description="Validate Flutter solution design compliance tiers (R1-R4)."
     )
     parser.add_argument(
-        "--profile",
-        default=str(DEFAULT_PROFILE_PATH),
-        help="Path to linter profile JSON (portable adapter layer).",
+        "--policy",
+        default=str(DEFAULT_POLICY_PATH),
+        help="Path to policy JSON defining reusable rule catalog.",
+    )
+    parser.add_argument(
+        "--adapter",
+        default=str(DEFAULT_ADAPTER_PATH),
+        help="Path to adapter JSON mapping project files/markers/allowlists.",
     )
     parser.add_argument(
         "--skip",
@@ -433,54 +367,219 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="List rules and exit.",
     )
+    parser.add_argument(
+        "--output",
+        choices=("text", "json"),
+        default="text",
+        help="Output format.",
+    )
+    parser.add_argument(
+        "--timings",
+        action="store_true",
+        help="Include per-rule timing details in text output.",
+    )
     return parser.parse_args()
 
 
-def _print_rule_catalog() -> None:
-    for rule in RULES:
-        print(f"{rule.rule_id}\t{rule.tier}\t{rule.title}")
+def _print_rule_catalog(rules: list[RuleDefinition]) -> None:
+    for rule in rules:
+        print(f"{rule.rule_id}\t{rule.tier}\t{rule.title}\t{rule.check_name}")
+
+
+def _serialize_json(
+    *,
+    policy: dict[str, object],
+    adapter: dict[str, object],
+    active_tiers: list[str],
+    skip_tiers: set[str],
+    results: list[RuleResult],
+) -> str:
+    payload = {
+        "policy": str(policy.get("name", "unknown-policy")),
+        "policy_version": str(policy.get("version", "unknown")),
+        "adapter": str(adapter.get("name", "unknown-adapter")),
+        "active_tiers": active_tiers,
+        "skipped_tiers": sorted(skip_tiers),
+        "rules": [
+            {
+                "rule_id": result.rule_id,
+                "tier": result.tier,
+                "title": result.title,
+                "status": result.status,
+                "duration_ms": result.duration_ms,
+                "violations": result.violations,
+            }
+            for result in results
+        ],
+    }
+
+    summary = {
+        "total": len(results),
+        "pass": sum(1 for result in results if result.status == "PASS"),
+        "fail": sum(1 for result in results if result.status == "FAIL"),
+        "skip": sum(1 for result in results if result.status == "SKIP"),
+    }
+    payload["summary"] = summary
+    return json.dumps(payload, indent=2, sort_keys=True)
+
+
+def _print_text_header(*, policy: dict[str, object], adapter: dict[str, object], active_tiers: list[str], skip_tiers: set[str]) -> None:
+    policy_name = str(policy.get("name", "unknown-policy"))
+    adapter_name = str(adapter.get("name", "unknown-adapter"))
+    print(f"Flutter design policy: {policy_name}")
+    print(f"Flutter design adapter: {adapter_name}")
+    print(f"Active tiers: {', '.join(active_tiers) if active_tiers else '(none)'}")
+    print(f"Skipped tiers: {', '.join(sorted(skip_tiers)) if skip_tiers else '(none)'}")
+
+
+def _print_text_result(result: RuleResult, timings: bool) -> None:
+    duration_suffix = f" ({result.duration_ms}ms)" if timings else ""
+    if result.status == "SKIP":
+        print(f"SKIP {result.rule_id} [{result.tier}] {result.title}{duration_suffix}")
+        return
+    if result.status == "PASS":
+        print(f"PASS {result.rule_id} [{result.tier}] {result.title}{duration_suffix}")
+        return
+    print(f"FAIL {result.rule_id} [{result.tier}] {result.title}{duration_suffix}")
+    for violation in result.violations:
+        print(f"  - {violation}")
+
+
+def _run_rule(rule: RuleDefinition, context: RuleContext) -> RuleResult:
+    check = CHECKS_BY_NAME[rule.check_name]
+    started = time.perf_counter()
+    violations = check(context)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    status = "FAIL" if violations else "PASS"
+    return RuleResult(
+        rule_id=rule.rule_id,
+        tier=rule.tier,
+        title=rule.title,
+        status=status,
+        violations=violations,
+        duration_ms=duration_ms,
+    )
+
+
+def _rule_from_policy_item(item: object) -> RuleDefinition | None:
+    if not isinstance(item, dict):
+        raise ValueError("every policy rule must be an object")
+
+    if not bool(item.get("enabled", True)):
+        return None
+
+    rule_id = str(item.get("rule_id", "")).strip()
+    tier = str(item.get("tier", "")).strip().upper()
+    title = str(item.get("title", "")).strip()
+    check_name = str(item.get("check_name", "")).strip()
+    if not rule_id or not tier or not title or not check_name:
+        raise ValueError("policy rules must include rule_id, tier, title, check_name")
+    if tier not in ALL_TIERS:
+        raise ValueError(f"policy rule '{rule_id}' has unsupported tier '{tier}'")
+    if check_name not in CHECKS_BY_NAME:
+        raise ValueError(f"policy rule '{rule_id}' references unknown check '{check_name}'")
+    return RuleDefinition(
+        rule_id=rule_id,
+        tier=tier,
+        title=title,
+        check_name=check_name,
+    )
+
+
+def _rule_results_for_context(
+    *,
+    rules: list[RuleDefinition],
+    skip_tiers: set[str],
+    context: RuleContext,
+) -> list[RuleResult]:
+    results: list[RuleResult] = []
+    for rule in rules:
+        if rule.tier in skip_tiers:
+            results.append(
+                RuleResult(
+                    rule_id=rule.rule_id,
+                    tier=rule.tier,
+                    title=rule.title,
+                    status="SKIP",
+                    violations=[],
+                    duration_ms=0,
+                )
+            )
+            continue
+        results.append(_run_rule(rule, context))
+    return results
+
+
+def _emit_results(
+    *,
+    output: str,
+    timings: bool,
+    render_context: RenderContext,
+    results: list[RuleResult],
+) -> None:
+    if output == "json":
+        print(
+            _serialize_json(
+                policy=render_context.policy,
+                adapter=render_context.adapter,
+                active_tiers=render_context.active_tiers,
+                skip_tiers=render_context.skip_tiers,
+                results=results,
+            )
+        )
+        return
+
+    failed = [result for result in results if result.status == "FAIL"]
+    _print_text_header(
+        policy=render_context.policy,
+        adapter=render_context.adapter,
+        active_tiers=render_context.active_tiers,
+        skip_tiers=render_context.skip_tiers,
+    )
+    for result in results:
+        _print_text_result(result, timings=timings)
+
+    if failed:
+        print(f"Flutter design compliance failed: {len(failed)} rule(s) violated.")
+    else:
+        print("Flutter design compliance checks passed.")
 
 
 def main() -> int:
     args = parse_args()
-    profile = _load_profile(Path(args.profile).resolve())
-    default_skip = _default_skip_tiers(profile)
+    policy = _load_json_object(Path(args.policy).resolve(), "policy")
+    adapter = _load_json_object(Path(args.adapter).resolve(), "adapter")
+    rules = _load_rule_definitions(policy)
+
+    default_skip = _default_skip_tiers(adapter)
     cli_skip = _parse_tiers([str(value) for value in args.skip])
     skip_tiers = default_skip.union(cli_skip)
     active_tiers = [tier for tier in ALL_TIERS if tier not in skip_tiers]
 
     if args.list_rules:
-        _print_rule_catalog()
+        _print_rule_catalog(rules)
         return 0
 
-    context = RuleContext(profile)
-    profile_name = str(profile.get("name", "unknown-profile"))
-    print(f"Flutter design linter profile: {profile_name}")
-    print(f"Active tiers: {', '.join(active_tiers) if active_tiers else '(none)'}")
-    print(f"Skipped tiers: {', '.join(sorted(skip_tiers)) if skip_tiers else '(none)'}")
-
-    failures: list[tuple[Rule, list[str]]] = []
-    for rule in RULES:
-        if rule.tier in skip_tiers:
-            print(f"SKIP {rule.rule_id} [{rule.tier}] {rule.title}")
-            continue
-
-        violations = rule.check(context)
-        if violations:
-            failures.append((rule, violations))
-            print(f"FAIL {rule.rule_id} [{rule.tier}] {rule.title}")
-            for violation in violations:
-                print(f"  - {violation}")
-            continue
-
-        print(f"PASS {rule.rule_id} [{rule.tier}] {rule.title}")
-
-    if failures:
-        print(f"Flutter design compliance failed: {len(failures)} rule(s) violated.")
-        return 1
-
-    print("Flutter design compliance checks passed.")
-    return 0
+    context = RuleContext(adapter)
+    render_context = RenderContext(
+        policy=policy,
+        adapter=adapter,
+        active_tiers=active_tiers,
+        skip_tiers=skip_tiers,
+    )
+    results = _rule_results_for_context(
+        rules=rules,
+        skip_tiers=skip_tiers,
+        context=context,
+    )
+    failed = [result for result in results if result.status == "FAIL"]
+    _emit_results(
+        output=args.output,
+        timings=args.timings,
+        render_context=render_context,
+        results=results,
+    )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

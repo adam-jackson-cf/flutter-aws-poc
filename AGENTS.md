@@ -86,13 +86,16 @@ Use this as the authoritative command/action source before running operational o
   - add `--price-input-per-1m-tokens-usd <float> --price-output-per-1m-tokens-usd <float>` for ad-hoc pricing overrides
 
 ### Quality gates
-- `bash scripts/run-ci-quality-gates.sh`
-- `python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --skip R3,R4`
-- `RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
-- `MUTATION_SCORE_TARGET=80 RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh`
-- `COMPLEXITY_MAX=10 bash scripts/run-ci-quality-gates.sh`
-- `RUN_DUPLICATION_SIGNALS=0 bash scripts/run-ci-quality-gates.sh`
-- `DUPLICATION_SIGNAL_MIN_SEVERITY=high bash scripts/run-ci-quality-gates.sh`
+- `bash scripts/run-ci-quality-gates.sh --lane=preflight`
+- `bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2`
+- `bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core`
+- `bash scripts/run-ci-quality-gates.sh --lane=extended-r3r4`
+- `RUN_MUTATION_GATE=1 bash scripts/run-ci-quality-gates.sh --lane=nightly-full`
+- `python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --output json --timings --skip R3,R4`
+- `python3 scripts/linters/flutter-design/check-flutter-design-waivers.py`
+- `COMPLEXITY_MAX=10 bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core`
+- `RUN_DUPLICATION_SIGNALS=0 bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core`
+- `DUPLICATION_SIGNAL_MIN_SEVERITY=high bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core`
 
 ### Dashboard and ops
 - Recreate/run dashboard: `./scripts/create-cloudwatch-dashboard.sh --run-id <RUN_ID> --region "$AWS_REGION"`

@@ -1,5 +1,7 @@
 {
-  "name": "flutter-design-poc-route-profile",
+  "name": "flutter-design-poc-route-adapter",
+  "adapter_version": "1.0.0",
+  "policy_ref": "scripts/linters/flutter-design/policy/flutter-design-policy.json",
   "default_skip_tiers": [],
   "exclude_dirs": [
     ".git",
