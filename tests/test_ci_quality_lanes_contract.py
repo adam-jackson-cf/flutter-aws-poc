@@ -86,3 +86,13 @@ def test_headroom_linter_uses_active_python_interpreter() -> None:
     content = HEADROOM_LINTER_PATH.read_text(encoding="utf-8")
     assert 'cmd = [sys.executable, "-m", "lizard", "--csv"]' in content
     assert 'cmd = ["python3", "-m", "lizard", "--csv"]' not in content
+
+
+def test_gate_linter_scripts_do_not_hardcode_python3_subprocess_calls() -> None:
+    offenders: list[str] = []
+    for path in (REPO_ROOT / "scripts" / "linters").rglob("*.py"):
+        content = path.read_text(encoding="utf-8")
+        if '["python3",' in content or "['python3'," in content:
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+
+    assert not offenders, f"Hardcoded python3 subprocess interpreter found: {offenders}"
