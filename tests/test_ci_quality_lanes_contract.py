@@ -5,6 +5,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "run-ci-quality-gates.sh"
 PRE_COMMIT_CONFIG_PATH = REPO_ROOT / ".pre-commit-config.yaml"
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ci-quality-gates.yml"
+HEADROOM_LINTER_PATH = (
+    REPO_ROOT / "scripts" / "linters" / "complexity-headroom" / "check-complexity-headroom.py"
+)
 
 
 def test_quality_gate_runner_exposes_lane_model() -> None:
@@ -77,3 +80,9 @@ def test_ci_workflow_uses_uv_pinned_python() -> None:
     assert "uv pip install --python .ci-venv/bin/python -r \"$UV_REQUIREMENTS_FILE\"" in content
     assert 'python-version: "3.12.7"' in content
     assert "python -m pip install -r requirements.txt" not in content
+
+
+def test_headroom_linter_uses_active_python_interpreter() -> None:
+    content = HEADROOM_LINTER_PATH.read_text(encoding="utf-8")
+    assert 'cmd = [sys.executable, "-m", "lizard", "--csv"]' in content
+    assert 'cmd = ["python3", "-m", "lizard", "--csv"]' not in content

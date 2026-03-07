@@ -79,7 +79,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def lizard_command(targets: list[str]) -> list[str]:
-    cmd = ["python3", "-m", "lizard", "--csv"]
+    cmd = [sys.executable, "-m", "lizard", "--csv"]
     for pattern in DEFAULT_EXCLUDES:
         cmd.extend(["-x", pattern])
     cmd.extend(targets)
