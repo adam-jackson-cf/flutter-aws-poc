@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -11,7 +12,7 @@ WAIVER_SCRIPT = REPO_ROOT / "scripts" / "linters" / "flutter-design" / "check-fl
 def test_flutter_design_linter_supports_json_output_with_timings() -> None:
     completed = subprocess.run(
         [
-            "python3",
+            sys.executable,
             str(LINTER_SCRIPT),
             "--output",
             "json",
@@ -56,7 +57,7 @@ def test_waiver_validator_detects_expired_entries(tmp_path: Path) -> None:
     )
 
     completed = subprocess.run(
-        ["python3", str(WAIVER_SCRIPT), "--waivers", str(waivers_path)],
+        [sys.executable, str(WAIVER_SCRIPT), "--waivers", str(waivers_path)],
         cwd=str(REPO_ROOT),
         check=False,
         text=True,

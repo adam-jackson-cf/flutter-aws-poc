@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/python.sh"
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -50,7 +52,7 @@ resolve_latest_ready_version() {
       --agent-runtime-id "$RUNTIME_ID" \
       --output json
   )"
-  PAYLOAD="$payload" python3 - <<'PY'
+  PAYLOAD="$payload" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 import sys
@@ -83,7 +85,7 @@ validate_positive_int() {
 
 parse_endpoint_status() {
   local payload="$1"
-  PAYLOAD="$payload" python3 - <<'PY'
+  PAYLOAD="$payload" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 
@@ -155,7 +157,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_cmd aws
-require_cmd python3
+require_python_bin
 
 validate_positive_int "$WAIT_TIMEOUT_SECONDS" "wait-timeout-seconds"
 validate_positive_int "$POLL_INTERVAL_SECONDS" "poll-interval-seconds"

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/python.sh"
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -47,11 +49,11 @@ run_step() {
   "$@"
 }
 
-require_cmd python3
 require_cmd npm
 require_cmd aws
+require_python_bin
 
-run_step "Install Python dependencies" python3 -m pip install -r requirements.txt
+run_step "Install Python dependencies" "$PYTHON_BIN" -m pip install -r requirements.txt
 run_step "Install root Node dependencies" npm install
 run_step "Install infra dependencies" npm --prefix infra install
 run_step "CDK synth" npm --prefix infra run cdk:synth

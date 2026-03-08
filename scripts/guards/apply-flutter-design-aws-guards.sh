@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/python.sh"
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -80,7 +82,7 @@ add_change() {
 
 split_csv_to_quoted_json_list() {
   local csv="$1"
-  CSV_VALUE="$csv" python3 - <<'PY'
+  CSV_VALUE="$csv" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 
@@ -92,7 +94,7 @@ PY
 
 parse_endpoint_payload() {
   local payload="$1"
-  PAYLOAD="$payload" python3 - <<'PY'
+  PAYLOAD="$payload" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 
@@ -105,7 +107,7 @@ PY
 
 json_hash() {
   local payload="$1"
-  PAYLOAD="$payload" python3 - <<'PY'
+  PAYLOAD="$payload" "$PYTHON_BIN" - <<'PY'
 import hashlib
 import json
 import os
@@ -124,7 +126,7 @@ build_policy_document() {
   GATEWAY_ROLE_ARN="$gateway_role_arn" \
   EXTRA_ALLOWED_ARNS_JSON="$extra_allowed_arns_json" \
   ALLOWED_GLOBAL_ACTIONS_JSON="$allowed_global_actions_json" \
-  TARGET_REGION="$REGION" python3 - <<'PY'
+  TARGET_REGION="$REGION" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 
@@ -230,7 +232,7 @@ assume_role_if_requested() {
     --role-session-name "flutter-design-guards" \
     --output json)"
 
-  mapfile -t creds < <(PAYLOAD="$payload" python3 - <<'PY'
+  mapfile -t creds < <(PAYLOAD="$payload" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 
@@ -402,7 +404,7 @@ validate_positive_int "$WAIT_TIMEOUT_SECONDS" "wait-timeout-seconds"
 validate_positive_int "$POLL_INTERVAL_SECONDS" "poll-interval-seconds"
 
 require_cmd aws
-require_cmd python3
+require_python_bin
 
 TMP_DIR="$(mktemp -d -t flutter-design-guards.XXXXXX)"
 CHECKS_FILE="$TMP_DIR/checks.tsv"
@@ -550,7 +552,7 @@ else
           --name "$SCP_POLICY_NAME" \
           --type SERVICE_CONTROL_POLICY \
           --output json)"
-        policy_id="$(PAYLOAD="$created_payload" python3 - <<'PY'
+        policy_id="$(PAYLOAD="$created_payload" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 
@@ -650,7 +652,7 @@ if [[ "$OUTPUT_FORMAT" == "json" ]]; then
   POLICY_ID_VALUE="$POLICY_ID_VALUE" \
   POLICY_HASH_VALUE="$POLICY_HASH_VALUE" \
   CALLER_ARN_VALUE="$CALLER_ARN" \
-  EXIT_CODE_VALUE="$EXIT_CODE" python3 - <<'PY'
+  EXIT_CODE_VALUE="$EXIT_CODE" "$PYTHON_BIN" - <<'PY'
 import datetime as dt
 import json
 import os

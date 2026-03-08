@@ -8,6 +8,8 @@ WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "ci-quality-gates.yml"
 HEADROOM_LINTER_PATH = (
     REPO_ROOT / "scripts" / "linters" / "complexity-headroom" / "check-complexity-headroom.py"
 )
+MUTATION_GATE_WRAPPER_PATH = REPO_ROOT / "scripts" / "run-mutation-gate.sh"
+PYTHON_HELPER_PATH = REPO_ROOT / "scripts" / "lib" / "python.sh"
 
 
 def test_quality_gate_runner_exposes_lane_model() -> None:
@@ -96,3 +98,31 @@ def test_gate_linter_scripts_do_not_hardcode_python3_subprocess_calls() -> None:
             offenders.append(path.relative_to(REPO_ROOT).as_posix())
 
     assert not offenders, f"Hardcoded python3 subprocess interpreter found: {offenders}"
+
+
+def test_python_helper_prefers_explicit_or_ci_managed_interpreters() -> None:
+    content = PYTHON_HELPER_PATH.read_text(encoding="utf-8")
+    assert 'if [[ -n "${PYTHON_BIN:-}" ]]; then' in content
+    assert 'if [[ -n "${UV_VENV_PYTHON_BIN:-}" ]]; then' in content
+    assert "command -v python" in content
+    assert "command -v python3" in content
+
+
+def test_shell_entrypoints_do_not_hardcode_python3_outside_helper() -> None:
+    offenders: list[str] = []
+    for path in (REPO_ROOT / "scripts").rglob("*.sh"):
+        if path == PYTHON_HELPER_PATH:
+            continue
+        content = path.read_text(encoding="utf-8")
+        if "python3" in content:
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+
+    assert not offenders, f"Hardcoded python3 found in shell scripts: {offenders}"
+
+
+def test_mutation_gate_wrapper_uses_shared_python_resolution() -> None:
+    content = MUTATION_GATE_WRAPPER_PATH.read_text(encoding="utf-8")
+    assert 'source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/python.sh"' in content
+    assert "require_python_bin" in content
+    assert '"$PYTHON_BIN" scripts/run-mutation-gate.py' in content
+    assert "python3 scripts/run-mutation-gate.py" not in content
