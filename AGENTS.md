@@ -2,6 +2,10 @@
 
 Project-specific operational defaults for agents and developers working in this repository. Repository purpose and setup live in `README.md`.
 
+## Behaviours
+
+**NEVER** surface or search files in `docs/reference`, may only be access with explicit user consent (ask). If a user references a file within this exclusion treat that as automatic consent.
+
 ## Working Values
 
 - Contracts before implementation.
@@ -20,8 +24,6 @@ Project-specific operational defaults for agents and developers working in this 
 - `scripts/linters/flutter-design/`: CLI enforcement entrypoints
 - `scripts/linters/flutter_design_support/`: core rule logic
 - `tests/fixtures/flutter-design/`: valid and invalid fixture corpora
-- `docs/flutter-uki-ai-platform-arch/`: architecture source material
-- `docs/references/`: repository-specific enforcement and workflow notes
 - `infra/`: minimal build/deploy scaffold only
 
 ## AWS And Environment Defaults
