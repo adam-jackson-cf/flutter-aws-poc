@@ -4,7 +4,7 @@ Project-specific operational defaults for agents and developers working in this 
 
 ## Behaviours
 
-**NEVER** surface or search files in `docs/reference/` or `docs/references/`; access is allowed only with explicit user consent. If a user references a file within either directory, treat that as automatic consent.
+**NEVER** surface or search files in `docs/references/`; access is allowed only with explicit user consent. If a user references a file within either directory, treat that as automatic consent.
 
 ## Working Values
 
