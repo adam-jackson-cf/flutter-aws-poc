@@ -1,0 +1,20 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "coordinator",
+    "version": "0.1.0"
+  },
+  "capability_ref": "coordinator@0.1.0",
+  "release_gate": {
+    "status": "passed",
+    "benchmark_pass_rate": 0.99,
+    "minimum_benchmark_pass_rate": 0.95
+  },
+  "datasets": [
+    {
+      "dataset_id": "coordination-golden",
+      "path": "datasets/coordination-golden.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}

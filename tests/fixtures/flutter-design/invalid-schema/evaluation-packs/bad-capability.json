@@ -1,0 +1,20 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "bad-capability",
+    "version": "0.1.0"
+  },
+  "capability_ref": "bad-capability@0.1.0",
+  "release_gate": {
+    "status": "failed",
+    "benchmark_pass_rate": 0.4,
+    "minimum_benchmark_pass_rate": 0.95
+  },
+  "datasets": [
+    {
+      "dataset_id": "bad-capability-dataset",
+      "path": "datasets/bad-capability.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}

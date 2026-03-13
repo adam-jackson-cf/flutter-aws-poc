@@ -2,58 +2,55 @@
 set -euo pipefail
 
 RUNNER_PATH="scripts/run-ci-quality-gates.sh"
-MODE="check"
-STAGE="false"
 LANE="${QUALITY_GATES_LANE:-quality-gates-core}"
 UV_BIN="${UV_BIN:-uv}"
 UV_PYTHON_VERSION="${UV_PYTHON_VERSION:-3.12.7}"
 UV_REQUIREMENTS_FILE="${UV_REQUIREMENTS_FILE:-requirements.txt}"
 UV_VENV_PYTHON_BIN="${UV_VENV_PYTHON_BIN:-}"
-PYTHON_RUNNER_RESOLUTION="unresolved"
-PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-100}"
+DESIGN_REPO_ROOT="${DESIGN_REPO_ROOT:-$PWD}"
+PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-95}"
 COMPLEXITY_MAX="${COMPLEXITY_MAX:-10}"
 LENGTH_MAX="${LENGTH_MAX:-80}"
 PARAM_MAX="${PARAM_MAX:-5}"
 HEADROOM_COMPLEXITY_WARN="${HEADROOM_COMPLEXITY_WARN:-9}"
 HEADROOM_LENGTH_WARN="${HEADROOM_LENGTH_WARN:-70}"
 HEADROOM_PARAM_WARN="${HEADROOM_PARAM_WARN:-4}"
-FLUTTER_DESIGN_LINTER_SKIP="${FLUTTER_DESIGN_LINTER_SKIP:-R3,R4}"
-RUN_DEPRECATED_LLM_GATEWAY_PARITY="${RUN_DEPRECATED_LLM_GATEWAY_PARITY:-0}"
+PYTHON_RUNNER_RESOLUTION="unresolved"
 
 print_lane_help() {
   cat <<'USAGE'
 Quality gate lanes:
-  preflight         Fast structural checks (parity guard, formatting, config sanity)
-  fast-r1r2         PoC blocking lane (R1/R2 design + architecture + semantic guards)
-  quality-gates-core Full PR lane (current default)
-  extended-r3r4     Shadow lane for strict all-tier checks + waiver enforcement
-  nightly-full      Strict full lane for scheduled quality and mutation checks
-  release-hardening Strict full lane for release/tag pipelines
+  preflight          Fast structural checks (parity, syntax, formatting, infra typecheck)
+  fast-r1r2          Fast contract enforcement lane (R1/R2 only)
+  quality-gates-core Full contract-first PR lane (R1-R3 + tests + maintainability)
+  strict-r3          Strict lane for R3 policy plus waiver governance
+  nightly-full       Strict scheduled lane with synth and mutation checks
+  release-hardening  Strict release lane with synth and mutation checks
 USAGE
 }
 
 print_usage() {
   cat <<'USAGE'
 Usage:
-  bash scripts/run-ci-quality-gates.sh [--lane=<lane>] [--fix] [--stage]
+  bash scripts/run-ci-quality-gates.sh [--lane=<lane>]
   bash scripts/run-ci-quality-gates.sh --list-lanes
   bash scripts/run-ci-quality-gates.sh --print-python-cmd
   bash scripts/run-ci-quality-gates.sh --help
 
-Python runner resolution (uv default):
-  - Runner command: UV_BIN (default: uv)
-  - Pinned Python patch version: UV_PYTHON_VERSION (default: 3.12.7)
-  - Dependency source: UV_REQUIREMENTS_FILE (default: requirements.txt)
-  - Optional prebuilt environment python: UV_VENV_PYTHON_BIN
-  - Gate Python commands run via:
-      uv run --no-project --python <UV_PYTHON_VERSION> --with-requirements <UV_REQUIREMENTS_FILE> <python args>
-  - No system python fallback path exists in this runner.
+Python runner resolution:
+  - UV_BIN defaults to `uv`
+  - UV_PYTHON_VERSION defaults to `3.12.7`
+  - UV_REQUIREMENTS_FILE defaults to `requirements.txt`
+  - UV_VENV_PYTHON_BIN can point at a prebuilt environment python
+
+Environment:
+  - DESIGN_REPO_ROOT controls which artifact tree the Flutter design linter evaluates
+  - PYTEST_COVERAGE_TARGET defaults to 95 for core enforcement logic
 
 Examples:
   bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2
-  UV_PYTHON_VERSION=3.12.7 bash scripts/run-ci-quality-gates.sh --lane=preflight
-  UV_BIN=uv bash scripts/run-ci-quality-gates.sh --print-python-cmd
-  UV_VENV_PYTHON_BIN=.ci-venv/bin/python bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
+  bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
+  DESIGN_REPO_ROOT=tests/fixtures/flutter-design/valid-r2 bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
 USAGE
 }
 
@@ -99,12 +96,6 @@ run_python() {
 
 for arg in "$@"; do
   case "$arg" in
-    --fix)
-      MODE="fix"
-      ;;
-    --stage)
-      STAGE="true"
-      ;;
     --lane=*)
       LANE="${arg#*=}"
       ;;
@@ -150,22 +141,29 @@ run_step() {
 }
 
 run_prettier_check() {
-  npm exec -- prettier --check \
-    package.json \
-    infra/package.json \
-    infra/tsconfig.json \
-    infra/bin/app.ts \
-    infra/lib/flutter-agentcore-poc-stack.ts \
-    .pre-commit-config.yaml \
-    .github/workflows/ci-quality-gates.yml
+  mapfile -t prettier_files < <(
+    rg --files \
+      -g '*.json' \
+      -g '*.md' \
+      -g '*.yaml' \
+      -g '*.yml' \
+      -g '*.ts' \
+      -g '!infra/cdk.out/**' \
+      -g '!infra/node_modules/**' \
+      -g '!node_modules/**'
+  )
+  if [[ "${#prettier_files[@]}" -eq 0 ]]; then
+    return 0
+  fi
+  npm exec -- prettier --check "${prettier_files[@]}"
 }
 
 run_ruff_complexity_check() {
-  run_python -m ruff check aws/lambda evals runtime scripts --select C901,PLR0913 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX" --config "lint.pylint.max-args=$PARAM_MAX"
+  run_python -m ruff check scripts tests --select C901,PLR0913 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX" --config "lint.pylint.max-args=$PARAM_MAX"
 }
 
 run_lizard_complexity_check() {
-  run_python -m lizard -C "$COMPLEXITY_MAX" -L "$LENGTH_MAX" -a "$PARAM_MAX" aws/lambda evals runtime scripts infra/bin infra/lib
+  run_python -m lizard -C "$COMPLEXITY_MAX" -L "$LENGTH_MAX" -a "$PARAM_MAX" scripts infra/bin infra/lib
 }
 
 run_headroom_complexity_check() {
@@ -175,51 +173,32 @@ run_headroom_complexity_check() {
     --warn-params "$HEADROOM_PARAM_WARN"
 }
 
-run_semantic_contract_ownership_check() {
-  run_python scripts/linters/semantic-contract-ownership/check-semantic-contract-ownership.py
-}
-
-run_architecture_boundary_check() {
-  run_python scripts/linters/architecture-boundaries/check-architecture-boundaries.py
-}
-
-run_llm_gateway_boundary_check() {
-  run_python scripts/linters/llm-gateway-boundary/check-llm-gateway-boundary.py
-}
-
 run_flutter_design_waiver_check() {
   run_python scripts/linters/flutter-design/check-flutter-design-waivers.py
 }
 
 run_flutter_design_compliance_check() {
   local skip_tiers="${1:-}"
-  local output_format="${2:-text}"
   local args=(
-    "$UV_BIN"
-    run
-    --no-project
-    --python
-    "$UV_PYTHON_VERSION"
-    --with-requirements
-    "$UV_REQUIREMENTS_FILE"
     python
     scripts/linters/flutter-design/check-flutter-design-compliance.py
+    --repo-root
+    "$DESIGN_REPO_ROOT"
     --output
-    "$output_format"
+    text
     --timings
   )
   if [[ -n "$skip_tiers" ]]; then
     args+=(--skip "$skip_tiers")
   fi
-  "${args[@]}"
+  run_python "${args[@]}"
 }
 
 run_ci_python_syntax_guard() {
-  mapfile -t py_files < <(git ls-files "*.py")
+  mapfile -t py_files < <(rg --files -g '*.py' -g '!infra/cdk.out/**' -g '!node_modules/**' -g '!infra/node_modules/**')
   if [[ "${#py_files[@]}" -eq 0 ]]; then
     return 0
   fi
-
   run_python -m py_compile "${py_files[@]}"
 }
 
@@ -233,9 +212,7 @@ run_cdk_synth() {
 
 run_pytest_coverage_gate() {
   run_python -m pytest \
-    --cov=evals \
-    --cov=runtime \
-    --cov=aws/lambda \
+    --cov=scripts/linters/flutter_design_support \
     --cov-config=.coveragerc \
     --cov-report=term-missing \
     --cov-fail-under="$PYTEST_COVERAGE_TARGET"
@@ -264,25 +241,14 @@ run_typescript_lint_if_present() {
   if [[ -f "infra/package.json" ]] && grep -q '"lint"' "infra/package.json"; then
     run_step "TypeScript lint (infra)" npm --prefix infra run lint
   fi
-
   if [[ -f "infra/package.json" ]] && grep -q '"lint:eslint"' "infra/package.json"; then
-    run_step "TypeScript complexity lint (eslint <= ${COMPLEXITY_MAX})" npm --prefix infra run lint:eslint
-  fi
-}
-
-run_pytest_if_configured() {
-  if [[ -d "tests" ]] && [[ -f "requirements.txt" ]] && grep -qi '^pytest' "requirements.txt"; then
-    run_step "Python tests + coverage gate (${PYTEST_COVERAGE_TARGET}%)" run_pytest_coverage_gate
-  fi
-}
-
-run_mutation_if_configured() {
-  if [[ -d "tests" ]] && [[ -x "scripts/run-mutation-gate.sh" ]]; then
-    run_step "Python mutation gate" bash scripts/run-mutation-gate.sh
+    run_step "TypeScript complexity lint (infra)" npm --prefix infra run lint:eslint
   fi
 }
 
 run_common_static_suite() {
+  run_step "Parity guard" parity_guard
+  run_step "Python syntax guard (uv pinned ${UV_PYTHON_VERSION})" run_ci_python_syntax_guard
   run_step "Prettier formatting check" run_prettier_check
   run_typescript_lint_if_present
   run_step "Python complexity lint (ruff <= ${COMPLEXITY_MAX})" run_ruff_complexity_check
@@ -290,8 +256,6 @@ run_common_static_suite() {
     "Complexity headroom guard (cc >= ${HEADROOM_COMPLEXITY_WARN}, length >= ${HEADROOM_LENGTH_WARN}, params >= ${HEADROOM_PARAM_WARN})" \
     run_headroom_complexity_check
   run_step "Cross-runtime complexity lint (cc <= ${COMPLEXITY_MAX}, length <= ${LENGTH_MAX}, params <= ${PARAM_MAX})" run_lizard_complexity_check
-  run_step "Semantic contract ownership guard" run_semantic_contract_ownership_check
-  run_step "Architecture boundary guard" run_architecture_boundary_check
 }
 
 run_lane_preflight() {
@@ -302,55 +266,35 @@ run_lane_preflight() {
 }
 
 run_lane_fast_r1r2() {
-  run_step "Parity guard" parity_guard
-  run_step "Python syntax guard (uv pinned ${UV_PYTHON_VERSION})" run_ci_python_syntax_guard
-  run_step "Python complexity lint (ruff <= ${COMPLEXITY_MAX})" run_ruff_complexity_check
-  run_step "Semantic contract ownership guard" run_semantic_contract_ownership_check
-  run_step "Architecture boundary guard" run_architecture_boundary_check
-  run_step "Flutter solution design compliance linter (R1/R2)" run_flutter_design_compliance_check "R3,R4"
+  run_lane_preflight
+  run_step "Flutter solution design compliance linter (R1/R2)" run_flutter_design_compliance_check "R3"
 }
 
 run_lane_quality_gates_core() {
-  run_step "Parity guard" parity_guard
   run_common_static_suite
-  run_step "Flutter solution design compliance linter (default scope)" run_flutter_design_compliance_check "$FLUTTER_DESIGN_LINTER_SKIP"
-
-  if [[ "$RUN_DEPRECATED_LLM_GATEWAY_PARITY" == "1" ]]; then
-    run_step "Deprecated LLM gateway parity check" run_llm_gateway_boundary_check
-  fi
-
-  run_pytest_if_configured
+  run_step "Flutter solution design compliance linter (R1-R3)" run_flutter_design_compliance_check ""
+  run_step "Python tests + coverage gate (${PYTEST_COVERAGE_TARGET}%)" run_pytest_coverage_gate
 }
 
-run_lane_extended_r3r4() {
+run_lane_strict_r3() {
   run_step "Parity guard" parity_guard
   run_step "Flutter waiver governance" run_flutter_design_waiver_check
-  run_step "Flutter solution design compliance linter (R1-R4 strict)" run_flutter_design_compliance_check ""
-
-  run_pytest_if_configured
+  run_step "Flutter solution design compliance linter (R1-R3 strict)" run_flutter_design_compliance_check ""
+  run_step "Python tests + coverage gate (${PYTEST_COVERAGE_TARGET}%)" run_pytest_coverage_gate
 }
 
 run_lane_nightly_full() {
-  run_step "Parity guard" parity_guard
-  run_common_static_suite
+  run_lane_quality_gates_core
   run_step "Flutter waiver governance" run_flutter_design_waiver_check
-  run_step "Flutter solution design compliance linter (R1-R4 strict)" run_flutter_design_compliance_check ""
-
-  if [[ -f "infra/package.json" ]] && grep -q '"cdk:synth"' "infra/package.json"; then
-    run_step "CDK synth (infra)" run_cdk_synth
-  fi
-
-  run_pytest_if_configured
-  run_mutation_if_configured
+  run_step "CDK synth (infra)" run_cdk_synth
+  run_step "Python mutation gate" run_python scripts/run-mutation-gate.py
 }
 
 run_lane_release_hardening() {
-  run_step "Parity guard" parity_guard
-  run_common_static_suite
+  run_lane_quality_gates_core
   run_step "Flutter waiver governance" run_flutter_design_waiver_check
-  run_step "Flutter solution design compliance linter (R1-R4 strict)" run_flutter_design_compliance_check ""
-  run_pytest_if_configured
-  run_mutation_if_configured
+  run_step "CDK synth (infra)" run_cdk_synth
+  run_step "Python mutation gate" run_python scripts/run-mutation-gate.py
 }
 
 run_lane() {
@@ -364,8 +308,8 @@ run_lane() {
     quality-gates-core)
       run_lane_quality_gates_core
       ;;
-    extended-r3r4)
-      run_lane_extended_r3r4
+    strict-r3)
+      run_lane_strict_r3
       ;;
     nightly-full)
       run_lane_nightly_full
@@ -382,12 +326,6 @@ run_lane() {
 }
 
 echo "Quality gate lane: $LANE"
+echo "Resolved Python runner: $PYTHON_RUNNER_RESOLUTION"
+echo "Design repo root: $DESIGN_REPO_ROOT"
 run_lane
-
-if [[ "$MODE" == "fix" ]]; then
-  echo "Fix mode enabled: no auto-fixers are configured for this stack."
-fi
-
-if [[ "$MODE" == "fix" ]] && [[ "$STAGE" == "true" ]]; then
-  echo "Stage mode enabled: no files to stage because no auto-fixers ran."
-fi

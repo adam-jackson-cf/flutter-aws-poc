@@ -28,7 +28,7 @@ echo "$*" >> "$LOG_FILE"
 
 while [[ "${1:-}" == "--region" || "${1:-}" == "--profile" ]]; do
   shift 2
- done
+done
 
 SERVICE="${1:-}"
 OPERATION="${2:-}"

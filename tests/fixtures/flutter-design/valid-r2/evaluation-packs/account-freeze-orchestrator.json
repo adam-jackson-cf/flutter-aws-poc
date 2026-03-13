@@ -1,0 +1,20 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "account-freeze-orchestrator",
+    "version": "0.2.0"
+  },
+  "capability_ref": "account-freeze-orchestrator@0.2.0",
+  "release_gate": {
+    "status": "passed",
+    "benchmark_pass_rate": 0.97,
+    "minimum_benchmark_pass_rate": 0.95
+  },
+  "datasets": [
+    {
+      "dataset_id": "golden-account-freeze",
+      "path": "datasets/golden-account-freeze.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}

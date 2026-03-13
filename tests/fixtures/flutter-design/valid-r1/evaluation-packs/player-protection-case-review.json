@@ -1,0 +1,20 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "player-protection-case-review",
+    "version": "0.1.0"
+  },
+  "capability_ref": "player-protection-case-review@0.1.0",
+  "release_gate": {
+    "status": "passed",
+    "benchmark_pass_rate": 0.98,
+    "minimum_benchmark_pass_rate": 0.95
+  },
+  "datasets": [
+    {
+      "dataset_id": "golden-player-protection",
+      "path": "datasets/golden-player-protection.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}

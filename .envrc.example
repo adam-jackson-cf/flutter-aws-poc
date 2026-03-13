@@ -1,25 +1,10 @@
 # Set values for your local environment and run `direnv allow`.
-# Use a named profile only (do not place raw credentials here).
+# Use a named profile only; do not place raw credentials here.
 export AWS_PROFILE=<your_named_profile>
 export AWS_REGION=eu-west-1
 export BEDROCK_REGION=eu-west-1
-# For regions outside eu-west-1, set MODEL_ID and BEDROCK_MODEL_ID explicitly for that region.
-export BEDROCK_MODEL_ID=eu.amazon.nova-lite-v1:0
-export BEDROCK_JUDGE_MODEL_ID=eu.amazon.nova-lite-v1:0
-export MODEL_ID=gpt-5.2-codex
-export MODEL_PROVIDER=openai
-export OPENAI_API_KEY_SECRET_ARN=arn:aws:secretsmanager:eu-west-1:<account-id>:secret:<secret-name>
-export OPENAI_BASE_URL=https://api.openai.com/v1
-export OPENAI_REASONING_EFFORT=medium
-export OPENAI_TEXT_VERBOSITY=medium
-export OPENAI_MAX_OUTPUT_TOKENS=2000
-# Optional: force line-buffered eval logs for long benchmark runs.
-export PYTHONUNBUFFERED=1
-# Optional local-only override (do not commit real values)
-# export OPENAI_API_KEY=<local_openai_api_key>
-# Keep false to retain PoC logs/artifacts on stack delete. Set true only for throwaway runs.
+export CDK_DEFAULT_REGION=eu-west-1
 export EPHEMERAL_STACK=false
 
-# Deployed resources for live eval runs.
-export MCP_GATEWAY_URL=https://<your-gateway-id>.gateway.bedrock-agentcore.eu-west-1.amazonaws.com/mcp
-export AGENT_RUNTIME_ARN=arn:aws:bedrock-agentcore:eu-west-1:<account-id>:runtime/<runtime-id>
+# Optional local quality-of-life settings for the contract baseline.
+export PYTHONUNBUFFERED=1

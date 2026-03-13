@@ -1,23 +1,22 @@
 # Flutter Design Control Ownership Matrix
 
-This matrix defines the single active CI owner for each quality/design control. A control can be measured by multiple tools during migration windows, but only one owner can block CI.
+This matrix defines the single blocking owner for each active control in the contract-first baseline.
 
-| Control Area | Active CI Owner | Scope | Notes |
-| --- | --- | --- | --- |
-| LLM gateway non-bypass (R1) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R1-LLM-GATEWAY-NON-BYPASS` | Deprecated parity checker can run with `RUN_DEPRECATED_LLM_GATEWAY_PARITY=1` but is non-blocking ownership.
-| MCP stage gateway usage (R1) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R1-MCP-GATEWAY-USAGE` | Adapter-based marker checks.
-| MCP stage direct client bypass (R1) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R1-MCP-NO-DIRECT-SERVICE-CALL` | Adapter marker allow/deny.
-| Region pinning (R1) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R1-REGION-PINNING` | Static pinning guard for defaults.
-| Route metadata parity (R2) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R2-ROUTE-METADATA` | Route metadata marker integrity.
-| Infra identity boundary (R2) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R2-INFRA-IDENTITY-BOUNDARY` | Runtime/gateway IAM path markers.
-| Gateway host validation (R2) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R2-GATEWAY-HOST-VALIDATION` | Runtime config guard markers.
-| Process scope drift (R3) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R3-PROCESS-SCOPE-DRIFT` | Enabled in strict lanes.
-| Regulated scope drift (R4) | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R4-REGULATED-SCOPE-DRIFT` | Enabled in strict lanes.
-| Domain architecture boundaries | `scripts/linters/architecture-boundaries/check-architecture-boundaries.py` | Python import graph | Recursively scans nested modules.
-| Semantic contract ownership | `scripts/linters/semantic-contract-ownership/check-semantic-contract-ownership.py` | Canonical symbol ownership | Domain-specific, stays standalone.
-| Complexity headroom | `scripts/linters/complexity-headroom/check-complexity-headroom.py` | Maintainability budget | Quality signal, not Flutter-tier specific.
-| Waiver expiry governance | `scripts/linters/flutter-design/check-flutter-design-waivers.py` | Waiver file validation | Blocks strict lanes on expired entries.
+| Control Area                             | Active CI Owner                                                     | Scope                             | Notes                                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------- |
+| Capability Definition schema             | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R1-CAPABILITY-DEFINITION-SCHEMA` | Enforced against `capability-definitions/` via JSON Schema                        |
+| Safety Envelope schema                   | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R1-SAFETY-ENVELOPE-SCHEMA`       | Enforced against `safety-envelopes/` via JSON Schema                              |
+| Identity context and LLM gateway routing | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R1-IDENTITY-CONTEXT-CONTRACT`    | Requires declared identity tags, gateway routing, and identity-safe tool bindings |
+| Evaluation Pack schema                   | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R2-EVALUATION-PACK-SCHEMA`       | Enforced against `evaluation-packs/` via JSON Schema                              |
+| Publish readiness                        | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R2-PUBLISH-READYNESS`            | Cross-checks capability, envelope, evaluation pack, release gate, and datasets    |
+| Workflow Contract schema                 | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R3-WORKFLOW-CONTRACT-SCHEMA`     | Enforced against `workflow-contracts/` via JSON Schema                            |
+| Process contract requirement             | `scripts/linters/flutter-design/check-flutter-design-compliance.py` | `R3-PROCESS-CONTRACT-REQUIRED`    | Required for process-scoped or higher-risk capability definitions                 |
+| Waiver expiry governance                 | `scripts/linters/flutter-design/check-flutter-design-waivers.py`    | Waiver file validation            | Blocks `strict-r3`, `nightly-full`, and `release-hardening` on expired waivers    |
+| Complexity headroom                      | `scripts/linters/complexity-headroom/check-complexity-headroom.py`  | Maintainability budget            | Applies to scripts, tests, and infra scaffold                                     |
+| Mutation resistance                      | `scripts/run-mutation-gate.py`                                      | Core enforcement logic            | Targets `artifacts.py` and `publish_readiness.py`, not wrapper CLIs               |
+| AWS design guard policy automation       | `scripts/guards/apply-flutter-design-aws-guards.sh`                 | Region and non-bypass governance  | External governance support, not a substitute for repo contract checks            |
 
-## Migration note
+## Notes
 
-The legacy checker `scripts/linters/llm-gateway-boundary/check-llm-gateway-boundary.py` remains available for parity windows only. Remove it after at least one clean cycle of parity checks.
+- Deleted PoC-specific architecture-boundary and semantic-ownership scanners are no longer control owners.
+- If new controls are introduced, add them here only when they become the blocking CI owner for that concern.

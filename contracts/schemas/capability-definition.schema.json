@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flutter-aws-poc/contracts/schemas/capability-definition.schema.json",
+  "title": "Capability Definition",
+  "type": "object",
+  "required": [
+    "kind",
+    "metadata",
+    "governance",
+    "routing",
+    "identity",
+    "tool_bindings",
+    "evaluation"
+  ],
+  "properties": {
+    "kind": {
+      "const": "CapabilityDefinition"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["capability_id", "version", "lifecycle_state"],
+      "properties": {
+        "capability_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "lifecycle_state": {
+          "type": "string",
+          "enum": ["Draft", "Review", "Published", "Deprecated"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "governance": {
+      "type": "object",
+      "required": ["risk_tier", "safety_envelope_ref", "execution_model"],
+      "properties": {
+        "risk_tier": {
+          "type": "string",
+          "enum": ["R0", "R1", "R2", "R3"]
+        },
+        "safety_envelope_ref": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*@[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "workflow_contract_ref": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*@[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "execution_model": {
+          "type": "object",
+          "required": ["scopes"],
+          "properties": {
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["Reasoning", "Coordination", "Process"]
+              },
+              "uniqueItems": true,
+              "minItems": 1
+            },
+            "delegated_capability_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "routing": {
+      "type": "object",
+      "required": ["llm_route", "allowed_model_families"],
+      "properties": {
+        "llm_route": {
+          "const": "llm_gateway"
+        },
+        "allowed_model_families": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["bedrock", "azure-openai", "openai", "vertex"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "required": ["required_tags"],
+      "properties": {
+        "required_tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["tenant_id", "brand", "role", "use_case"]
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool_id", "kind", "requires_identity_context"],
+        "properties": {
+          "tool_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["mcp", "rag", "human_review", "internal_event"]
+          },
+          "requires_identity_context": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["evaluation_pack_ref"],
+      "properties": {
+        "evaluation_pack_ref": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*@[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

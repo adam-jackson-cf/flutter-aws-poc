@@ -1,121 +1,21 @@
 {
-  "name": "flutter-design-poc-route-adapter",
+  "name": "flutter-design-contract-baseline",
   "adapter_version": "1.0.0",
   "policy_ref": "scripts/linters/flutter-design/policy/flutter-design-policy.json",
-  "default_skip_tiers": [],
-  "exclude_dirs": [
-    ".git",
-    ".venv",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "__pycache__",
-    "node_modules",
-    "cdk.out",
-    "dist",
-    "build",
-    ".enaible",
-    "tests"
-  ],
-  "file_sets": {
-    "python_service_code": [
-      "aws/lambda",
-      "runtime/sop_agent",
-      "runtime/http_entrypoint.py",
-      "runtime/main.py"
-    ],
-    "mcp_stage_files": [
-      "aws/lambda/fetch_mcp_stage.py",
-      "runtime/sop_agent/stages/fetch_mcp_stage.py"
-    ],
-    "region_default_files": [
-      "infra/bin/app.ts",
-      "aws/lambda/runtime_config.py",
-      "runtime/sop_agent/tools/runtime_config.py"
-    ],
-    "route_metadata_files": [
-      "runtime/sop_agent/orchestration.py",
-      "aws/lambda/evaluate_stage.py",
-      "runtime/sop_agent/stages/evaluate_stage.py",
-      "evals/run_eval.py"
-    ],
-    "infra_boundary_files": [
-      "infra/lib/flutter-agentcore-poc-stack.ts"
-    ],
-    "gateway_runtime_config_files": [
-      "aws/lambda/runtime_config.py",
-      "runtime/sop_agent/tools/runtime_config.py"
-    ],
-    "poc_code_files": [
-      "aws",
-      "runtime",
-      "infra/lib",
-      "infra/bin",
-      "evals"
-    ]
+  "artifact_dirs": {
+    "capability_definitions": "capability-definitions",
+    "safety_envelopes": "safety-envelopes",
+    "workflow_contracts": "workflow-contracts",
+    "evaluation_packs": "evaluation-packs"
   },
-  "allowlists": {
-    "llm_gateway_boundary": [
-      "aws/lambda/bedrock_client.py",
-      "aws/lambda/llm_gateway_client.py",
-      "aws/lambda/llm_gateway_stage.py"
-    ]
+  "schema_files": {
+    "capability_definition": "contracts/schemas/capability-definition.schema.json",
+    "safety_envelope": "contracts/schemas/safety-envelope.schema.json",
+    "workflow_contract": "contracts/schemas/workflow-contract.schema.json",
+    "evaluation_pack": "contracts/schemas/evaluation-pack.schema.json"
   },
-  "markers": {
-    "direct_provider_transport_markers": [
-      "api.openai.com",
-      "/responses",
-      "OPENAI_BASE_URL"
-    ],
-    "mcp_stage_required_markers": [
-      "list_gateway_tools",
-      "call_gateway_tool",
-      "selected_gateway_url("
-    ],
-    "mcp_stage_forbidden_markers": [
-      "from jira_client import",
-      "import jira_client",
-      "from ..tools.jira_client import"
-    ],
-    "region_required_markers": [
-      "eu-west-1"
-    ],
-    "region_forbidden_markers": [
-      "us-east-1"
-    ],
-    "route_metadata_required_markers": [
-      "llm_route_path",
-      "gateway_service",
-      "execution_mode",
-      "route_parity",
-      "mcp_binding_mode",
-      "model_constructed_schema_validated",
-      "route_semantics_version",
-      "\"2\""
-    ],
-    "infra_boundary_required_markers": [
-      "GatewayAuthorizer.usingAwsIam()",
-      "RuntimeAuthorizerConfiguration.usingIAM()",
-      "inputs.gateway.grantInvoke(runtime)",
-      "inputs.llmGatewayLambda.grantInvoke(runtime)"
-    ],
-    "gateway_runtime_config_required_markers": [
-      "validate_endpoint_url(",
-      ".gateway.bedrock-agentcore.",
-      "MCP_GATEWAY_URL is required for MCP flow"
-    ],
-    "r3_process_scope_forbidden_markers": [
-      "aws-cdk-lib/aws-stepfunctions",
-      "waitForTaskToken",
-      "Workflow Contract",
-      "HITL",
-      "StateMachine"
-    ],
-    "r4_regulated_forbidden_markers": [
-      "ObjectLockMode.COMPLIANCE",
-      "write-ahead",
-      "\"risk_tier\": \"R3\"",
-      "risk_tier: R3"
-    ]
-  }
+  "required_identity_tags": ["tenant_id", "brand", "role", "use_case"],
+  "allowed_execution_scopes": ["Reasoning", "Coordination", "Process"],
+  "workflow_required_risk_tiers": ["R2", "R3"],
+  "published_states": ["Review", "Published"]
 }

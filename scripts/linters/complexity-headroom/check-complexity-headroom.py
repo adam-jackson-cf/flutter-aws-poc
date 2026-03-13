@@ -13,10 +13,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 DEFAULT_TARGETS = [
-    "aws/lambda",
-    "evals",
-    "runtime",
     "scripts",
+    "tests",
     "infra/bin",
     "infra/lib",
 ]
@@ -186,7 +184,7 @@ def main() -> int:
     if unknown_offenders or stale_allowlist:
         print(
             "Update code to restore headroom or regenerate the allowlist with "
-            "`python3 scripts/linters/complexity-headroom/update-complexity-headroom-allowlist.py --write` "
+            "`python scripts/linters/complexity-headroom/update-complexity-headroom-allowlist.py --write` "
             f"(then review the diff in {allowlist_path.as_posix()})."
         )
         return 1

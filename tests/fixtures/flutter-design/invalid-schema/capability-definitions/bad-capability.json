@@ -1,0 +1,25 @@
+{
+  "kind": "CapabilityDefinition",
+  "metadata": {
+    "capability_id": "bad-capability",
+    "version": "0.1.0",
+    "lifecycle_state": "Published"
+  },
+  "governance": {
+    "risk_tier": "R1",
+    "execution_model": {
+      "scopes": ["Reasoning"]
+    }
+  },
+  "routing": {
+    "llm_route": "direct-openai",
+    "allowed_model_families": ["openai"]
+  },
+  "identity": {
+    "required_tags": ["tenant_id"]
+  },
+  "tool_bindings": [],
+  "evaluation": {
+    "evaluation_pack_ref": "bad-capability@0.1.0"
+  }
+}

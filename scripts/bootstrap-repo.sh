@@ -50,15 +50,15 @@ run_step() {
 }
 
 require_cmd npm
-require_cmd aws
 require_python_bin
 
 run_step "Install Python dependencies" "$PYTHON_BIN" -m pip install -r requirements.txt
-run_step "Install root Node dependencies" npm install
-run_step "Install infra dependencies" npm --prefix infra install
+run_step "Install root Node dependencies" npm ci
+run_step "Install infra dependencies" npm --prefix infra ci
 run_step "CDK synth" npm --prefix infra run cdk:synth
 
 if [[ "$DEPLOY_INFRA" == "true" ]]; then
+  require_cmd aws
   run_step "AWS identity preflight" aws sts get-caller-identity --query '{Account:Account,Arn:Arn}' --output table
   run_step "CDK diff" npm --prefix infra run cdk:diff
   run_step "CDK deploy" npm --prefix infra run cdk:deploy

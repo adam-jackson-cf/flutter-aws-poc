@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flutter-aws-poc/contracts/schemas/safety-envelope.schema.json",
+  "title": "Safety Envelope",
+  "type": "object",
+  "required": ["kind", "metadata", "constraints"],
+  "properties": {
+    "kind": {
+      "const": "SafetyEnvelope"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["envelope_id", "version"],
+      "properties": {
+        "envelope_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "constraints": {
+      "type": "object",
+      "required": [
+        "allowed_data_classes",
+        "guardrail_profile",
+        "prompt_injection_protection",
+        "human_review_required"
+      ],
+      "properties": {
+        "allowed_data_classes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["public", "internal", "restricted"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "guardrail_profile": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "prompt_injection_protection": {
+          "type": "boolean"
+        },
+        "human_review_required": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

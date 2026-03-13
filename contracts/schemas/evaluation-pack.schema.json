@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flutter-aws-poc/contracts/schemas/evaluation-pack.schema.json",
+  "title": "Evaluation Pack",
+  "type": "object",
+  "required": [
+    "kind",
+    "metadata",
+    "capability_ref",
+    "release_gate",
+    "datasets"
+  ],
+  "properties": {
+    "kind": {
+      "const": "EvaluationPack"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["pack_id", "version"],
+      "properties": {
+        "pack_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "capability_ref": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*@[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "release_gate": {
+      "type": "object",
+      "required": [
+        "status",
+        "benchmark_pass_rate",
+        "minimum_benchmark_pass_rate"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "not_run"]
+        },
+        "benchmark_pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "minimum_benchmark_pass_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "datasets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["dataset_id", "path", "role"],
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "type": "string",
+            "enum": ["release_gate", "regression", "shadow"]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,32 @@
+{
+  "kind": "CapabilityDefinition",
+  "metadata": {
+    "capability_id": "account-freeze-orchestrator",
+    "version": "0.2.0",
+    "lifecycle_state": "Review"
+  },
+  "governance": {
+    "risk_tier": "R2",
+    "safety_envelope_ref": "default-r2-writes@2.0.0",
+    "execution_model": {
+      "scopes": ["Reasoning", "Process"]
+    }
+  },
+  "routing": {
+    "llm_route": "llm_gateway",
+    "allowed_model_families": ["bedrock"]
+  },
+  "identity": {
+    "required_tags": ["tenant_id", "brand", "role", "use_case"]
+  },
+  "tool_bindings": [
+    {
+      "tool_id": "account-control-mcp",
+      "kind": "mcp",
+      "requires_identity_context": true
+    }
+  ],
+  "evaluation": {
+    "evaluation_pack_ref": "account-freeze-orchestrator@0.2.0"
+  }
+}

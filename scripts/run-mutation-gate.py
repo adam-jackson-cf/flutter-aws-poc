@@ -67,10 +67,23 @@ BINOP_SWAP: dict[type[ast.operator], Callable[[], ast.operator]] = {
 
 TARGETS: tuple[MutationTarget, ...] = (
     MutationTarget(
-        file_path="evals/run_eval.py",
-        test_paths=("tests/test_evals_run_eval_full.py",),
-        package_dirs=("evals", "runtime", "aws"),
-        coverage_target="evals",
+        file_path="scripts/linters/flutter_design_support/artifacts.py",
+        test_paths=(
+            "tests/test_flutter_design_support.py",
+            "tests/test_artifact_schema_linter.py",
+        ),
+        package_dirs=("scripts",),
+        coverage_target="scripts/linters/flutter_design_support",
+    ),
+    MutationTarget(
+        file_path="scripts/linters/flutter_design_support/publish_readiness.py",
+        test_paths=(
+            "tests/test_flutter_design_support.py",
+            "tests/test_publish_readiness_linter.py",
+            "tests/test_flutter_design_compliance.py",
+        ),
+        package_dirs=("scripts",),
+        coverage_target="scripts/linters/flutter_design_support",
     ),
 )
 
@@ -183,13 +196,13 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def run_baseline_tests(root: Path, target: MutationTarget, timeout_seconds: int) -> None:
+def run_target_tests(root: Path, target: MutationTarget, timeout_seconds: int) -> None:
     cmd = [sys.executable, "-m", "pytest", "-q", "--maxfail=1", *target.test_paths]
     completed = subprocess.run(cmd, cwd=str(root), check=False, capture_output=True, text=True, timeout=timeout_seconds)
     if completed.returncode != 0:
         print(completed.stdout)
         print(completed.stderr, file=sys.stderr)
-        raise RuntimeError(f"Baseline tests failed for {target.file_path}")
+        raise RuntimeError(f"Target tests failed for {target.file_path}")
 
 
 def covered_lines_for_target(root: Path, target: MutationTarget, timeout_seconds: int) -> set[int]:
@@ -218,7 +231,7 @@ def covered_lines_for_target(root: Path, target: MutationTarget, timeout_seconds
         if completed.returncode != 0:
             print(completed.stdout)
             print(completed.stderr, file=sys.stderr)
-            raise RuntimeError(f"Coverage baseline failed for {target.file_path}")
+            raise RuntimeError(f"Coverage pre-check failed for {target.file_path}")
 
         payload = json.loads(coverage_json.read_text(encoding="utf-8"))
         normalized_target = target.file_path.replace("\\", "/")
@@ -299,7 +312,7 @@ def _run_target_mutations(root: Path, target: MutationTarget, config: MutationGa
     if not selected:
         raise RuntimeError(f"No mutation candidates found for {target.file_path}")
 
-    run_baseline_tests(root=root, target=target, timeout_seconds=config.timeout_seconds)
+    run_target_tests(root=root, target=target, timeout_seconds=config.timeout_seconds)
     print(f"Mutating {target.file_path}: {len(selected)} candidate(s)")
 
     results: list[MutationResult] = []

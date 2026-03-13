@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate compliance with Flutter solution design tiers (R1-R4)."""
+"""Validate Flutter solution design artefacts against policy rules."""
 
 from __future__ import annotations
 
@@ -15,7 +15,18 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.linters.common.llm_gateway_boundary import path_violations
+from scripts.linters.flutter_design_support.artifacts import (
+    DesignAdapter,
+    DesignRepository,
+    load_adapter,
+    load_design_repository,
+    load_json_object,
+    validate_schema_records,
+)
+from scripts.linters.flutter_design_support.publish_readiness import (
+    process_scope_violations,
+    publish_readiness_violations,
+)
 
 DEFAULT_POLICY_PATH = (
     REPO_ROOT / "scripts" / "linters" / "flutter-design" / "policy" / "flutter-design-policy.json"
@@ -23,7 +34,7 @@ DEFAULT_POLICY_PATH = (
 DEFAULT_ADAPTER_PATH = (
     REPO_ROOT / "scripts" / "linters" / "flutter-design" / "flutter-design-linter-profile.json"
 )
-ALL_TIERS = ("R1", "R2", "R3", "R4")
+ALL_TIERS = ("R1", "R2", "R3")
 
 
 @dataclass(frozen=True)
@@ -53,91 +64,97 @@ class RenderContext:
 
 
 class RuleContext:
-    def __init__(self, adapter: dict[str, object]) -> None:
+    def __init__(self, repo_root: Path, adapter: DesignAdapter) -> None:
+        self.repo_root = repo_root
         self.adapter = adapter
-        self._text_cache: dict[Path, str] = {}
+        self._repository: DesignRepository | None = None
 
-    def files_for_set(self, set_name: str, suffixes: tuple[str, ...] | None = None) -> list[Path]:
-        file_sets = _dict_value(self.adapter.get("file_sets", {}))
-        entries = _str_list(file_sets.get(set_name, []))
-        excluded = set(_str_list(self.adapter.get("exclude_dirs", [])))
-
-        output: list[Path] = []
-        for entry in entries:
-            output.extend(
-                self._files_for_entry(
-                    entry=entry,
-                    excluded=excluded,
-                    suffixes=suffixes,
-                )
-            )
-        return output
-
-    def markers(self, marker_set_name: str) -> list[str]:
-        markers = _dict_value(self.adapter.get("markers", {}))
-        return _str_list(markers.get(marker_set_name, []))
-
-    def allowlist(self, allowlist_name: str) -> set[str]:
-        allowlists = _dict_value(self.adapter.get("allowlists", {}))
-        return set(_str_list(allowlists.get(allowlist_name, [])))
-
-    def read_text(self, path: Path) -> str:
-        cached = self._text_cache.get(path)
-        if cached is not None:
-            return cached
-        text = path.read_text(encoding="utf-8")
-        self._text_cache[path] = text
-        return text
-
-    def _files_for_entry(
-        self,
-        *,
-        entry: str,
-        excluded: set[str],
-        suffixes: tuple[str, ...] | None,
-    ) -> list[Path]:
-        target = REPO_ROOT / entry
-        if not target.exists():
-            return []
-        if target.is_file():
-            return [target] if _path_matches(target, excluded, suffixes) else []
-        return [
-            path
-            for path in sorted(target.rglob("*"))
-            if _path_matches(path, excluded, suffixes)
-        ]
+    @property
+    def repository(self) -> DesignRepository:
+        if self._repository is None:
+            self._repository = load_design_repository(self.repo_root, self.adapter)
+        return self._repository
 
 
 CheckFunc = Callable[[RuleContext], list[str]]
 
-
-def _dict_value(value: object) -> dict[str, object]:
-    return value if isinstance(value, dict) else {}
-
-
-def _str_list(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value]
+SCHEMA_RULES = {
+    "r1_capability_definition_schema": ("capability_definitions", "capability_definition", True),
+    "r1_safety_envelope_schema": ("safety_envelopes", "safety_envelope", True),
+    "r2_evaluation_pack_schema": ("evaluation_packs", "evaluation_pack", True),
+    "r3_workflow_contract_schema": ("workflow_contracts", "workflow_contract", False),
+}
 
 
-def _is_excluded(path: Path, excluded_parts: set[str]) -> bool:
-    rel_parts = path.relative_to(REPO_ROOT).parts
-    return any(part in excluded_parts for part in rel_parts)
+def _schema_rule(context: RuleContext, check_name: str) -> list[str]:
+    artifact_type, schema_name, require_files = SCHEMA_RULES[check_name]
+    _, violations = validate_schema_records(
+        context.repo_root,
+        context.adapter,
+        artifact_type=artifact_type,
+        schema_name=schema_name,
+        require_files=require_files,
+    )
+    return violations
 
 
-def _path_matches(
-    path: Path,
-    excluded_parts: set[str],
-    suffixes: tuple[str, ...] | None,
-) -> bool:
-    if not path.is_file():
-        return False
-    if _is_excluded(path, excluded_parts):
-        return False
-    if suffixes is not None and path.suffix not in suffixes:
-        return False
-    return True
+def _check_r1_identity_context_contract(context: RuleContext) -> list[str]:
+    repository = context.repository
+    if not repository.capability_definitions:
+        return ["capability-definitions: expected at least one Capability Definition"]
+
+    violations: list[str] = []
+    for record in repository.capability_definitions:
+        payload = record.payload
+        rel_path = record.path.relative_to(context.repo_root).as_posix()
+        identity = payload.get("identity", {})
+        routing = payload.get("routing", {})
+        required_tags = set(context.adapter.required_identity_tags)
+        declared_tags = set(identity.get("required_tags", [])) if isinstance(identity, dict) else set()
+        missing_tags = sorted(required_tags - declared_tags)
+        if missing_tags:
+            violations.append(f"{rel_path}: identity.required_tags missing {missing_tags}")
+        if not isinstance(routing, dict) or routing.get("llm_route") != "llm_gateway":
+            violations.append(f"{rel_path}: routing.llm_route must be llm_gateway")
+        for index, binding in enumerate(payload.get("tool_bindings", [])):
+            if not isinstance(binding, dict):
+                continue
+            if not bool(binding.get("requires_identity_context")):
+                violations.append(
+                    f"{rel_path}: tool_bindings[{index}] must require identity context"
+                )
+    return sorted(set(violations))
+
+
+def _check_r2_publish_readiness(context: RuleContext) -> list[str]:
+    return publish_readiness_violations(context.repo_root, context.adapter, context.repository)
+
+
+def _check_r3_process_contract_required(context: RuleContext) -> list[str]:
+    return process_scope_violations(context.repo_root, context.adapter, context.repository)
+
+
+CHECKS_BY_NAME: dict[str, CheckFunc] = {
+    "r1_capability_definition_schema": lambda context: _schema_rule(context, "r1_capability_definition_schema"),
+    "r1_safety_envelope_schema": lambda context: _schema_rule(context, "r1_safety_envelope_schema"),
+    "r1_identity_context_contract": _check_r1_identity_context_contract,
+    "r2_evaluation_pack_schema": lambda context: _schema_rule(context, "r2_evaluation_pack_schema"),
+    "r2_publish_readiness": _check_r2_publish_readiness,
+    "r3_workflow_contract_schema": lambda context: _schema_rule(context, "r3_workflow_contract_schema"),
+    "r3_process_contract_required": _check_r3_process_contract_required,
+}
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Validate Flutter solution design compliance artefacts.")
+    parser.add_argument("--repo-root", default=str(REPO_ROOT), help="Target repo root containing artefact directories.")
+    parser.add_argument("--policy", default=str(DEFAULT_POLICY_PATH), help="Path to policy JSON.")
+    parser.add_argument("--adapter", default=str(DEFAULT_ADAPTER_PATH), help="Path to adapter JSON.")
+    parser.add_argument("--skip", action="append", default=[], help="Comma-separated tier(s) to skip.")
+    parser.add_argument("--list-rules", action="store_true", help="List rules and exit.")
+    parser.add_argument("--output", choices=("text", "json"), default="text", help="Output format.")
+    parser.add_argument("--timings", action="store_true", help="Include per-rule timing details in text output.")
+    return parser.parse_args()
 
 
 def _parse_tiers(raw_values: list[str]) -> set[str]:
@@ -153,232 +170,16 @@ def _parse_tiers(raw_values: list[str]) -> set[str]:
     return parsed
 
 
-def _load_json_object(path: Path, label: str) -> dict[str, object]:
-    if not path.exists():
-        raise FileNotFoundError(f"{label} file not found: {path}")
-    content = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(content, dict):
-        raise ValueError(f"{label} file must contain a JSON object: {path}")
-    return content
-
-
-def _contains_any_marker(source: str, markers: list[str]) -> list[str]:
-    return [marker for marker in markers if marker and marker in source]
-
-
-def _missing_markers(source: str, markers: list[str]) -> list[str]:
-    return [marker for marker in markers if marker and marker not in source]
-
-
-def _check_r1_llm_gateway_non_bypass(context: RuleContext) -> list[str]:
-    allowlist = context.allowlist("llm_gateway_boundary")
-    direct_markers = context.markers("direct_provider_transport_markers")
-    violations: list[str] = []
-
-    for path in context.files_for_set("python_service_code", suffixes=(".py",)):
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
-        try:
-            violations.extend(
-                path_violations(
-                    path=path,
-                    repo_root=REPO_ROOT,
-                    allowlist=allowlist,
-                    direct_markers=direct_markers,
-                )
-            )
-        except SyntaxError as exc:
-            line = exc.lineno or 1
-            violations.append(
-                f"{rel_path}:{line} syntax error while parsing for gateway boundary check: {exc.msg}"
-            )
-    return sorted(set(violations))
-
-
-def _check_r1_mcp_stage_requires_gateway(context: RuleContext) -> list[str]:
-    required_markers = context.markers("mcp_stage_required_markers")
-    violations: list[str] = []
-    for path in context.files_for_set("mcp_stage_files"):
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
-        source = context.read_text(path)
-        missing = _missing_markers(source, required_markers)
-        if missing:
-            violations.append(
-                f"{rel_path}: missing MCP gateway markers {missing}"
-            )
-    return sorted(set(violations))
-
-
-def _check_r1_mcp_stage_forbidden_clients(context: RuleContext) -> list[str]:
-    forbidden_markers = context.markers("mcp_stage_forbidden_markers")
-    violations: list[str] = []
-    for path in context.files_for_set("mcp_stage_files"):
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
-        source = context.read_text(path)
-        for marker in _contains_any_marker(source, forbidden_markers):
-            violations.append(
-                f"{rel_path}: forbidden direct service marker '{marker}' in MCP stage"
-            )
-    return sorted(set(violations))
-
-
-def _check_r1_region_defaults(context: RuleContext) -> list[str]:
-    required = context.markers("region_required_markers")
-    forbidden = context.markers("region_forbidden_markers")
-    violations: list[str] = []
-    for path in context.files_for_set("region_default_files"):
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
-        source = context.read_text(path)
-        missing = _missing_markers(source, required)
-        for marker in missing:
-            violations.append(f"{rel_path}: required region marker '{marker}' missing")
-        for marker in _contains_any_marker(source, forbidden):
-            violations.append(f"{rel_path}: forbidden region marker '{marker}' found")
-    return sorted(set(violations))
-
-
-def _check_r2_route_metadata_defaults(context: RuleContext) -> list[str]:
-    required = context.markers("route_metadata_required_markers")
-    violations: list[str] = []
-    for path in context.files_for_set("route_metadata_files"):
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
-        source = context.read_text(path)
-        missing = _missing_markers(source, required)
-        if missing:
-            violations.append(
-                f"{rel_path}: missing route metadata markers {missing}"
-            )
-    return sorted(set(violations))
-
-
-def _check_r2_infra_identity_boundary(context: RuleContext) -> list[str]:
-    required = context.markers("infra_boundary_required_markers")
-    violations: list[str] = []
-    for path in context.files_for_set("infra_boundary_files"):
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
-        source = context.read_text(path)
-        missing = _missing_markers(source, required)
-        if missing:
-            violations.append(
-                f"{rel_path}: missing infra boundary markers {missing}"
-            )
-    return sorted(set(violations))
-
-
-def _check_r2_gateway_host_validation(context: RuleContext) -> list[str]:
-    required = context.markers("gateway_runtime_config_required_markers")
-    violations: list[str] = []
-    for path in context.files_for_set("gateway_runtime_config_files"):
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
-        source = context.read_text(path)
-        missing = _missing_markers(source, required)
-        if missing:
-            violations.append(
-                f"{rel_path}: missing gateway runtime markers {missing}"
-            )
-    return sorted(set(violations))
-
-
-def _forbid_markers_in_file_set(
-    context: RuleContext,
-    file_set: str,
-    marker_set: str,
-) -> list[str]:
-    forbidden = context.markers(marker_set)
-    violations: list[str] = []
-    for path in context.files_for_set(file_set, suffixes=(".py", ".ts", ".js")):
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
-        source = context.read_text(path)
-        for marker in _contains_any_marker(source, forbidden):
-            violations.append(f"{rel_path}: forbidden marker '{marker}' found")
-    return sorted(set(violations))
-
-
-def _check_r3_process_scope_drift(context: RuleContext) -> list[str]:
-    return _forbid_markers_in_file_set(
-        context=context,
-        file_set="poc_code_files",
-        marker_set="r3_process_scope_forbidden_markers",
-    )
-
-
-def _check_r4_regulated_scope_drift(context: RuleContext) -> list[str]:
-    return _forbid_markers_in_file_set(
-        context=context,
-        file_set="poc_code_files",
-        marker_set="r4_regulated_forbidden_markers",
-    )
-
-
-CHECKS_BY_NAME: dict[str, CheckFunc] = {
-    "r1_llm_gateway_non_bypass": _check_r1_llm_gateway_non_bypass,
-    "r1_mcp_stage_requires_gateway": _check_r1_mcp_stage_requires_gateway,
-    "r1_mcp_stage_forbidden_clients": _check_r1_mcp_stage_forbidden_clients,
-    "r1_region_defaults": _check_r1_region_defaults,
-    "r2_route_metadata_defaults": _check_r2_route_metadata_defaults,
-    "r2_infra_identity_boundary": _check_r2_infra_identity_boundary,
-    "r2_gateway_host_validation": _check_r2_gateway_host_validation,
-    "r3_process_scope_drift": _check_r3_process_scope_drift,
-    "r4_regulated_scope_drift": _check_r4_regulated_scope_drift,
-}
-
-
 def _load_rule_definitions(policy: dict[str, object]) -> list[RuleDefinition]:
     raw_rules = policy.get("rules", [])
     if not isinstance(raw_rules, list):
         raise ValueError("policy file must contain a 'rules' list")
 
-    rules: list[RuleDefinition] = []
-    for item in raw_rules:
-        parsed = _rule_from_policy_item(item)
-        if parsed is not None:
-            rules.append(parsed)
+    rules = [_rule_definition_from_item(item) for item in raw_rules]
 
     if not rules:
-        raise ValueError("policy rules list is empty after filtering")
+        raise ValueError("policy rules list is empty")
     return rules
-
-
-def _default_skip_tiers(adapter: dict[str, object]) -> set[str]:
-    return _parse_tiers(_str_list(adapter.get("default_skip_tiers", [])))
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Validate Flutter solution design compliance tiers (R1-R4)."
-    )
-    parser.add_argument(
-        "--policy",
-        default=str(DEFAULT_POLICY_PATH),
-        help="Path to policy JSON defining reusable rule catalog.",
-    )
-    parser.add_argument(
-        "--adapter",
-        default=str(DEFAULT_ADAPTER_PATH),
-        help="Path to adapter JSON mapping project files/markers/allowlists.",
-    )
-    parser.add_argument(
-        "--skip",
-        action="append",
-        default=[],
-        help="Comma-separated tier(s) to skip, e.g. --skip R3,R4",
-    )
-    parser.add_argument(
-        "--list-rules",
-        action="store_true",
-        help="List rules and exit.",
-    )
-    parser.add_argument(
-        "--output",
-        choices=("text", "json"),
-        default="text",
-        help="Output format.",
-    )
-    parser.add_argument(
-        "--timings",
-        action="store_true",
-        help="Include per-rule timing details in text output.",
-    )
-    return parser.parse_args()
 
 
 def _print_rule_catalog(rules: list[RuleDefinition]) -> None:
@@ -386,20 +187,27 @@ def _print_rule_catalog(rules: list[RuleDefinition]) -> None:
         print(f"{rule.rule_id}\t{rule.tier}\t{rule.title}\t{rule.check_name}")
 
 
-def _serialize_json(
-    *,
-    policy: dict[str, object],
-    adapter: dict[str, object],
-    active_tiers: list[str],
-    skip_tiers: set[str],
-    results: list[RuleResult],
-) -> str:
+def _run_rule(rule: RuleDefinition, context: RuleContext) -> RuleResult:
+    started = time.perf_counter()
+    violations = CHECKS_BY_NAME[rule.check_name](context)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    return RuleResult(
+        rule_id=rule.rule_id,
+        tier=rule.tier,
+        title=rule.title,
+        status="FAIL" if violations else "PASS",
+        violations=violations,
+        duration_ms=duration_ms,
+    )
+
+
+def _serialize_json(render_context: RenderContext, results: list[RuleResult]) -> str:
     payload = {
-        "policy": str(policy.get("name", "unknown-policy")),
-        "policy_version": str(policy.get("version", "unknown")),
-        "adapter": str(adapter.get("name", "unknown-adapter")),
-        "active_tiers": active_tiers,
-        "skipped_tiers": sorted(skip_tiers),
+        "policy": str(render_context.policy.get("name", "unknown-policy")),
+        "policy_version": str(render_context.policy.get("version", "unknown")),
+        "adapter": str(render_context.adapter.get("name", "unknown-adapter")),
+        "active_tiers": render_context.active_tiers,
+        "skipped_tiers": sorted(render_context.skip_tiers),
         "rules": [
             {
                 "rule_id": result.rule_id,
@@ -411,63 +219,31 @@ def _serialize_json(
             }
             for result in results
         ],
+        "summary": {
+            "total": len(results),
+            "pass": sum(1 for result in results if result.status == "PASS"),
+            "fail": sum(1 for result in results if result.status == "FAIL"),
+            "skip": sum(1 for result in results if result.status == "SKIP"),
+        },
     }
-
-    summary = {
-        "total": len(results),
-        "pass": sum(1 for result in results if result.status == "PASS"),
-        "fail": sum(1 for result in results if result.status == "FAIL"),
-        "skip": sum(1 for result in results if result.status == "SKIP"),
-    }
-    payload["summary"] = summary
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
-def _print_text_header(*, policy: dict[str, object], adapter: dict[str, object], active_tiers: list[str], skip_tiers: set[str]) -> None:
-    policy_name = str(policy.get("name", "unknown-policy"))
-    adapter_name = str(adapter.get("name", "unknown-adapter"))
-    print(f"Flutter design policy: {policy_name}")
-    print(f"Flutter design adapter: {adapter_name}")
-    print(f"Active tiers: {', '.join(active_tiers) if active_tiers else '(none)'}")
-    print(f"Skipped tiers: {', '.join(sorted(skip_tiers)) if skip_tiers else '(none)'}")
+def _print_text(render_context: RenderContext, results: list[RuleResult], timings: bool) -> None:
+    print(f"Flutter design policy: {render_context.policy.get('name', 'unknown-policy')}")
+    print(f"Flutter design adapter: {render_context.adapter.get('name', 'unknown-adapter')}")
+    print(f"Active tiers: {', '.join(render_context.active_tiers) if render_context.active_tiers else '(none)'}")
+    print(f"Skipped tiers: {', '.join(sorted(render_context.skip_tiers)) if render_context.skip_tiers else '(none)'}")
+    for result in results:
+        duration = f" ({result.duration_ms}ms)" if timings else ""
+        print(f"{result.status} {result.rule_id} [{result.tier}] {result.title}{duration}")
+        for violation in result.violations:
+            print(f"  - {violation}")
 
 
-def _print_text_result(result: RuleResult, timings: bool) -> None:
-    duration_suffix = f" ({result.duration_ms}ms)" if timings else ""
-    if result.status == "SKIP":
-        print(f"SKIP {result.rule_id} [{result.tier}] {result.title}{duration_suffix}")
-        return
-    if result.status == "PASS":
-        print(f"PASS {result.rule_id} [{result.tier}] {result.title}{duration_suffix}")
-        return
-    print(f"FAIL {result.rule_id} [{result.tier}] {result.title}{duration_suffix}")
-    for violation in result.violations:
-        print(f"  - {violation}")
-
-
-def _run_rule(rule: RuleDefinition, context: RuleContext) -> RuleResult:
-    check = CHECKS_BY_NAME[rule.check_name]
-    started = time.perf_counter()
-    violations = check(context)
-    duration_ms = int((time.perf_counter() - started) * 1000)
-    status = "FAIL" if violations else "PASS"
-    return RuleResult(
-        rule_id=rule.rule_id,
-        tier=rule.tier,
-        title=rule.title,
-        status=status,
-        violations=violations,
-        duration_ms=duration_ms,
-    )
-
-
-def _rule_from_policy_item(item: object) -> RuleDefinition | None:
+def _rule_definition_from_item(item: object) -> RuleDefinition:
     if not isinstance(item, dict):
         raise ValueError("every policy rule must be an object")
-
-    if not bool(item.get("enabled", True)):
-        return None
-
     rule_id = str(item.get("rule_id", "")).strip()
     tier = str(item.get("tier", "")).strip().upper()
     title = str(item.get("title", "")).strip()
@@ -478,20 +254,30 @@ def _rule_from_policy_item(item: object) -> RuleDefinition | None:
         raise ValueError(f"policy rule '{rule_id}' has unsupported tier '{tier}'")
     if check_name not in CHECKS_BY_NAME:
         raise ValueError(f"policy rule '{rule_id}' references unknown check '{check_name}'")
-    return RuleDefinition(
-        rule_id=rule_id,
-        tier=tier,
-        title=title,
-        check_name=check_name,
+    return RuleDefinition(rule_id=rule_id, tier=tier, title=title, check_name=check_name)
+
+
+def main() -> int:
+    args = parse_args()
+    repo_root = Path(args.repo_root).resolve()
+    policy = load_json_object(Path(args.policy).resolve())
+    adapter_payload = load_json_object(Path(args.adapter).resolve())
+    adapter = load_adapter(Path(args.adapter).resolve())
+    rules = _load_rule_definitions(policy)
+
+    if args.list_rules:
+        _print_rule_catalog(rules)
+        return 0
+
+    skip_tiers = _parse_tiers(args.skip)
+    active_tiers = [tier for tier in ALL_TIERS if tier not in skip_tiers]
+    render_context = RenderContext(
+        policy=policy,
+        adapter=adapter_payload,
+        active_tiers=active_tiers,
+        skip_tiers=skip_tiers,
     )
-
-
-def _rule_results_for_context(
-    *,
-    rules: list[RuleDefinition],
-    skip_tiers: set[str],
-    context: RuleContext,
-) -> list[RuleResult]:
+    context = RuleContext(repo_root, adapter)
     results: list[RuleResult] = []
     for rule in rules:
         if rule.tier in skip_tiers:
@@ -507,84 +293,18 @@ def _rule_results_for_context(
             )
             continue
         results.append(_run_rule(rule, context))
-    return results
 
-
-def _emit_results(
-    *,
-    output: str,
-    timings: bool,
-    render_context: RenderContext,
-    results: list[RuleResult],
-) -> None:
-    if output == "json":
-        print(
-            _serialize_json(
-                policy=render_context.policy,
-                adapter=render_context.adapter,
-                active_tiers=render_context.active_tiers,
-                skip_tiers=render_context.skip_tiers,
-                results=results,
-            )
-        )
-        return
-
-    failed = [result for result in results if result.status == "FAIL"]
-    _print_text_header(
-        policy=render_context.policy,
-        adapter=render_context.adapter,
-        active_tiers=render_context.active_tiers,
-        skip_tiers=render_context.skip_tiers,
-    )
-    for result in results:
-        _print_text_result(result, timings=timings)
-
-    if failed:
-        print(f"Flutter design compliance failed: {len(failed)} rule(s) violated.")
+    if args.output == "json":
+        print(_serialize_json(render_context, results))
     else:
-        print("Flutter design compliance checks passed.")
+        _print_text(render_context, results, args.timings)
 
-
-def main() -> int:
-    args = parse_args()
-    policy = _load_json_object(Path(args.policy).resolve(), "policy")
-    adapter = _load_json_object(Path(args.adapter).resolve(), "adapter")
-    rules = _load_rule_definitions(policy)
-
-    default_skip = _default_skip_tiers(adapter)
-    cli_skip = _parse_tiers([str(value) for value in args.skip])
-    skip_tiers = default_skip.union(cli_skip)
-    active_tiers = [tier for tier in ALL_TIERS if tier not in skip_tiers]
-
-    if args.list_rules:
-        _print_rule_catalog(rules)
-        return 0
-
-    context = RuleContext(adapter)
-    render_context = RenderContext(
-        policy=policy,
-        adapter=adapter,
-        active_tiers=active_tiers,
-        skip_tiers=skip_tiers,
-    )
-    results = _rule_results_for_context(
-        rules=rules,
-        skip_tiers=skip_tiers,
-        context=context,
-    )
-    failed = [result for result in results if result.status == "FAIL"]
-    _emit_results(
-        output=args.output,
-        timings=args.timings,
-        render_context=render_context,
-        results=results,
-    )
-    return 1 if failed else 0
+    return 1 if any(result.status == "FAIL" for result in results) else 0
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (FileNotFoundError, ValueError) as exc:
+    except ValueError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(2)

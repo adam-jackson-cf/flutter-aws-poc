@@ -1,0 +1,44 @@
+{
+  "kind": "CapabilityDefinition",
+  "metadata": {
+    "capability_id": "account-freeze-orchestrator",
+    "version": "0.2.0",
+    "lifecycle_state": "Review"
+  },
+  "governance": {
+    "risk_tier": "R2",
+    "safety_envelope_ref": "default-r2-writes@2.0.0",
+    "workflow_contract_ref": "account-freeze-review@1.0.0",
+    "execution_model": {
+      "scopes": ["Reasoning", "Coordination", "Process"],
+      "delegated_capability_ids": ["policy-review-specialist"]
+    }
+  },
+  "routing": {
+    "llm_route": "llm_gateway",
+    "allowed_model_families": ["bedrock"]
+  },
+  "identity": {
+    "required_tags": ["tenant_id", "brand", "role", "use_case"]
+  },
+  "tool_bindings": [
+    {
+      "tool_id": "policy-search",
+      "kind": "rag",
+      "requires_identity_context": true
+    },
+    {
+      "tool_id": "account-control-mcp",
+      "kind": "mcp",
+      "requires_identity_context": true
+    },
+    {
+      "tool_id": "senior-review",
+      "kind": "human_review",
+      "requires_identity_context": true
+    }
+  ],
+  "evaluation": {
+    "evaluation_pack_ref": "account-freeze-orchestrator@0.2.0"
+  }
+}

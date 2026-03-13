@@ -1,35 +1,40 @@
 # Flutter Design Linter
 
-This linter enforces architecture controls derived from the Flutter solution design docs in `docs/flutter-uki-ai-platform-arch/`.
+This repository enforces the Flutter solution design through contract artifacts and cross-artifact governance rules, not source-code marker scans.
 
-## Portability model
+## Enforcement Model
 
 - Rule engine: `scripts/linters/flutter-design/check-flutter-design-compliance.py`
 - Portable policy: `scripts/linters/flutter-design/policy/flutter-design-policy.json`
 - Project adapter: `scripts/linters/flutter-design/flutter-design-linter-profile.json`
+- Core logic: `scripts/linters/flutter_design_support/`
 
-The policy defines reusable rule intent (`rule_id`, `tier`, `check_name`).
-The adapter maps those rules to this repo's file sets, allowlists, and markers.
+The policy defines the rules. The adapter maps those rules to the repository artifact roots and schema files. The support package evaluates schema validity, identity requirements, publish readiness, workflow requirements, and evaluation evidence.
 
-## Tier model
+## Tier Model
 
-- `R1`: non-bypass LLM gateway routing, MCP gateway usage, region pinning
-- `R2`: route-metadata parity, infra IAM boundary, gateway host validation
-- `R3`: process-scope drift controls
-- `R4`: regulated-scope drift controls
+- `R1`: Capability Definition and Safety Envelope schema integrity plus identity-context routing requirements
+- `R2`: Evaluation Pack schema integrity plus publish-readiness evidence checks
+- `R3`: Workflow Contract schema integrity plus process-contract requirements for higher-risk or process-scoped capabilities
+
+There is no active `R4` lane in this baseline.
+
+## Baseline State
+
+The repo starts with empty artifact roots. That means the compliance linter is expected to fail until real contract artifacts are authored. This is intentional and should be treated as the BDD starting state.
 
 ## Usage
 
-Run all tiers:
+Run all active tiers:
 
 ```bash
 python3 scripts/linters/flutter-design/check-flutter-design-compliance.py
 ```
 
-Run PoC scope (`R1` and `R2`):
+Run the faster `R1/R2` view:
 
 ```bash
-python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --skip R3,R4
+python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --skip R3
 ```
 
 Emit machine-readable results:
@@ -38,30 +43,26 @@ Emit machine-readable results:
 python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --output json --timings
 ```
 
-List rule catalog from policy:
+List the active rule catalog:
 
 ```bash
 python3 scripts/linters/flutter-design/check-flutter-design-compliance.py --list-rules
 ```
 
-## Waiver governance
-
-Waivers are validated by:
+Validate waivers:
 
 ```bash
 python3 scripts/linters/flutter-design/check-flutter-design-waivers.py
 ```
 
-Expired waivers fail strict lanes.
+## CI Lanes
 
-## CI lanes
-
-Use the central runner with explicit lanes:
+Use the central runner:
 
 ```bash
 bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2
 bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
-bash scripts/run-ci-quality-gates.sh --lane=extended-r3r4
+bash scripts/run-ci-quality-gates.sh --lane=strict-r3
 ```
 
-The control ownership matrix is documented in `docs/references/flutter-design-control-ownership.md`.
+The ownership matrix is documented in `docs/references/flutter-design-control-ownership.md`.

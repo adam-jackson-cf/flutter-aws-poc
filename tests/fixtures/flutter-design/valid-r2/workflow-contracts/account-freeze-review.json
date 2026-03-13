@@ -1,0 +1,26 @@
+{
+  "kind": "WorkflowContract",
+  "metadata": {
+    "workflow_id": "account-freeze-review",
+    "version": "1.0.0"
+  },
+  "governance": {
+    "risk_tier": "R2"
+  },
+  "steps": [
+    {
+      "step_id": "retrieve-case",
+      "mode": "automated"
+    },
+    {
+      "step_id": "human-approval",
+      "mode": "human_review"
+    }
+  ],
+  "idempotency": {
+    "key_path": "$.request_id"
+  },
+  "compensation": {
+    "required": true
+  }
+}
