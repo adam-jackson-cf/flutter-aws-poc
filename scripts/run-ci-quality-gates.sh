@@ -2,13 +2,13 @@
 set -euo pipefail
 
 RUNNER_PATH="scripts/run-ci-quality-gates.sh"
-LANE="${QUALITY_GATES_LANE:-quality-gates-core}"
+LANE="${QUALITY_GATES_LANE:-nightly-full}"
 UV_BIN="${UV_BIN:-uv}"
 UV_PYTHON_VERSION="${UV_PYTHON_VERSION:-3.12.7}"
 UV_REQUIREMENTS_FILE="${UV_REQUIREMENTS_FILE:-requirements.txt}"
 UV_VENV_PYTHON_BIN="${UV_VENV_PYTHON_BIN:-}"
 DESIGN_REPO_ROOT="${DESIGN_REPO_ROOT:-$PWD}"
-PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-95}"
+PYTEST_COVERAGE_TARGET="${PYTEST_COVERAGE_TARGET:-100}"
 COMPLEXITY_MAX="${COMPLEXITY_MAX:-10}"
 LENGTH_MAX="${LENGTH_MAX:-80}"
 PARAM_MAX="${PARAM_MAX:-5}"
@@ -45,9 +45,10 @@ Python runner resolution:
 
 Environment:
   - DESIGN_REPO_ROOT controls which artifact tree the Flutter design linter evaluates
-  - PYTEST_COVERAGE_TARGET defaults to 95 for core enforcement logic
+  - PYTEST_COVERAGE_TARGET defaults to 100 for runtime and enforcement logic
 
 Examples:
+  bash scripts/run-ci-quality-gates.sh
   bash scripts/run-ci-quality-gates.sh --lane=fast-r1r2
   bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core
   DESIGN_REPO_ROOT=tests/fixtures/flutter-design/valid-r2 bash scripts/run-ci-quality-gates.sh --lane=quality-gates-core

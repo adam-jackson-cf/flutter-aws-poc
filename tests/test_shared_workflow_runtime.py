@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from runtime.adapters import FixtureBackedMcpAdapter, FixtureBackedRagAdapter, McpInvocation
-from runtime.engine import _hitl_record
+from runtime.engine import ExecutionContext, _binding_for_tool, _delegated_capability_ref, _hitl_record
 from runtime.models import (
     EvaluationPack,
     parse_capability_definition,
@@ -587,6 +587,100 @@ def test_repository_resolves_versioned_capability_refs(tmp_path: Path) -> None:
     repository = GovernedArtifactRepository(tmp_path)
     assert repository.get_capability("custom-capability", "1.0.0").version == "1.0.0"
     assert repository.get_capability("custom-capability", "2.0.0").version == "2.0.0"
+
+
+def test_runtime_delegate_rejects_unsupported_delegated_capability(tmp_path: Path) -> None:
+    runtime = SharedWorkflowRuntime(
+        repository=GovernedArtifactRepository(REPO_ROOT),
+        audit_root=tmp_path,
+    )
+    context = ExecutionContext(
+        identity_context=_identity_context(),
+        audit={"events": [], "delegations": [], "invocation_chain": [], "tool_calls": []},
+    )
+
+    with pytest.raises(ValueError, match="Unsupported delegated capability"):
+        runtime._delegate(  # noqa: SLF001
+            "pr-verifier-orchestrator@1.0.0",
+            request={},
+            context=context,
+        )
+
+
+def test_runtime_helper_lookups_raise_for_missing_entries() -> None:
+    capability = GovernedArtifactRepository(REPO_ROOT).get_capability(
+        "pr-verifier-orchestrator",
+        "1.0.0",
+    )
+
+    with pytest.raises(KeyError, match="missing tool binding"):
+        _binding_for_tool(capability, "missing-tool")
+
+    with pytest.raises(KeyError, match="missing delegated capability ref"):
+        _delegated_capability_ref(capability, "missing-specialist")
+
+
+def test_repository_skips_non_dict_and_blank_dataset_paths(tmp_path: Path) -> None:
+    capability_root = tmp_path / "capability-definitions"
+    evaluation_root = tmp_path / "evaluation-packs"
+    capability_root.mkdir()
+    evaluation_root.mkdir()
+    dataset_file = tmp_path / "datasets" / "valid.jsonl"
+    dataset_file.parent.mkdir()
+    dataset_file.write_text("{}\n", encoding="utf-8")
+
+    capability_root.joinpath("cap.json").write_text(
+        json.dumps(
+            {
+                "kind": "CapabilityDefinition",
+                "metadata": {"capability_id": "cap", "version": "1.0.0", "lifecycle_state": "Published"},
+                "prompt": {"prompt_ref": "prompts/cap", "prompt_sha256": "a" * 64},
+                "governance": {"risk_tier": "R1", "execution_model": {"scopes": ["Reasoning"]}},
+                "identity": {"required_tags": ["tenant_id", "brand", "role", "use_case"]},
+                "tool_bindings": [{"tool_id": "customer-360-reader", "kind": "mcp", "action_class": "read", "requires_identity_context": True}],
+                "evaluation": {"evaluation_pack_ref": "pack@1.0.0"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    evaluation_root.joinpath("pack.json").write_text(
+        json.dumps(
+            {
+                "kind": "EvaluationPack",
+                "metadata": {"pack_id": "pack", "version": "1.0.0"},
+                "capability_ref": "cap@1.0.0",
+                "datasets": ["skip-me", {"path": ""}, {"path": "datasets/valid.jsonl"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    repository = GovernedArtifactRepository(tmp_path)
+
+    assert repository.resolve_dataset_paths(repository.get_evaluation_pack("pack@1.0.0")) == (
+        dataset_file.resolve(),
+    )
+
+
+def test_repository_rejects_duplicate_records(tmp_path: Path) -> None:
+    capability_root = tmp_path / "capability-definitions"
+    capability_root.mkdir()
+    duplicate_payload = {
+        "kind": "CapabilityDefinition",
+        "metadata": {"capability_id": "cap", "version": "1.0.0", "lifecycle_state": "Published"},
+        "prompt": {"prompt_ref": "prompts/cap", "prompt_sha256": "a" * 64},
+        "governance": {"risk_tier": "R1", "execution_model": {"scopes": ["Reasoning"]}},
+        "identity": {"required_tags": ["tenant_id", "brand", "role", "use_case"]},
+        "tool_bindings": [{"tool_id": "customer-360-reader", "kind": "mcp", "action_class": "read", "requires_identity_context": True}],
+        "evaluation": {"evaluation_pack_ref": "pack@1.0.0"},
+    }
+    capability_root.joinpath("one.json").write_text(json.dumps(duplicate_payload), encoding="utf-8")
+    capability_root.joinpath("two.json").write_text(json.dumps(duplicate_payload), encoding="utf-8")
+
+    repository = GovernedArtifactRepository(tmp_path)
+
+    with pytest.raises(ValueError, match="Duplicate capability ref"):
+        repository.list_capabilities()
 
 
 def _write_custom_runtime_repo(

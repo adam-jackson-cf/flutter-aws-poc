@@ -50,7 +50,7 @@ Initial setup and bootstrap live in `README.md`. Use the commands below for ongo
 
 ### Lane Strictness
 
-- Pre-commit uses `preflight` only, so commits are not blocked by the intentionally empty contract baseline.
+- Pre-commit and the default `bash scripts/run-ci-quality-gates.sh` invocation now use `nightly-full`.
 - `fast-r1r2` is the first design-enforcing lane and should be used when checking contract diffs locally.
 - `quality-gates-core` is the main PR lane for full contract, coverage, and maintainability enforcement.
 - `strict-r3` adds waiver governance and is the right lane when workflow-contract or higher-risk governance diffs are involved.

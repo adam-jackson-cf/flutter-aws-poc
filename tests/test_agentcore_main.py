@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import runpy
 from http import HTTPStatus
 from pathlib import Path
 
@@ -147,3 +148,58 @@ def test_request_handler_writes_ping_and_invocation_responses(tmp_path: Path) ->
     post_payload = post_handler.wfile.getvalue().decode("utf-8")
     assert captured["status"] == HTTPStatus.OK
     assert '"summary": "Governed review completed"' in post_payload
+
+
+def test_request_handler_maps_permission_and_generic_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_runtime(tmp_path)
+    captured: dict[str, object] = {}
+
+    def build_handler(body: bytes) -> agentcore_main.AgentCoreRequestHandler:
+        handler = object.__new__(agentcore_main.AgentCoreRequestHandler)
+        handler.command = "POST"
+        handler.path = "/invocations"
+        handler.headers = {"content-length": str(len(body))}
+        handler.rfile = io.BytesIO(body)
+        handler.wfile = io.BytesIO()
+        handler.send_response = lambda status: captured.__setitem__("status", status)
+        handler.send_header = lambda name, value: captured.setdefault("headers", {}).update({name: value})
+        handler.end_headers = lambda: None
+        return handler
+
+    monkeypatch.setattr(agentcore_main, "handle_invocation", lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("denied")))
+    denied_handler = build_handler(b"{}")
+    denied_handler.do_POST()
+    denied_payload = denied_handler.wfile.getvalue().decode("utf-8")
+    assert captured["status"] == HTTPStatus.FORBIDDEN
+    assert '"error": "denied"' in denied_payload
+
+    monkeypatch.setattr(agentcore_main, "handle_invocation", lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad payload")))
+    bad_handler = build_handler(b"{}")
+    bad_handler.do_POST()
+    bad_payload = bad_handler.wfile.getvalue().decode("utf-8")
+    assert captured["status"] == HTTPStatus.BAD_REQUEST
+    assert '"error": "bad payload"' in bad_payload
+
+
+def test_request_handler_log_message_is_noop() -> None:
+    handler = object.__new__(agentcore_main.AgentCoreRequestHandler)
+
+    assert handler.log_message("%s", "ignored") is None
+
+
+def test_module_main_guard_invokes_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: dict[str, bool] = {"served": False}
+
+    class FakeServer:
+        def __init__(self, _address: tuple[str, int], _handler: object) -> None:
+            return
+
+        def serve_forever(self) -> None:
+            called["served"] = True
+
+    monkeypatch.setattr("http.server.ThreadingHTTPServer", FakeServer)
+    monkeypatch.setenv("PORT", "8088")
+
+    runpy.run_module("runtime.agentcore_main", run_name="__main__")
+
+    assert called["served"] is True
