@@ -6,6 +6,7 @@
   "required": [
     "kind",
     "metadata",
+    "prompt",
     "governance",
     "routing",
     "identity",
@@ -31,6 +32,21 @@
         "lifecycle_state": {
           "type": "string",
           "enum": ["Draft", "Review", "Published", "Deprecated"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "prompt": {
+      "type": "object",
+      "required": ["prompt_ref", "prompt_sha256"],
+      "properties": {
+        "prompt_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
         }
       },
       "additionalProperties": false
@@ -64,11 +80,11 @@
               "uniqueItems": true,
               "minItems": 1
             },
-            "delegated_capability_ids": {
+            "delegated_capability_refs": {
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9-]*$"
+                "pattern": "^[a-z0-9][a-z0-9-]*@[0-9]+\\.[0-9]+\\.[0-9]+$"
               },
               "uniqueItems": true
             }
@@ -117,7 +133,12 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["tool_id", "kind", "requires_identity_context"],
+        "required": [
+          "tool_id",
+          "kind",
+          "action_class",
+          "requires_identity_context"
+        ],
         "properties": {
           "tool_id": {
             "type": "string",
@@ -126,6 +147,16 @@
           "kind": {
             "type": "string",
             "enum": ["mcp", "rag", "human_review", "internal_event"]
+          },
+          "action_class": {
+            "type": "string",
+            "enum": [
+              "read",
+              "internal_write",
+              "customer_write",
+              "regulated_write",
+              "control"
+            ]
           },
           "requires_identity_context": {
             "type": "boolean"

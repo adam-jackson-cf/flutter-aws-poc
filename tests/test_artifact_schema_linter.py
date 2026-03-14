@@ -38,6 +38,14 @@ def test_schema_linter_accepts_valid_r1_fixture() -> None:
     assert "PASS evaluation_packs" in completed.stdout
 
 
+def test_schema_linter_accepts_valid_r1_process_fixture() -> None:
+    completed = _run(FIXTURE_ROOT / "valid-r1-process")
+
+    assert completed.returncode == 0
+    assert "PASS capability_definitions" in completed.stdout
+    assert "PASS workflow_contracts" in completed.stdout
+
+
 def test_schema_linter_accepts_valid_r2_fixture_with_optional_workflow_contracts() -> None:
     completed = _run(FIXTURE_ROOT / "valid-r2")
 

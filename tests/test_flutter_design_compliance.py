@@ -55,6 +55,14 @@ def test_compliance_passes_valid_r2_fixture() -> None:
     assert payload["summary"]["fail"] == 0
 
 
+def test_compliance_passes_valid_r1_process_fixture() -> None:
+    completed = _run(FIXTURE_ROOT / "valid-r1-process")
+
+    assert completed.returncode == 0
+    payload = json.loads(completed.stdout)
+    assert payload["summary"]["fail"] == 0
+
+
 def test_compliance_fails_missing_publish_requirements() -> None:
     completed = _run(FIXTURE_ROOT / "invalid-missing-eval", skip="R3")
 
@@ -70,7 +78,16 @@ def test_compliance_fails_invalid_r2_process_contract() -> None:
     assert completed.returncode == 1
     payload = json.loads(completed.stdout)
     failing_rule_ids = {rule["rule_id"] for rule in payload["rules"] if rule["status"] == "FAIL"}
-    assert "R3-PROCESS-CONTRACT-REQUIRED" in failing_rule_ids
+    assert "R2-PROCESS-CONTRACT-GOVERNANCE" in failing_rule_ids
+
+
+def test_compliance_fails_r1_customer_write_governance() -> None:
+    completed = _run(FIXTURE_ROOT / "invalid-r1-customer-write")
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    failing_rule_ids = {rule["rule_id"] for rule in payload["rules"] if rule["status"] == "FAIL"}
+    assert "R2-PUBLISH-READYNESS" in failing_rule_ids
 
 
 def test_waiver_validator_detects_expired_entries(tmp_path: Path) -> None:
@@ -81,7 +98,7 @@ def test_waiver_validator_detects_expired_entries(tmp_path: Path) -> None:
                 "name": "test-waivers",
                 "waivers": [
                     {
-                        "rule_id": "R3-PROCESS-CONTRACT-REQUIRED",
+                        "rule_id": "R2-PROCESS-CONTRACT-GOVERNANCE",
                         "owner": "platform@example.com",
                         "reason": "Temporary migration window",
                         "issue": "POC-123",

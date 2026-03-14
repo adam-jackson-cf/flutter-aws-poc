@@ -24,7 +24,7 @@ Quality gate lanes:
   fast-r1r2          Fast contract enforcement lane (R1/R2 only)
   quality-gates-core Full contract-first PR lane (R1-R3 + tests + maintainability)
   strict-r3          Strict lane for R3 policy plus waiver governance
-  nightly-full       Strict scheduled lane with synth and mutation checks
+  nightly-full       Strictest lane with synth and mutation checks
   release-hardening  Strict release lane with synth and mutation checks
 USAGE
 }
@@ -141,7 +141,10 @@ run_step() {
 }
 
 run_prettier_check() {
-  mapfile -t prettier_files < <(
+  local prettier_files=()
+  while IFS= read -r file; do
+    prettier_files+=("$file")
+  done < <(
     rg --files \
       -g '*.json' \
       -g '*.md' \
@@ -159,11 +162,11 @@ run_prettier_check() {
 }
 
 run_ruff_complexity_check() {
-  run_python -m ruff check scripts tests --select C901,PLR0913 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX" --config "lint.pylint.max-args=$PARAM_MAX"
+  run_python -m ruff check runtime scripts tests --select C901,PLR0913 --config "lint.mccabe.max-complexity=$COMPLEXITY_MAX" --config "lint.pylint.max-args=$PARAM_MAX"
 }
 
 run_lizard_complexity_check() {
-  run_python -m lizard -C "$COMPLEXITY_MAX" -L "$LENGTH_MAX" -a "$PARAM_MAX" scripts infra/bin infra/lib
+  run_python -m lizard -C "$COMPLEXITY_MAX" -L "$LENGTH_MAX" -a "$PARAM_MAX" runtime scripts infra/bin infra/lib
 }
 
 run_headroom_complexity_check() {
@@ -195,7 +198,10 @@ run_flutter_design_compliance_check() {
 }
 
 run_ci_python_syntax_guard() {
-  mapfile -t py_files < <(rg --files -g '*.py' -g '!infra/cdk.out/**' -g '!node_modules/**' -g '!infra/node_modules/**')
+  local py_files=()
+  while IFS= read -r file; do
+    py_files+=("$file")
+  done < <(rg --files -g '*.py' -g '!infra/cdk.out/**' -g '!node_modules/**' -g '!infra/node_modules/**')
   if [[ "${#py_files[@]}" -eq 0 ]]; then
     return 0
   fi
@@ -212,6 +218,7 @@ run_cdk_synth() {
 
 run_pytest_coverage_gate() {
   run_python -m pytest \
+    --cov=runtime \
     --cov=scripts/linters/flutter_design_support \
     --cov-config=.coveragerc \
     --cov-report=term-missing \

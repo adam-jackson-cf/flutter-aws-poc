@@ -1,0 +1,26 @@
+{
+  "kind": "WorkflowContract",
+  "metadata": {
+    "workflow_id": "pr-verification-review",
+    "version": "1.0.0"
+  },
+  "governance": {
+    "risk_tier": "R1"
+  },
+  "steps": [
+    {
+      "step_id": "gather-evidence",
+      "mode": "automated"
+    },
+    {
+      "step_id": "publish-review",
+      "mode": "automated"
+    }
+  ],
+  "idempotency": {
+    "key_path": "$.request_id"
+  },
+  "compensation": {
+    "required": false
+  }
+}

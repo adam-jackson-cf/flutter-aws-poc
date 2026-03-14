@@ -1,0 +1,20 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "diff-review-specialist",
+    "version": "1.0.0"
+  },
+  "capability_ref": "diff-review-specialist@1.0.0",
+  "release_gate": {
+    "status": "passed",
+    "benchmark_pass_rate": 0.96,
+    "minimum_benchmark_pass_rate": 0.95
+  },
+  "datasets": [
+    {
+      "dataset_id": "golden-diff-review",
+      "path": "datasets/golden-diff-review.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}

@@ -5,13 +5,17 @@
     "version": "0.2.0",
     "lifecycle_state": "Review"
   },
+  "prompt": {
+    "prompt_ref": "prompts/account-freeze-orchestrator",
+    "prompt_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
   "governance": {
     "risk_tier": "R2",
     "safety_envelope_ref": "default-r2-writes@2.0.0",
     "workflow_contract_ref": "account-freeze-review@1.0.0",
     "execution_model": {
       "scopes": ["Reasoning", "Coordination", "Process"],
-      "delegated_capability_ids": ["policy-review-specialist"]
+      "delegated_capability_refs": ["policy-review-specialist@0.1.0"]
     }
   },
   "routing": {
@@ -25,16 +29,19 @@
     {
       "tool_id": "policy-search",
       "kind": "rag",
+      "action_class": "read",
       "requires_identity_context": true
     },
     {
       "tool_id": "account-control-mcp",
       "kind": "mcp",
+      "action_class": "customer_write",
       "requires_identity_context": true
     },
     {
       "tool_id": "senior-review",
       "kind": "human_review",
+      "action_class": "control",
       "requires_identity_context": true
     }
   ],

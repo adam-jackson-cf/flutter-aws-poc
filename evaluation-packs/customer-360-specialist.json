@@ -1,0 +1,20 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "customer-360-specialist",
+    "version": "1.0.0"
+  },
+  "capability_ref": "customer-360-specialist@1.0.0",
+  "release_gate": {
+    "status": "passed",
+    "benchmark_pass_rate": 0.96,
+    "minimum_benchmark_pass_rate": 0.95
+  },
+  "datasets": [
+    {
+      "dataset_id": "golden-customer-360",
+      "path": "datasets/golden-customer-360.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}

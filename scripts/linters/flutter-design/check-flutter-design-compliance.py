@@ -130,7 +130,7 @@ def _check_r2_publish_readiness(context: RuleContext) -> list[str]:
     return publish_readiness_violations(context.repo_root, context.adapter, context.repository)
 
 
-def _check_r3_process_contract_required(context: RuleContext) -> list[str]:
+def _check_r2_process_contract_governance(context: RuleContext) -> list[str]:
     return process_scope_violations(context.repo_root, context.adapter, context.repository)
 
 
@@ -140,8 +140,8 @@ CHECKS_BY_NAME: dict[str, CheckFunc] = {
     "r1_identity_context_contract": _check_r1_identity_context_contract,
     "r2_evaluation_pack_schema": lambda context: _schema_rule(context, "r2_evaluation_pack_schema"),
     "r2_publish_readiness": _check_r2_publish_readiness,
+    "r2_process_contract_governance": _check_r2_process_contract_governance,
     "r3_workflow_contract_schema": lambda context: _schema_rule(context, "r3_workflow_contract_schema"),
-    "r3_process_contract_required": _check_r3_process_contract_required,
 }
 
 

@@ -1,0 +1,20 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "pr-verifier-orchestrator",
+    "version": "0.1.0"
+  },
+  "capability_ref": "pr-verifier-orchestrator@0.1.0",
+  "release_gate": {
+    "status": "passed",
+    "benchmark_pass_rate": 0.96,
+    "minimum_benchmark_pass_rate": 0.95
+  },
+  "datasets": [
+    {
+      "dataset_id": "golden-pr-verifier",
+      "path": "datasets/golden-pr-verifier.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}

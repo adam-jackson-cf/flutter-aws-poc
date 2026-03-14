@@ -5,6 +5,10 @@
     "version": "0.1.0",
     "lifecycle_state": "Published"
   },
+  "prompt": {
+    "prompt_ref": "prompts/bad-capability",
+    "prompt_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
   "governance": {
     "risk_tier": "R1",
     "execution_model": {

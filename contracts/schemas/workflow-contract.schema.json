@@ -36,7 +36,7 @@
       "properties": {
         "risk_tier": {
           "type": "string",
-          "enum": ["R2", "R3"]
+          "enum": ["R1", "R2", "R3"]
         }
       },
       "additionalProperties": false

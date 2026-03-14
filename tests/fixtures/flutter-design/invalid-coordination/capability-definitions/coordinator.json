@@ -5,6 +5,10 @@
     "version": "0.1.0",
     "lifecycle_state": "Review"
   },
+  "prompt": {
+    "prompt_ref": "prompts/coordinator",
+    "prompt_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
   "governance": {
     "risk_tier": "R1",
     "safety_envelope_ref": "default-r1-readonly@1.0.0",
@@ -23,6 +27,7 @@
     {
       "tool_id": "case-reader",
       "kind": "mcp",
+      "action_class": "read",
       "requires_identity_context": true
     }
   ],

@@ -1,0 +1,37 @@
+{
+  "kind": "CapabilityDefinition",
+  "metadata": {
+    "capability_id": "diff-review-specialist",
+    "version": "1.0.0",
+    "lifecycle_state": "Published"
+  },
+  "prompt": {
+    "prompt_ref": "prompts/diff-review-specialist",
+    "prompt_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "governance": {
+    "risk_tier": "R0",
+    "safety_envelope_ref": "default-r0-readonly@1.0.0",
+    "execution_model": {
+      "scopes": ["Reasoning"]
+    }
+  },
+  "routing": {
+    "llm_route": "llm_gateway",
+    "allowed_model_families": ["bedrock"]
+  },
+  "identity": {
+    "required_tags": ["tenant_id", "brand", "role", "use_case"]
+  },
+  "tool_bindings": [
+    {
+      "tool_id": "github-diff-reader",
+      "kind": "mcp",
+      "action_class": "read",
+      "requires_identity_context": true
+    }
+  ],
+  "evaluation": {
+    "evaluation_pack_ref": "diff-review-specialist@1.0.0"
+  }
+}

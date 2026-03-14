@@ -1,0 +1,37 @@
+{
+  "kind": "CapabilityDefinition",
+  "metadata": {
+    "capability_id": "policy-review-specialist",
+    "version": "0.1.0",
+    "lifecycle_state": "Review"
+  },
+  "prompt": {
+    "prompt_ref": "prompts/policy-review-specialist",
+    "prompt_sha256": "7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "governance": {
+    "risk_tier": "R0",
+    "safety_envelope_ref": "default-r2-writes@2.0.0",
+    "execution_model": {
+      "scopes": ["Reasoning"]
+    }
+  },
+  "routing": {
+    "llm_route": "llm_gateway",
+    "allowed_model_families": ["bedrock"]
+  },
+  "identity": {
+    "required_tags": ["tenant_id", "brand", "role", "use_case"]
+  },
+  "tool_bindings": [
+    {
+      "tool_id": "policy-search",
+      "kind": "rag",
+      "action_class": "read",
+      "requires_identity_context": true
+    }
+  ],
+  "evaluation": {
+    "evaluation_pack_ref": "policy-review-specialist@0.1.0"
+  }
+}

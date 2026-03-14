@@ -1,0 +1,151 @@
+{
+  "created_at": "2026-03-13T23:58:12.024299Z",
+  "last_updated_at": "2026-03-14T00:08:39Z",
+  "requirements": [
+    {
+      "id": "R1",
+      "statement": "Record that the repo implementation is complete enough to pass `nightly-full` locally.",
+      "evidence_ids": ["E1", "E2", "E3", "E11"]
+    },
+    {
+      "id": "R2",
+      "statement": "Record that the shared sandbox runtime, endpoint, bootstrap resources, artifact upload, and stack deployment have succeeded in AWS account `530267068969`.",
+      "evidence_ids": ["E4", "E5", "E6", "E7", "E8"]
+    },
+    {
+      "id": "R3",
+      "statement": "Record that the remaining live blocker is enforced SCP guard application because the available local credentials do not have Organizations policy-management permissions for management account `023016403424`.",
+      "evidence_ids": ["E8", "E9", "E10"]
+    },
+    {
+      "id": "R4",
+      "statement": "Record the exact follow-on tasks needed to complete deployment close-out once management-account access is available.",
+      "evidence_ids": ["E4", "E5", "E7", "E8", "E12"]
+    },
+    {
+      "id": "R5",
+      "statement": "Keep the final completion path compatible with redeploying the same solution into a fresh environment by configuration and IaC rather than manual rebuild.",
+      "evidence_ids": ["E4", "E6", "E12"]
+    },
+    {
+      "id": "R6",
+      "statement": "Make management-account profile or `--assume-role-arn` wiring an explicit completion item so deploy plus live guard enforcement can be run as one deterministic workflow.",
+      "evidence_ids": ["E4", "E5", "E10", "E12"]
+    }
+  ],
+  "evidence_inventory": [
+    {
+      "id": "E1",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/runtime/engine.py",
+      "anchor": "runtime/engine.py:27",
+      "summary": "One shared runtime executes both PP and SDLC workflows with common audit and delegation plumbing.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E2",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/runtime/agentcore_main.py",
+      "anchor": "runtime/agentcore_main.py:16",
+      "summary": "AgentCore entrypoint exposes `/ping` and `/invocations` for the shared runtime.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E3",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/scripts/run-ci-quality-gates.sh",
+      "anchor": "scripts/run-ci-quality-gates.sh",
+      "summary": "Repository contains the strict `nightly-full` quality-gate lane used as the close-out baseline.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E4",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/scripts/deploy/bootstrap-shared-sandbox.sh",
+      "anchor": "scripts/deploy/bootstrap-shared-sandbox.sh:436",
+      "summary": "Bootstrap script resolves or creates runtime/endpoints, deploys the shared stack, and invokes the AWS guard script.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E5",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/scripts/guards/apply-flutter-design-aws-guards.sh",
+      "anchor": "scripts/guards/apply-flutter-design-aws-guards.sh:420",
+      "summary": "Guard script already supports `--assume-role-arn`, validates stack outputs and endpoint state, and enforces SCPs when Organizations access exists.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E6",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/infra/runtime-bootstrap-resources.yaml",
+      "anchor": "infra/runtime-bootstrap-resources.yaml:4",
+      "summary": "IaC bootstrap template provisions the artifact bucket and AgentCore runtime execution role needed for fresh-environment deployment.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E7",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/tests/test_bootstrap_shared_sandbox_script.py",
+      "anchor": "tests/test_bootstrap_shared_sandbox_script.py:164",
+      "summary": "Automated tests cover runtime reuse/creation, IaC bootstrap provisioning, and endpoint convergence behavior.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E8",
+      "type": "session-observation",
+      "source": "Current workspace and prior verified deploy run in this session",
+      "summary": "Shared sandbox runtime, endpoint, and `FlutterAgentCorePocStack` are already deployed in account `530267068969`; guard output shows stack/runtime checks pass while SCP enforcement remains blocked.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E9",
+      "type": "aws-cli-observation",
+      "source": "aws organizations describe-organization",
+      "summary": "Organization management account resolved as `023016403424`.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E10",
+      "type": "aws-cli-observation",
+      "source": "aws organizations list-policies-for-target",
+      "summary": "Available local profiles for account `530267068969` fail SCP lookup with `AccessDeniedException`, confirming missing management-account permissions.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E11",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/tests/test_apply_flutter_design_aws_guards_script.py",
+      "anchor": "tests/test_apply_flutter_design_aws_guards_script.py:268",
+      "summary": "Guard tests already cover clean handling of Organizations access-denied failures.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    },
+    {
+      "id": "E12",
+      "type": "repo-file",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc/README.md",
+      "anchor": "README.md:58",
+      "summary": "README already documents bootstrap of the shared sandbox, but still contains stale text earlier that the repo is not currently a working runtime implementation.",
+      "retrieved_at": "2026-03-14T00:08:39Z"
+    }
+  ],
+  "sources": [
+    {
+      "id": "S1",
+      "type": "repo",
+      "path": "/Users/adamjackson/.codex/worktrees/a425/flutter-aws-poc",
+      "trust_rationale": "Primary source for current implementation, tests, bootstrap scripts, and documentation."
+    },
+    {
+      "id": "S2",
+      "type": "aws-cli",
+      "scope": "member-account-530267068969",
+      "region": "eu-west-1",
+      "trust_rationale": "Primary live source for current deploy state and Organizations permission boundaries observed from available credentials."
+    }
+  ],
+  "notes": [
+    "The management-account dependency is operational, not architectural; it should not trigger redesign of the shared-platform topology.",
+    "A useful close-out improvement is to wire management-account access into the bootstrap command so live SCP enforcement becomes part of the deterministic deploy contract.",
+    "README deployment guidance now lags the implemented runtime/bootstrap state and should be aligned during completion close-out."
+  ]
+}

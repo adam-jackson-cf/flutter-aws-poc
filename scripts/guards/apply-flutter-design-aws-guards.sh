@@ -99,9 +99,11 @@ import json
 import os
 
 payload = json.loads(os.environ["PAYLOAD"])
+live_version = str(payload.get("liveVersion", "")).strip()
+target_version = str(payload.get("targetVersion", "")).strip() or live_version
 print(str(payload.get("status", "")).strip())
-print(str(payload.get("liveVersion", "")).strip())
-print(str(payload.get("targetVersion", "")).strip())
+print(live_version)
+print(target_version)
 PY
 }
 
@@ -186,8 +188,7 @@ resolve_gateway_role_arn() {
   local function_name
   function_name="$(aws_cli cloudformation describe-stack-resources \
     --stack-name "$STACK_NAME" \
-    --logical-resource-id "LlmGatewayFn" \
-    --query "StackResources[0].PhysicalResourceId" \
+    --query "StackResources[?ResourceType==\`AWS::Lambda::Function\` && starts_with(LogicalResourceId, \`LlmGatewayFn\`)] | [0].PhysicalResourceId" \
     --output text 2>/dev/null || true)"
 
   if [[ -z "$function_name" || "$function_name" == "None" || "$function_name" == "null" ]]; then
@@ -232,7 +233,10 @@ assume_role_if_requested() {
     --role-session-name "flutter-design-guards" \
     --output json)"
 
-  mapfile -t creds < <(PAYLOAD="$payload" "$PYTHON_BIN" - <<'PY'
+  local creds=()
+  while IFS= read -r line; do
+    creds+=("$line")
+  done < <(PAYLOAD="$payload" "$PYTHON_BIN" - <<'PY'
 import json
 import os
 
@@ -462,7 +466,10 @@ else
   if [[ -z "$endpoint_payload" ]]; then
     add_check "G3_RUNTIME_ENDPOINT" "ERROR" "Runtime endpoint not found for runtime '$RUNTIME_ID' endpoint '$ENDPOINT_NAME'"
   else
-    mapfile -t endpoint_values < <(parse_endpoint_payload "$endpoint_payload")
+    endpoint_values=()
+    while IFS= read -r line; do
+      endpoint_values+=("$line")
+    done < <(parse_endpoint_payload "$endpoint_payload")
     endpoint_status="${endpoint_values[0]:-}"
     live_version="${endpoint_values[1]:-}"
     target_version="${endpoint_values[2]:-}"
@@ -481,7 +488,10 @@ else
           --agent-runtime-id "$RUNTIME_ID" \
           --endpoint-name "$ENDPOINT_NAME" \
           --output json)"
-        mapfile -t endpoint_values < <(parse_endpoint_payload "$endpoint_payload")
+        endpoint_values=()
+        while IFS= read -r line; do
+          endpoint_values+=("$line")
+        done < <(parse_endpoint_payload "$endpoint_payload")
         endpoint_status="${endpoint_values[0]:-}"
         live_version="${endpoint_values[1]:-}"
         target_version="${endpoint_values[2]:-}"
@@ -527,6 +537,15 @@ fi
 
 allowed_global_actions_json="$(split_csv_to_quoted_json_list "$ALLOW_GLOBAL_SERVICES")"
 extra_allowed_arns_json="$(split_csv_to_quoted_json_list "$ALLOWED_BEDROCK_CALLER_ARNS")"
+org_policy_lookup_error=""
+policy_id=""
+
+if [[ "$org_available" == "true" ]]; then
+  if ! policy_id="$(resolve_existing_policy_id 2>&1)"; then
+    org_policy_lookup_error="$(printf '%s' "$policy_id" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+    policy_id=""
+  fi
+fi
 
 if [[ "$org_available" != "true" ]]; then
   if [[ "$MODE" == "enforce" ]]; then
@@ -538,12 +557,15 @@ if [[ "$org_available" != "true" ]]; then
       add_check "G2_NON_BYPASS" "DRIFT" "Organizations API unavailable; SCP non-bypass guard cannot be validated in standalone detect mode"
     fi
   fi
+elif [[ -n "$org_policy_lookup_error" ]]; then
+  add_check "G1_REGION_GUARD" "ERROR" "Organizations SCP policy lookup denied: $org_policy_lookup_error"
+  if ! grep -q '^G2_NON_BYPASS\t' "$CHECKS_FILE"; then
+    add_check "G2_NON_BYPASS" "ERROR" "Organizations SCP policy lookup denied: $org_policy_lookup_error"
+  fi
 else
   if ! grep -q '^G2_NON_BYPASS\t' "$CHECKS_FILE"; then
     desired_policy="$(build_policy_document "$gateway_role_arn" "$extra_allowed_arns_json" "$allowed_global_actions_json")"
     desired_hash="$(json_hash "$desired_policy")"
-
-    policy_id="$(resolve_existing_policy_id || true)"
     if [[ -z "$policy_id" || "$policy_id" == "None" || "$policy_id" == "null" ]]; then
       if [[ "$MODE" == "enforce" ]]; then
         created_payload="$(aws_cli organizations create-policy \

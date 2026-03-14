@@ -1,0 +1,57 @@
+{
+  "kind": "CapabilityDefinition",
+  "metadata": {
+    "capability_id": "pr-verifier-orchestrator",
+    "version": "0.1.0",
+    "lifecycle_state": "Published"
+  },
+  "prompt": {
+    "prompt_ref": "prompts/pr-verifier-orchestrator",
+    "prompt_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "governance": {
+    "risk_tier": "R1",
+    "safety_envelope_ref": "default-r1-internal-write@1.0.0",
+    "workflow_contract_ref": "pr-verification-review@1.0.0",
+    "execution_model": {
+      "scopes": ["Reasoning", "Coordination", "Process"],
+      "delegated_capability_refs": ["diff-review-specialist@0.1.0"]
+    }
+  },
+  "routing": {
+    "llm_route": "llm_gateway",
+    "allowed_model_families": ["bedrock"]
+  },
+  "identity": {
+    "required_tags": ["tenant_id", "brand", "role", "use_case"]
+  },
+  "tool_bindings": [
+    {
+      "tool_id": "github-diff-reader",
+      "kind": "mcp",
+      "action_class": "read",
+      "requires_identity_context": true
+    },
+    {
+      "tool_id": "engineering-standards-search",
+      "kind": "rag",
+      "action_class": "read",
+      "requires_identity_context": true
+    },
+    {
+      "tool_id": "pr-comment-writer",
+      "kind": "mcp",
+      "action_class": "internal_write",
+      "requires_identity_context": true
+    },
+    {
+      "tool_id": "engineering-review-gate",
+      "kind": "human_review",
+      "action_class": "control",
+      "requires_identity_context": true
+    }
+  ],
+  "evaluation": {
+    "evaluation_pack_ref": "pr-verifier-orchestrator@0.1.0"
+  }
+}

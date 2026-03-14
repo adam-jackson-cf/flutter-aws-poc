@@ -1,0 +1,57 @@
+{
+  "kind": "CapabilityDefinition",
+  "metadata": {
+    "capability_id": "player-protection-case-orchestrator",
+    "version": "1.0.0",
+    "lifecycle_state": "Published"
+  },
+  "prompt": {
+    "prompt_ref": "prompts/player-protection-case-orchestrator",
+    "prompt_sha256": "8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "governance": {
+    "risk_tier": "R3",
+    "safety_envelope_ref": "default-r3-regulated-write@1.0.0",
+    "workflow_contract_ref": "player-protection-case-handling@1.0.0",
+    "execution_model": {
+      "scopes": ["Reasoning", "Coordination", "Process"],
+      "delegated_capability_refs": ["customer-360-specialist@1.0.0"]
+    }
+  },
+  "routing": {
+    "llm_route": "llm_gateway",
+    "allowed_model_families": ["bedrock"]
+  },
+  "identity": {
+    "required_tags": ["tenant_id", "brand", "role", "use_case"]
+  },
+  "tool_bindings": [
+    {
+      "tool_id": "customer-360-reader",
+      "kind": "mcp",
+      "action_class": "read",
+      "requires_identity_context": true
+    },
+    {
+      "tool_id": "rg-policy-search",
+      "kind": "rag",
+      "action_class": "read",
+      "requires_identity_context": true
+    },
+    {
+      "tool_id": "rg-intervention-write",
+      "kind": "mcp",
+      "action_class": "regulated_write",
+      "requires_identity_context": true
+    },
+    {
+      "tool_id": "compliance-review-gate",
+      "kind": "human_review",
+      "action_class": "control",
+      "requires_identity_context": true
+    }
+  ],
+  "evaluation": {
+    "evaluation_pack_ref": "player-protection-case-orchestrator@1.0.0"
+  }
+}

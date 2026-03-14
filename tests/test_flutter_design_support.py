@@ -139,6 +139,14 @@ def test_publish_readiness_module_accepts_valid_r2_fixture(adapter) -> None:
     assert process_scope_violations(repo_root, adapter, repository) == []
 
 
+def test_publish_readiness_module_accepts_valid_r1_process_fixture(adapter) -> None:
+    repo_root = FIXTURE_ROOT / "valid-r1-process"
+    repository = load_design_repository(repo_root, adapter)
+
+    assert publish_readiness_violations(repo_root, adapter, repository) == []
+    assert process_scope_violations(repo_root, adapter, repository) == []
+
+
 def test_publish_readiness_module_reports_missing_evaluation_pack(adapter) -> None:
     repo_root = FIXTURE_ROOT / "invalid-missing-eval"
     repository = load_design_repository(repo_root, adapter)
@@ -176,11 +184,16 @@ def test_publish_readiness_module_catches_broader_contract_drift(adapter) -> Non
     capability = repository.capability_definitions[0]
     payload = capability.payload
     payload["metadata"]["lifecycle_state"] = "Published"
+    payload["prompt"]["prompt_ref"] = ""
+    payload["prompt"]["prompt_sha256"] = "bad"
     payload["governance"]["execution_model"]["scopes"] = ["Coordination", "Unsupported"]
-    payload["governance"]["execution_model"]["delegated_capability_ids"] = []
+    payload["governance"]["execution_model"]["delegated_capability_refs"] = []
     payload["routing"]["llm_route"] = "direct"
     payload["identity"]["required_tags"] = ["tenant_id"]
-    payload["tool_bindings"] = ["bad-binding", {"tool_id": "writer", "kind": "mcp", "requires_identity_context": False}]
+    payload["tool_bindings"] = [
+        "bad-binding",
+        {"tool_id": "writer", "kind": "mcp", "action_class": "control", "requires_identity_context": False},
+    ]
     payload["governance"]["safety_envelope_ref"] = "missing-envelope@1.0.0"
 
     evaluation_pack = repository.evaluation_packs["account-freeze-orchestrator@0.2.0"]
@@ -198,11 +211,14 @@ def test_publish_readiness_module_catches_broader_contract_drift(adapter) -> Non
     expected_fragments = [
         "execution_model.scopes must always include Reasoning",
         "unsupported values ['Unsupported']",
+        "prompt.prompt_ref must be declared",
+        "prompt.prompt_sha256 must be a 64-character SHA-256 digest",
         "routing.llm_route must be llm_gateway",
         "identity.required_tags missing ['brand', 'role', 'use_case']",
         "tool_bindings[0] must be an object",
         "tool_bindings[1] must require identity context",
-        "Coordination scope requires delegated_capability_ids",
+        "kind mcp cannot use action_class control",
+        "Coordination scope requires delegated_capability_refs",
         "referenced safety envelope 'missing-envelope@1.0.0' was not found",
         "capability_ref does not match",
         "requires a passed evaluation release gate",
@@ -237,6 +253,24 @@ def test_process_scope_module_reports_missing_referenced_workflow_contract(adapt
     violations = process_scope_violations(repo_root, adapter, repository)
 
     assert any("referenced workflow contract 'missing-workflow@1.0.0' was not found" in violation for violation in violations)
+
+
+def test_publish_readiness_module_rejects_r1_customer_write(adapter) -> None:
+    repo_root = FIXTURE_ROOT / "invalid-r1-customer-write"
+    repository = load_design_repository(repo_root, adapter)
+
+    violations = publish_readiness_violations(repo_root, adapter, repository)
+
+    assert any("risk tier R1 cannot use action_class customer_write" in violation for violation in violations)
+
+
+def test_publish_readiness_module_rejects_r1_write_without_hitl(adapter) -> None:
+    repo_root = FIXTURE_ROOT / "invalid-r1-no-hitl"
+    repository = load_design_repository(repo_root, adapter)
+
+    violations = publish_readiness_violations(repo_root, adapter, repository)
+
+    assert any("require at least one human_review tool binding" in violation for violation in violations)
 
 
 def test_artefact_key_rejects_unsupported_type() -> None:

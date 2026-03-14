@@ -1,0 +1,27 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "pr-verifier-orchestrator",
+    "version": "0.1.0"
+  },
+  "capability_ref": "pr-verifier-orchestrator@0.1.0",
+  "release_gate": {
+    "status": "passed",
+    "benchmark_pass_rate": 0.96,
+    "minimum_benchmark_pass_rate": 0.95,
+    "case_pass_rate": 0.93,
+    "minimum_case_pass_rate": 0.9,
+    "clean_run_pass_rate": 0.92,
+    "minimum_clean_run_pass_rate": 0.9,
+    "false_positive_rate": 0.08,
+    "maximum_false_positive_rate": 0.1,
+    "structured_output_schema_valid": true
+  },
+  "datasets": [
+    {
+      "dataset_id": "golden-pr-verifier",
+      "path": "datasets/golden-pr-verifier.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}

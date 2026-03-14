@@ -1,0 +1,13 @@
+{
+  "kind": "SafetyEnvelope",
+  "metadata": {
+    "envelope_id": "default-r1-internal-write",
+    "version": "1.0.0"
+  },
+  "constraints": {
+    "allowed_data_classes": ["internal"],
+    "guardrail_profile": "engineering-internal-write",
+    "prompt_injection_protection": true,
+    "human_review_required": true
+  }
+}

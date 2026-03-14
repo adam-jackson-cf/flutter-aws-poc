@@ -40,6 +40,13 @@ def test_publish_readiness_accepts_valid_r2_fixture() -> None:
     assert "publish readiness checks passed" in completed.stdout
 
 
+def test_publish_readiness_accepts_valid_r1_process_fixture() -> None:
+    completed = _run(FIXTURE_ROOT / "valid-r1-process")
+
+    assert completed.returncode == 0
+    assert "publish readiness checks passed" in completed.stdout
+
+
 def test_publish_readiness_rejects_missing_evaluation_pack() -> None:
     completed = _run(FIXTURE_ROOT / "invalid-missing-eval")
 
@@ -51,7 +58,7 @@ def test_publish_readiness_rejects_coordination_without_delegates() -> None:
     completed = _run(FIXTURE_ROOT / "invalid-coordination")
 
     assert completed.returncode == 1
-    assert "Coordination scope requires delegated_capability_ids" in completed.stdout
+    assert "Coordination scope requires delegated_capability_refs" in completed.stdout
 
 
 def test_publish_readiness_rejects_r2_without_workflow_contract() -> None:
@@ -59,3 +66,17 @@ def test_publish_readiness_rejects_r2_without_workflow_contract() -> None:
 
     assert completed.returncode == 1
     assert "requires workflow_contract_ref" in completed.stdout
+
+
+def test_publish_readiness_rejects_r1_customer_write() -> None:
+    completed = _run(FIXTURE_ROOT / "invalid-r1-customer-write")
+
+    assert completed.returncode == 1
+    assert "risk tier R1 cannot use action_class customer_write" in completed.stdout
+
+
+def test_publish_readiness_rejects_r1_write_without_hitl() -> None:
+    completed = _run(FIXTURE_ROOT / "invalid-r1-no-hitl")
+
+    assert completed.returncode == 1
+    assert "require at least one human_review tool binding" in completed.stdout

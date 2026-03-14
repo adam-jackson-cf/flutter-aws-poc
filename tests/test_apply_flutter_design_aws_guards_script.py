@@ -1,10 +1,17 @@
 import os
 import subprocess
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "guards" / "apply-flutter-design-aws-guards.sh"
+
+
+@dataclass(frozen=True)
+class GuardRunOptions:
+    org_available: bool
+    extra_env: dict[str, str] = field(default_factory=dict)
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -66,7 +73,11 @@ case "${SERVICE}/${OPERATION}" in
     echo "arn:aws:iam::123456789012:role/llm-gateway-role"
     ;;
   bedrock-agentcore-control/get-agent-runtime-endpoint)
-    echo '{"status":"READY","liveVersion":"1","targetVersion":"1"}'
+    if [[ "${AWS_FAKE_OMIT_TARGET_VERSION:-0}" == "1" ]]; then
+      echo '{"status":"READY","liveVersion":"1"}'
+    else
+      echo '{"status":"READY","liveVersion":"1","targetVersion":"1"}'
+    fi
     ;;
   bedrock-agentcore-control/update-agent-runtime-endpoint)
     echo '{"status":"UPDATING"}'
@@ -79,7 +90,10 @@ case "${SERVICE}/${OPERATION}" in
     fi
     ;;
   organizations/list-policies-for-target)
-    if [[ -f "$STATE_DIR/policy_id" ]]; then
+    if [[ "${AWS_FAKE_ORG_POLICY_ACCESS_DENIED:-0}" == "1" ]]; then
+      echo "An error occurred (AccessDeniedException) when calling the ListPoliciesForTarget operation: You don't have permissions to access this resource." >&2
+      exit 254
+    elif [[ -f "$STATE_DIR/policy_id" ]]; then
       cat "$STATE_DIR/policy_id"
     else
       echo "None"
@@ -159,8 +173,7 @@ esac
 def _run_script(
     tmp_path: Path,
     args: list[str],
-    *,
-    org_available: bool,
+    options: GuardRunOptions,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.pop("AWS_PROFILE", None)
@@ -168,7 +181,9 @@ def _run_script(
     env["PATH"] = f"{tmp_path / 'bin'}:{env.get('PATH', '')}"
     env["AWS_FAKE_LOG"] = str(tmp_path / "aws.log")
     env["AWS_FAKE_STATE_DIR"] = str(tmp_path / "state")
-    env["AWS_FAKE_ORG_AVAILABLE"] = "1" if org_available else "0"
+    env["AWS_FAKE_ORG_AVAILABLE"] = "1" if options.org_available else "0"
+    if options.extra_env:
+        env.update(options.extra_env)
 
     return subprocess.run(
         [str(SCRIPT_PATH), *args],
@@ -210,13 +225,73 @@ def test_detect_mode_reports_drift_when_org_api_unavailable(tmp_path: Path) -> N
             "--region",
             "eu-west-1",
         ],
-        org_available=False,
+        GuardRunOptions(org_available=False),
     )
 
     assert completed.returncode == 3
     assert "G1_REGION_GUARD=DRIFT" in completed.stdout
     assert "G2_NON_BYPASS=DRIFT" in completed.stdout
     assert "OVERALL_STATUS=DRIFT" in completed.stdout
+
+
+def test_detect_mode_accepts_ready_endpoint_without_target_version(tmp_path: Path) -> None:
+    _install_fake_aws_cli(tmp_path)
+
+    completed = _run_script(
+        tmp_path,
+        [
+            "--mode",
+            "detect",
+            "--target-scope",
+            "account",
+            "--target-id",
+            "123456789012",
+            "--stack-name",
+            "FlutterAgentCorePocStack",
+            "--region",
+            "eu-west-1",
+            "--runtime-id",
+            "runtime-123",
+            "--endpoint-name",
+            "production",
+        ],
+        GuardRunOptions(
+            org_available=False,
+            extra_env={"AWS_FAKE_OMIT_TARGET_VERSION": "1"},
+        ),
+    )
+
+    assert completed.returncode == 3
+    assert "G3_RUNTIME_ENDPOINT=PASS" in completed.stdout
+
+
+def test_enforce_mode_reports_org_policy_access_denied(tmp_path: Path) -> None:
+    _install_fake_aws_cli(tmp_path)
+
+    completed = _run_script(
+        tmp_path,
+        [
+            "--mode",
+            "enforce",
+            "--target-scope",
+            "account",
+            "--target-id",
+            "123456789012",
+            "--stack-name",
+            "FlutterAgentCorePocStack",
+            "--region",
+            "eu-west-1",
+        ],
+        GuardRunOptions(
+            org_available=True,
+            extra_env={"AWS_FAKE_ORG_POLICY_ACCESS_DENIED": "1"},
+        ),
+    )
+
+    assert completed.returncode == 1
+    assert "G1_REGION_GUARD=ERROR Organizations SCP policy lookup denied:" in completed.stdout
+    assert "G2_NON_BYPASS=ERROR Organizations SCP policy lookup denied:" in completed.stdout
+    assert "OVERALL_STATUS=ERROR" in completed.stdout
 
 
 def test_enforce_mode_creates_and_attaches_policy(tmp_path: Path) -> None:
@@ -236,7 +311,7 @@ def test_enforce_mode_creates_and_attaches_policy(tmp_path: Path) -> None:
             "--region",
             "eu-west-1",
         ],
-        org_available=True,
+        GuardRunOptions(org_available=True),
     )
 
     assert completed.returncode == 0

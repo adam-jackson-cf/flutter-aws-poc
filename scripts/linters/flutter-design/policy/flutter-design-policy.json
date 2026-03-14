@@ -29,7 +29,7 @@
     {
       "rule_id": "R2-PUBLISH-READYNESS",
       "tier": "R2",
-      "title": "Review and Published capabilities must satisfy publish gate invariants",
+      "title": "Review and Published capabilities must satisfy publish gate and action governance invariants",
       "check_name": "r2_publish_readiness"
     },
     {
@@ -39,10 +39,10 @@
       "check_name": "r3_workflow_contract_schema"
     },
     {
-      "rule_id": "R3-PROCESS-CONTRACT-REQUIRED",
-      "tier": "R3",
-      "title": "R2 and R3 capabilities must reference a matching Workflow Contract",
-      "check_name": "r3_process_contract_required"
+      "rule_id": "R2-PROCESS-CONTRACT-GOVERNANCE",
+      "tier": "R2",
+      "title": "Process scope and higher-risk capabilities must reference a matching Workflow Contract",
+      "check_name": "r2_process_contract_governance"
     }
   ]
 }

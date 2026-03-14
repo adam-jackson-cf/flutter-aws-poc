@@ -1,0 +1,24 @@
+{
+  "kind": "EvaluationPack",
+  "metadata": {
+    "pack_id": "player-protection-case-orchestrator",
+    "version": "1.0.0"
+  },
+  "capability_ref": "player-protection-case-orchestrator@1.0.0",
+  "release_gate": {
+    "status": "passed",
+    "benchmark_pass_rate": 0.97,
+    "minimum_benchmark_pass_rate": 0.95,
+    "hitl_path_pass_rate": 1.0,
+    "minimum_hitl_path_pass_rate": 1.0,
+    "audit_before_write_pass_rate": 1.0,
+    "minimum_audit_before_write_pass_rate": 1.0
+  },
+  "datasets": [
+    {
+      "dataset_id": "golden-player-protection-case",
+      "path": "datasets/golden-player-protection-case.jsonl",
+      "role": "release_gate"
+    }
+  ]
+}
