@@ -21,10 +21,11 @@ Project-specific operational defaults for agents and developers working in this 
 - `workflow-contracts/`: Workflow Contracts
 - `evaluation-packs/`: Evaluation Packs
 - `contracts/schemas/`: canonical JSON Schemas
+- `runtime/`: shared workflow runtime and AgentCore entrypoint
 - `scripts/linters/flutter-design/`: CLI enforcement entrypoints
 - `scripts/linters/flutter_design_support/`: core rule logic
 - `tests/fixtures/flutter-design/`: valid and invalid fixture corpora
-- `infra/`: minimal build/deploy scaffold only
+- `infra/`: shared sandbox, gateway, and deploy scaffolding
 
 ## AWS And Environment Defaults
 
@@ -35,7 +36,7 @@ Project-specific operational defaults for agents and developers working in this 
   - `CDK_DEFAULT_REGION=eu-west-1`
 - Use `.envrc` and `.envrc.example` as the environment source of truth.
 - Do not introduce `.env` or `.env.example`.
-- The retained stack is `FlutterAgentCorePocStack`. It is a scaffold, not proof of platform implementation.
+- The retained stack is `FlutterAgentCorePocStack`. Treat it as the shared sandbox/platform stack for this repo slice, not proof that the final production topology is complete.
 
 ## Working Rules
 
@@ -47,6 +48,8 @@ Project-specific operational defaults for agents and developers working in this 
 ## Operational Commands
 
 Initial setup and bootstrap live in `README.md`. Use the commands below for ongoing work.
+
+Developer workflow guidance for creating new workflows lives in `docs/references/development/README.md`.
 
 ### Lane Strictness
 
